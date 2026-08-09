@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 from threading import RLock
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -56,6 +57,17 @@ DEFAULT_STATE = {
 }
 
 
+def atomic_write_json(path: Path, payload: dict) -> None:
+    temp_path = path.with_name(f"{path.name}.tmp")
+    data = json.dumps(payload, ensure_ascii=False, indent=2)
+    with temp_path.open("w", encoding="utf-8") as handle:
+        handle.write(data)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    temp_path.replace(path)
+
+
 class Store:
     def __init__(self) -> None:
         self.lock = RLock()
@@ -67,7 +79,11 @@ class Store:
     def load(self) -> None:
         if not DATA_FILE.exists():
             return
-        data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            self.quarantine_broken_state_file()
+            return
         self.state.update(data.get("state", {}))
         for key, value in DEFAULT_STATE.items():
             if key not in self.state:
@@ -101,7 +117,17 @@ class Store:
             "balls": {str(number): ball.to_dict() for number, ball in self.balls.items()},
             "history": self.history[-500:],
         }
-        DATA_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_json(DATA_FILE, payload)
+
+    def quarantine_broken_state_file(self) -> None:
+        if not DATA_FILE.exists():
+            return
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        target = DATA_FILE.with_name(f"{DATA_FILE.stem}_broken_{stamp}{DATA_FILE.suffix}")
+        try:
+            DATA_FILE.replace(target)
+        except OSError:
+            pass
 
     def tick(self) -> None:
         if not self.state["running"]:
@@ -316,9 +342,13 @@ class Store:
                         self.state["announcedMinuteWarnings"] = []
                         self.state["lastTickRemainingSeconds"] = self.state["remainingSeconds"]
                 if payload.get("finishPassword"):
-                    self.state["finishPassword"] = str(payload["finishPassword"])[:8]
+                    password = "".join(ch for ch in str(payload["finishPassword"]) if ch.isdigit())[:6]
+                    if password:
+                        self.state["finishPassword"] = password
                 if payload.get("settingsPassword"):
-                    self.state["settingsPassword"] = str(payload["settingsPassword"])[:8]
+                    password = "".join(ch for ch in str(payload["settingsPassword"]) if ch.isdigit())[:6]
+                    if password:
+                        self.state["settingsPassword"] = password
                 message = "设置已保存"
                 self.state["lastMessage"] = message
                 self.record("settings", None, message)

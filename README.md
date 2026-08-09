@@ -31,6 +31,18 @@ Default controls:
 
 Default password is `1234`.
 
+## Raspberry Pi Deployment
+
+For service-mode startup and Chromium kiosk display, see:
+
+```text
+deploy/raspberry-pi/README.md
+```
+
+The deployment module installs a systemd backend service with automatic restart
+and a desktop autostart entry that opens the scoreboard in full-screen kiosk
+mode.
+
 ## PySide6 Prototype
 
 Install dependency:
@@ -44,4 +56,3 @@ Run:
 ```powershell
 python pyside6/main.py
 ```
-

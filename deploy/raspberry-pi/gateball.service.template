@@ -1,0 +1,16 @@
+[Unit]
+Description=Gateball Scoreboard Web Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__GATEBALL_USER__
+WorkingDirectory=__GATEBALL_DIR__
+ExecStart=/usr/bin/python3 __GATEBALL_DIR__/web/server.py
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

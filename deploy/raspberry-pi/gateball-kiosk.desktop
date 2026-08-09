@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Gateball Scoreboard Kiosk
+Comment=Open the Gateball scoreboard in Chromium kiosk mode
+Exec=__GATEBALL_DIR__/deploy/raspberry-pi/start-kiosk.sh
+Terminal=false
+X-GNOME-Autostart-enabled=true

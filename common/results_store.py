@@ -14,6 +14,7 @@ class ResultsStore:
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
         self.backup_dir = db_path.parent / "backups"
+        self.match_backup_limit = 30
         self.lock = RLock()
         self.initialize()
 
@@ -87,11 +88,7 @@ class ResultsStore:
             pass
 
     def restore_latest_healthy_backup(self) -> bool:
-        backups = sorted(
-            self.backup_dir.glob("gateball_*.sqlite3"),
-            key=lambda path: path.stat().st_mtime,
-            reverse=True,
-        )
+        backups = sorted(self.backup_dir.glob("gateball_*.sqlite3"), key=lambda path: path.stat().st_mtime, reverse=True)
         for backup in backups:
             if self.is_healthy(backup):
                 shutil.copy2(backup, self.db_path)
@@ -106,6 +103,25 @@ class ResultsStore:
             return
         stamp = time.strftime("%Y%m%d_%H%M%S")
         self.backup_database(self.backup_dir / f"gateball_{stamp}.sqlite3")
+
+    def backup_after_match(self) -> None:
+        if not self.db_path.exists():
+            return
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        self.backup_database(self.backup_dir / f"gateball_match_{stamp}.sqlite3")
+        self.prune_match_backups()
+
+    def prune_match_backups(self) -> None:
+        backups = sorted(
+            self.backup_dir.glob("gateball_match_*.sqlite3"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        for backup in backups[self.match_backup_limit:]:
+            try:
+                backup.unlink()
+            except OSError:
+                pass
 
     def backup_database(self, target: Path) -> None:
         source = sqlite3.connect(self.db_path, timeout=5)
@@ -151,7 +167,9 @@ class ResultsStore:
                     """,
                     row,
                 )
-                return int(cursor.lastrowid)
+                match_id = int(cursor.lastrowid)
+            self.backup_after_match()
+            return match_id
 
     def month_summary(self, year: int, month: int) -> dict[str, Any]:
         start = f"{year:04d}-{month:02d}-01"

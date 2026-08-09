@@ -850,6 +850,16 @@ tr.selected {
   font-size: 36px;
 }
 
+.finish-password-input {
+  text-align: center;
+  color: var(--gold);
+  font-family: var(--display-number-font);
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: 8px;
+  -webkit-text-security: disc;
+}
+
 .dialog-result {
   display: block;
   min-height: 22px;

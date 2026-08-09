@@ -102,6 +102,16 @@ function formatTime(seconds) {
   return `${two(min)}:${two(sec)}`;
 }
 
+function finishPasswordLength() {
+  const length = String(currentState?.finishPassword || "").length;
+  return Math.min(6, Math.max(4, length || 4));
+}
+
+function settingsPasswordLength() {
+  const length = String(currentState?.settingsPassword || "").length;
+  return Math.min(6, Math.max(4, length || 4));
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -1128,12 +1138,14 @@ function openFinishDialog() {
   finishPassword = "";
   finishVerifyInFlight = false;
   document.querySelector("[data-finish-dialog]")?.classList.add("open");
-  document.querySelector("[data-finish-password]").textContent = "";
+  const input = document.querySelector("[data-finish-password]");
+  if (input) input.value = "";
   const result = document.querySelector("[data-finish-result]");
   if (result) {
     result.textContent = "";
     result.classList.remove("error");
   }
+  window.setTimeout(() => input?.focus(), 0);
   playFinishPromptSound(() => speak("请输入密码结束比赛"));
 }
 
@@ -1141,6 +1153,8 @@ function closeFinishDialog() {
   finishDialogOpen = false;
   finishPassword = "";
   finishVerifyInFlight = false;
+  const input = document.querySelector("[data-finish-password]");
+  if (input) input.value = "";
   document.querySelector("[data-finish-dialog]")?.classList.remove("open");
 }
 
@@ -1183,8 +1197,8 @@ function collectSettingsPayload(form) {
     weatherLatitude: form.weatherLatitude?.value || "",
     weatherLongitude: form.weatherLongitude?.value || "",
     allowScoringWhenPaused: form.allowScoringWhenPaused.checked,
-    finishPassword: form.finishPassword.value,
-    settingsPassword: form.settingsPassword.value,
+    finishPassword: form.finishPassword.value.replace(/\D/g, "").slice(0, 6),
+    settingsPassword: form.settingsPassword.value.replace(/\D/g, "").slice(0, 6),
   };
 }
 
@@ -1228,8 +1242,9 @@ function closeSettingsSavePasswordDialog() {
 async function trySavePendingSettings() {
   const input = document.querySelector("[data-settings-save-password-input]");
   const resultEl = document.querySelector("[data-settings-save-password-result]");
-  const password = input?.value || "";
-  if (!pendingSettingsPayload || settingsSaveInFlight || !password) return;
+  const password = (input?.value || "").replace(/\D/g, "").slice(0, settingsPasswordLength());
+  if (input) input.value = password;
+  if (!pendingSettingsPayload || settingsSaveInFlight || password.length < settingsPasswordLength()) return;
   settingsSaveInFlight = true;
   if (resultEl) {
     resultEl.textContent = "正在检查...";
@@ -1334,7 +1349,7 @@ function confirmSwapTeam() {
 }
 
 async function tryFinishWithPassword() {
-  if (finishVerifyInFlight || finishPassword.length < 4) return;
+  if (finishVerifyInFlight || finishPassword.length < finishPasswordLength()) return;
   finishVerifyInFlight = true;
   const resultEl = document.querySelector("[data-finish-result]");
   if (resultEl) {
@@ -1348,6 +1363,9 @@ async function tryFinishWithPassword() {
       closeFinishDialog();
     } else {
       finishVerifyInFlight = false;
+      finishPassword = "";
+      const input = document.querySelector("[data-finish-password]");
+      if (input) input.value = "";
       if (resultEl) {
         resultEl.textContent = "密码错误";
         resultEl.classList.add("error");
@@ -1355,6 +1373,9 @@ async function tryFinishWithPassword() {
     }
   } catch (error) {
     finishVerifyInFlight = false;
+    finishPassword = "";
+    const input = document.querySelector("[data-finish-password]");
+    if (input) input.value = "";
     if (resultEl) {
       resultEl.textContent = "校验失败";
       resultEl.classList.add("error");
@@ -1392,7 +1413,7 @@ function handlePasswordKey(event) {
   if (finishDialogOpen) {
     if (eventMatchesBindingSpec(event, keyBindingSpecById.finish_dialog)) return closeFinishDialog();
     if (eventMatchesBindingSpec(event, keyBindingSpecById.finish_cancel)) return closeFinishDialog();
-    if (digit && finishPassword.length < 4) finishPassword += digit;
+    if (digit && finishPassword.length < finishPasswordLength()) finishPassword += digit;
     if (event.key === "Backspace") {
       finishPassword = finishPassword.slice(0, -1);
       finishVerifyInFlight = false;
@@ -1402,13 +1423,14 @@ function handlePasswordKey(event) {
         result.classList.remove("error");
       }
     }
-    document.querySelector("[data-finish-password]").textContent = "●".repeat(finishPassword.length);
-    if (finishPassword.length >= 4) tryFinishWithPassword();
+    const input = document.querySelector("[data-finish-password]");
+    if (input) input.value = finishPassword;
+    if (finishPassword.length >= finishPasswordLength()) tryFinishWithPassword();
     return true;
   }
   if (settingsDialogOpen) {
     if (event.key === "/") return closeSettingsDialog();
-    if (digit && settingsPassword.length < 4) settingsPassword += digit;
+    if (digit && settingsPassword.length < settingsPasswordLength()) settingsPassword += digit;
     if (event.key === "Backspace") settingsPassword = settingsPassword.slice(0, -1);
     document.querySelector("[data-settings-password]").textContent = "●".repeat(settingsPassword.length);
     if (event.key === "Enter" || event.code === "NumpadEnter") {
@@ -1517,6 +1539,24 @@ document.addEventListener("input", (event) => {
   const weatherInput = event.target.closest("[data-weather-location-input]");
   if (weatherInput) {
     scheduleWeatherSearch(weatherInput);
+    return;
+  }
+  const finishInput = event.target.closest("[data-finish-password]");
+  if (finishInput) {
+    finishPassword = finishInput.value.replace(/\D/g, "").slice(0, finishPasswordLength());
+    finishInput.value = finishPassword;
+    finishVerifyInFlight = false;
+    const result = document.querySelector("[data-finish-result]");
+    if (result) {
+      result.textContent = "";
+      result.classList.remove("error");
+    }
+    if (finishPassword.length >= finishPasswordLength()) tryFinishWithPassword();
+    return;
+  }
+  const numericPasswordInput = event.target.closest("input[name='finishPassword'], input[name='settingsPassword']");
+  if (numericPasswordInput) {
+    numericPasswordInput.value = numericPasswordInput.value.replace(/\D/g, "").slice(0, 6);
     return;
   }
   if (!event.target.closest("[data-settings-save-password-input]")) return;

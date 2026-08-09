@@ -38,11 +38,11 @@
         </label>
         <label>
           新结束密码
-          <input name="finishPassword" inputmode="numeric" autocomplete="off" placeholder="不改请留空">
+          <input name="finishPassword" type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" placeholder="不改请留空">
         </label>
         <label>
           新设置密码
-          <input name="settingsPassword" inputmode="numeric" autocomplete="off" placeholder="不改请留空">
+          <input name="settingsPassword" type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" placeholder="不改请留空">
         </label>
         <button class="primary" type="submit">保存设置</button>
         <strong data-save-result></strong>
@@ -59,7 +59,7 @@
     <div class="dialog" data-settings-save-password-dialog>
       <div class="dialog-box">
         <h2 class="dialog-title">输入设置密码</h2>
-        <input class="dialog-input" data-settings-save-password-input inputmode="numeric" autocomplete="off" maxlength="8">
+        <input class="dialog-input" data-settings-save-password-input type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6">
         <strong class="dialog-result" data-settings-save-password-result></strong>
         <div class="dialog-actions">
           <button class="finish-cancel" type="button" data-action="close-settings-save-password">取消</button>
