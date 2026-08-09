@@ -628,9 +628,12 @@ button {
 
 .remote-score-panel {
   display: grid;
+  grid-template-rows: auto auto 1fr;
   gap: 8px;
-  align-content: end;
+  align-self: stretch;
+  align-content: stretch;
   min-height: 100%;
+  padding-top: calc(clamp(76px, 9.4vh, 86px) + 8px);
 }
 
 .remote-total {
@@ -746,8 +749,12 @@ button {
 }
 
 .timer-action {
-  min-height: 52px;
-  border-radius: 8px;
+  align-self: center;
+  justify-self: center;
+  width: clamp(68px, 18vw, 78px);
+  min-height: 0;
+  aspect-ratio: 1;
+  border-radius: 50%;
   color: #101010;
   background: #f3f3f3;
 }
