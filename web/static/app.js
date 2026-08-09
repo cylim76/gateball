@@ -323,6 +323,7 @@ function openFinishDialog() {
   finishPassword = "";
   document.querySelector("[data-finish-dialog]")?.classList.add("open");
   document.querySelector("[data-finish-password]").textContent = "";
+  speak("请输入密码结束比赛");
 }
 
 function closeFinishDialog() {

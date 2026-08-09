@@ -395,6 +395,10 @@ tr.selected {
   margin-top: 18px;
 }
 
+.dialog-actions button {
+  flex: 1 1 0;
+}
+
 button,
 input {
   font: inherit;
@@ -646,6 +650,16 @@ button {
 
 .primary {
   background: var(--gold);
+}
+
+.finish-confirm {
+  color: white;
+  background: #c10b12;
+}
+
+.finish-cancel {
+  color: #111;
+  background: #f3f3f3;
 }
 
 .undo-action {
