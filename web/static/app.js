@@ -48,6 +48,8 @@ let finishPassword = "";
 let settingsDialogOpen = false;
 let settingsPassword = "";
 let settingsHydrated = false;
+let audioContext = null;
+let audioUnlocked = false;
 
 function two(num) {
   return String(num).padStart(2, "0");
@@ -71,6 +73,7 @@ function clockTime(entry) {
 }
 
 function speak(text) {
+  unlockAudio();
   beep();
   if (!("speechSynthesis" in window)) return;
   speechSynthesis.cancel();
@@ -80,10 +83,20 @@ function speak(text) {
   speechSynthesis.speak(utter);
 }
 
+function unlockAudio() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+  if (!audioContext) audioContext = new AudioContext();
+  if (audioContext.state === "suspended") audioContext.resume();
+  audioUnlocked = true;
+}
+
 function beep() {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   if (!AudioContext) return;
-  const ctx = new AudioContext();
+  const ctx = audioContext || new AudioContext();
+  audioContext = ctx;
+  if (ctx.state === "suspended") ctx.resume();
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.frequency.value = 660;
@@ -270,7 +283,12 @@ document.addEventListener("keydown", (event) => {
   if (mapped) sendAction(mapped);
 });
 
+document.addEventListener("pointerdown", () => {
+  if (!audioUnlocked) unlockAudio();
+}, { once: true });
+
 document.addEventListener("click", (event) => {
+  if (!audioUnlocked) unlockAudio();
   const target = event.target.closest("[data-action]");
   if (!target) return;
   const action = target.dataset.action;
