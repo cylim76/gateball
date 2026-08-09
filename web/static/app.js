@@ -52,6 +52,7 @@ let finishPromptAudio = null;
 let tenSecondCountdownIntroAudio = null;
 let tenSecondCountdownAudio = null;
 let tenSecondCountdownTimer = null;
+let tenSecondCountdownIntroTimers = [];
 let tenSecondCountdownRunId = 0;
 let lastRenderedCountdownId = "";
 let lastRenderedCountdownDigit = null;
@@ -242,26 +243,46 @@ function playTenSecondCountdownAudio() {
   playAudio(getTenSecondCountdownAudio(), "10 second countdown");
 }
 
-function startTenSecondCountdown() {
-  tenSecondCountdownRunId += 1;
-  const runId = tenSecondCountdownRunId;
+function clearTenSecondCountdownTimers() {
   if (tenSecondCountdownTimer) {
     window.clearTimeout(tenSecondCountdownTimer);
     tenSecondCountdownTimer = null;
   }
+  tenSecondCountdownIntroTimers.forEach((timer) => window.clearTimeout(timer));
+  tenSecondCountdownIntroTimers = [];
+}
+
+function scheduleTenSecondCountdownIntro(runId, startedAt) {
+  const countdownBeepOffsets = [3000, 4000, 5000, 6000];
+  countdownBeepOffsets.forEach((offset) => {
+    const delay = Math.max(0, startedAt + offset - Date.now());
+    const timer = window.setTimeout(() => {
+      if (runId === tenSecondCountdownRunId) {
+        playTenSecondCountdownIntroAudio();
+      }
+    }, delay);
+    tenSecondCountdownIntroTimers.push(timer);
+  });
+}
+
+function startTenSecondCountdown() {
+  tenSecondCountdownRunId += 1;
+  const runId = tenSecondCountdownRunId;
+  const startedAt = Date.now();
+  clearTenSecondCountdownTimers();
   getTenSecondCountdownIntroAudio().pause();
   getTenSecondCountdownAudio().pause();
   prepareTenSecondCountdownAudio();
   speak("倒计时10秒", () => {
     if (runId === tenSecondCountdownRunId) {
-      playTenSecondCountdownIntroAudio();
+      scheduleTenSecondCountdownIntro(runId, startedAt);
     }
   });
   tenSecondCountdownTimer = window.setTimeout(() => {
     if (runId !== tenSecondCountdownRunId) return;
     tenSecondCountdownTimer = null;
     playTenSecondCountdownAudio();
-  }, 6000);
+  }, 7000);
   sendAction({ action: "ten_second_countdown" }, false).catch((error) => {
     console.warn("10 second countdown event failed", error);
   });
