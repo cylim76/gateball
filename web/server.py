@@ -41,6 +41,8 @@ DEFAULT_STATE = {
     "announcedMinuteWarnings": [],
     "timerStarted": False,
     "lastTickRemainingSeconds": None,
+    "tenSecondCountdownId": None,
+    "tenSecondCountdownStartedAt": None,
 }
 
 
@@ -128,12 +130,14 @@ class Store:
                 "balls": balls,
                 "redTotal": red_total,
                 "whiteTotal": white_total,
+                "serverTime": time.time(),
                 "history": self.history[-30:],
             }
 
     def record(self, action: str, ball: int | None, message: str) -> None:
         self.history.append(
             {
+                "id": f"{time.time():.6f}",
                 "time": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "remainingSeconds": int(self.state.get("remainingSeconds", 0)),
                 "action": action,
@@ -207,6 +211,14 @@ class Store:
                 self.state["timerStarted"] = True
             self.state["lastMessage"] = message
             self.record("toggle_timer", None, message)
+
+        elif action == "ten_second_countdown":
+            message = "10秒倒计时"
+            event_id = f"{time.time():.6f}"
+            self.state["tenSecondCountdownId"] = event_id
+            self.state["tenSecondCountdownStartedAt"] = time.time()
+            self.state["lastMessage"] = message
+            self.record("ten_second_countdown", None, message)
 
         elif action == "finish":
             if payload.get("password") == self.state["finishPassword"]:

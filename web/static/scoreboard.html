@@ -73,7 +73,11 @@
       </div>
     </div>
 
-    <script src="/app.js"></script>
+    <div class="countdown-overlay" data-countdown-overlay aria-hidden="true">
+      <div class="countdown-number" data-countdown-number></div>
+    </div>
+
+    <script src="/app.js?v=20260809-countdown-overlay"></script>
     <script>
       setInterval(() => {
         document.getElementById("clock").textContent = new Date().toLocaleString("zh-CN", { hour12: false });

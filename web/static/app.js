@@ -53,6 +53,8 @@ let tenSecondCountdownIntroAudio = null;
 let tenSecondCountdownAudio = null;
 let tenSecondCountdownTimer = null;
 let tenSecondCountdownRunId = 0;
+let lastRenderedCountdownId = "";
+let lastRenderedCountdownDigit = null;
 let speechHistoryInitialized = false;
 let lastSpokenHistoryKey = "";
 
@@ -260,6 +262,9 @@ function startTenSecondCountdown() {
     tenSecondCountdownTimer = null;
     playTenSecondCountdownAudio();
   }, 6000);
+  sendAction({ action: "ten_second_countdown" }, false).catch((error) => {
+    console.warn("10 second countdown event failed", error);
+  });
 }
 
 function playFinishPromptSound(onComplete) {
@@ -330,6 +335,7 @@ function renderScoreboard() {
   renderRecentLog();
   document.querySelector("[data-red-rows]").innerHTML = renderRows("red");
   document.querySelector("[data-white-rows]").innerHTML = renderRows("white");
+  renderScoreboardCountdownOverlay();
 }
 
 function renderRecentLog() {
@@ -367,7 +373,47 @@ function renderRemote() {
 
 function historyKey(entry) {
   if (!entry) return "";
+  if (entry.id) return String(entry.id);
   return `${entry.time || ""}|${entry.remainingSeconds ?? ""}|${entry.action || ""}|${entry.message || ""}`;
+}
+
+function clearScoreboardCountdownOverlay() {
+  const overlay = document.querySelector("[data-countdown-overlay]");
+  const number = document.querySelector("[data-countdown-number]");
+  overlay?.classList.remove("show");
+  number?.classList.remove("tick");
+  if (number) number.textContent = "";
+  lastRenderedCountdownDigit = null;
+}
+
+function renderScoreboardCountdownOverlay() {
+  const overlay = document.querySelector("[data-countdown-overlay]");
+  const number = document.querySelector("[data-countdown-number]");
+  if (!overlay || !number) return;
+  const countdownId = currentState?.tenSecondCountdownId || "";
+  const startedAt = Number(currentState?.tenSecondCountdownStartedAt);
+  const serverTime = Number(currentState?.serverTime);
+  if (!countdownId || !Number.isFinite(startedAt) || !Number.isFinite(serverTime)) {
+    clearScoreboardCountdownOverlay();
+    return;
+  }
+
+  const elapsed = serverTime - startedAt;
+  const digit = 10 - Math.floor(Math.max(0, elapsed));
+  if (elapsed < 0 || elapsed >= 10 || digit < 1) {
+    clearScoreboardCountdownOverlay();
+    return;
+  }
+
+  overlay.classList.add("show");
+  if (countdownId !== lastRenderedCountdownId || digit !== lastRenderedCountdownDigit) {
+    lastRenderedCountdownId = countdownId;
+    lastRenderedCountdownDigit = digit;
+    number.classList.remove("tick");
+    number.textContent = String(digit);
+    void number.offsetWidth;
+    number.classList.add("tick");
+  }
 }
 
 function latestSpeakableHistoryEntry() {

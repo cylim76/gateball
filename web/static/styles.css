@@ -735,6 +735,43 @@ button {
   background: #1667d8;
 }
 
+.countdown-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: none;
+  place-items: center;
+  pointer-events: none;
+}
+
+.countdown-overlay.show {
+  display: grid;
+}
+
+.countdown-number {
+  color: rgba(255, 255, 255, .5);
+  font-family: var(--display-number-font);
+  font-size: min(68vw, 86vh);
+  font-weight: 900;
+  line-height: .82;
+  text-shadow: 0 8px 26px rgba(0, 0, 0, .35);
+}
+
+.countdown-number.tick {
+  animation: countdown-fade 980ms ease-out both;
+}
+
+@keyframes countdown-fade {
+  0% {
+    opacity: .72;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.12);
+  }
+}
+
 .settings-form {
   display: grid;
   gap: 14px;
