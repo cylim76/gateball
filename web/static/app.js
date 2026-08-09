@@ -49,6 +49,8 @@ let settingsDialogOpen = false;
 let settingsPassword = "";
 let settingsHydrated = false;
 let finishPromptAudio = null;
+let tenSecondCountdownAudio = null;
+let tenSecondCountdownTimer = null;
 let speechHistoryInitialized = false;
 let lastSpokenHistoryKey = "";
 
@@ -166,6 +168,58 @@ function getFinishPromptAudio() {
     finishPromptAudio.preload = "auto";
   }
   return finishPromptAudio;
+}
+
+function getTenSecondCountdownAudio() {
+  if (!tenSecondCountdownAudio) {
+    tenSecondCountdownAudio = new Audio("/audio/timeout.mp3");
+    tenSecondCountdownAudio.preload = "auto";
+  }
+  return tenSecondCountdownAudio;
+}
+
+function prepareTenSecondCountdownAudio() {
+  const audio = getTenSecondCountdownAudio();
+  const originalVolume = audio.volume;
+  audio.pause();
+  audio.currentTime = 0;
+  audio.volume = 0;
+  const playResult = audio.play();
+  const reset = () => {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.volume = originalVolume || 1;
+  };
+  window.setTimeout(reset, 80);
+  if (playResult?.catch) {
+    playResult.catch(() => {
+      audio.volume = originalVolume || 1;
+    });
+  }
+}
+
+function playTenSecondCountdownAudio() {
+  const audio = getTenSecondCountdownAudio();
+  audio.pause();
+  audio.currentTime = 0;
+  audio.volume = 1;
+  const playResult = audio.play();
+  if (playResult?.catch) {
+    playResult.catch((error) => console.warn("10 second countdown audio failed", error));
+  }
+}
+
+function startTenSecondCountdown() {
+  if (tenSecondCountdownTimer) {
+    window.clearTimeout(tenSecondCountdownTimer);
+    tenSecondCountdownTimer = null;
+  }
+  prepareTenSecondCountdownAudio();
+  speak("倒计时10秒");
+  tenSecondCountdownTimer = window.setTimeout(() => {
+    tenSecondCountdownTimer = null;
+    playTenSecondCountdownAudio();
+  }, 6000);
 }
 
 function playFinishPromptSound(onComplete) {
@@ -415,6 +469,7 @@ document.addEventListener("click", (event) => {
   if (!target) return;
   const action = target.dataset.action;
   if (action === "finish-dialog") return openFinishDialog();
+  if (action === "ten-second-countdown") return startTenSecondCountdown();
   if (action === "settings-dialog") return openSettingsDialog();
   if (action === "close-finish") return closeFinishDialog();
   if (action === "close-settings") return closeSettingsDialog();

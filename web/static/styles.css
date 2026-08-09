@@ -730,6 +730,11 @@ button {
   background: #36d36a;
 }
 
+.countdown-action {
+  color: white;
+  background: #1667d8;
+}
+
 .settings-form {
   display: grid;
   gap: 14px;
