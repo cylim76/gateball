@@ -59,6 +59,11 @@ function formatTime(seconds) {
   return `${two(min)}:${two(sec)}`;
 }
 
+function historyTime(entry) {
+  const seconds = Number.isFinite(entry.remainingSeconds) ? entry.remainingSeconds : currentState.remainingSeconds;
+  return formatTime(Math.max(0, seconds));
+}
+
 function speak(text) {
   beep();
   if (!("speechSynthesis" in window)) return;
@@ -122,9 +127,25 @@ function renderScoreboard() {
   document.querySelector("[data-time]").textContent = formatTime(currentState.remainingSeconds);
   document.querySelector("[data-match]").textContent = `第 ${currentState.matchNumber} 场`;
   document.querySelector("[data-status]").textContent = currentState.running ? "比赛中" : (currentState.timeExpired ? "时间到" : "暂停/待开始");
-  document.querySelector("[data-message]").textContent = currentState.lastMessage;
+  renderRecentLog();
   document.querySelector("[data-red-rows]").innerHTML = renderRows("red");
   document.querySelector("[data-white-rows]").innerHTML = renderRows("white");
+}
+
+function renderRecentLog() {
+  const log = document.querySelector("[data-recent-log]");
+  if (!log) return;
+  const entries = (currentState.history || [])
+    .filter((entry) => entry.action !== "select")
+    .slice(-3)
+    .reverse();
+  if (!entries.length) {
+    log.innerHTML = `<div class="log-line">[${formatTime(currentState.remainingSeconds)}] ${currentState.lastMessage}</div>`;
+    return;
+  }
+  log.innerHTML = entries.map((entry) => (
+    `<div class="log-line"><span class="log-time">[${historyTime(entry)}]</span> ${entry.message}</div>`
+  )).join("");
 }
 
 function renderRemote() {

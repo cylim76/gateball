@@ -104,6 +104,7 @@ class Store:
         self.history.append(
             {
                 "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "remainingSeconds": int(self.state.get("remainingSeconds", 0)),
                 "action": action,
                 "ball": ball,
                 "message": message,
