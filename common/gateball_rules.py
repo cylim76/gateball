@@ -6,7 +6,7 @@ from typing import Any
 
 STEP_SCORES = [0, 1, 2, 3]
 STEP_LABELS = ["0分", "一门得分", "二门得分", "三门得分"]
-MAX_PILLARS = 4
+MAX_PILLARS = 10
 
 
 def normalize_position(cycle: int, step: int) -> tuple[int, int]:
