@@ -84,6 +84,8 @@ let scoreboardAudioEnabled = false;
 let speechHistoryInitialized = false;
 let lastSpokenHistoryKey = "";
 let weatherSearchTimer = null;
+let wakeLockSentinel = null;
+let wakeLockWanted = false;
 let resultsYear = new Date().getFullYear();
 let resultsMonth = new Date().getMonth() + 1;
 let selectedResultsDate = "";
@@ -120,6 +122,34 @@ function escapeHtml(value) {
     '"': "&quot;",
     "'": "&#39;",
   })[char]);
+}
+
+async function requestScreenWakeLock() {
+  if (!wakeLockWanted || document.hidden || !("wakeLock" in navigator)) return;
+  if (wakeLockSentinel) return;
+  try {
+    wakeLockSentinel = await navigator.wakeLock.request("screen");
+    wakeLockSentinel.addEventListener("release", () => {
+      wakeLockSentinel = null;
+      if (wakeLockWanted && !document.hidden) {
+        window.setTimeout(requestScreenWakeLock, 500);
+      }
+    });
+  } catch (error) {
+    console.warn("Screen wake lock unavailable", error);
+  }
+}
+
+function initScreenWakeLock() {
+  if (!document.querySelector("[data-scoreboard], [data-remote]")) return;
+  wakeLockWanted = true;
+  requestScreenWakeLock();
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) return;
+    requestScreenWakeLock();
+  });
+  document.addEventListener("pointerdown", requestScreenWakeLock);
+  document.addEventListener("keydown", requestScreenWakeLock);
 }
 
 function isoDate(year, month, day) {
@@ -1617,6 +1647,7 @@ document.addEventListener("submit", async (event) => {
   openSettingsSavePasswordDialog(collectSettingsPayload(form));
 });
 
+initScreenWakeLock();
 initResultsPage();
 if (!document.querySelector("[data-results]")) {
   refresh();
