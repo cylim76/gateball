@@ -214,6 +214,14 @@ function shouldIgnoreGuardedAction(actionId) {
   return false;
 }
 
+function vibrateRemoteTap(event) {
+  if (!document.querySelector("[data-remote]")) return;
+  if (!event.isPrimary) return;
+  if (!event.target.closest("button, .results-link")) return;
+  if (!("vibrate" in navigator)) return;
+  navigator.vibrate(8);
+}
+
 function runKeyboardAction(spec) {
   if (!spec) return;
   if (shouldIgnoreGuardedAction(spec.id)) return;
@@ -1652,6 +1660,7 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("pointerdown", (event) => {
+  vibrateRemoteTap(event);
   const dialog = event.target.closest("[data-result-detail-dialog]");
   if (dialog && event.target === dialog) closeResultDetail();
 });
