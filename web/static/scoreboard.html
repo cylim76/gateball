@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>门球计分大屏</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body class="scoreboard" data-scoreboard>
+    <main class="board">
+      <h1 class="title" data-title>红星村老年会门球比赛</h1>
+      <section class="top">
+        <div class="team-total red">
+          <div class="team-name" data-red-team>红队</div>
+          <div class="total" data-red-total>0</div>
+        </div>
+        <div class="timer">
+          <div class="timer-label">剩余时间</div>
+          <div class="time" data-time>30:00</div>
+          <div class="timer-meta">
+            <span data-match>第 1 场</span>
+            <span data-status>暂停/待开始</span>
+          </div>
+        </div>
+        <div class="team-total white">
+          <div class="total" data-white-total>0</div>
+          <div class="team-name" data-white-team>白队</div>
+        </div>
+      </section>
+
+      <section class="tables">
+        <table class="red-table">
+          <thead>
+            <tr><th>球号</th><th>0分</th><th>1分</th><th>2分</th><th>3分</th><th>得标</th><th>分数</th></tr>
+          </thead>
+          <tbody data-red-rows></tbody>
+        </table>
+        <table class="white-table">
+          <thead>
+            <tr><th>球号</th><th>0分</th><th>1分</th><th>2分</th><th>3分</th><th>得标</th><th>分数</th></tr>
+          </thead>
+          <tbody data-white-rows></tbody>
+        </table>
+      </section>
+
+      <footer class="footer">
+        <div data-message>等待开始</div>
+        <div id="clock"></div>
+      </footer>
+    </main>
+
+    <div class="dialog" data-finish-dialog>
+      <div class="dialog-box">
+        <h2 class="dialog-title">结束比赛密码</h2>
+        <div class="password-dots" data-finish-password></div>
+        <div class="dialog-actions">
+          <button class="primary" data-action="confirm-finish">Enter 确认</button>
+          <button data-action="close-finish">再按 * 取消</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="dialog" data-settings-dialog>
+      <div class="dialog-box">
+        <h2 class="dialog-title">设置密码</h2>
+        <div class="password-dots" data-settings-password></div>
+        <div class="dialog-actions">
+          <button class="primary">Enter 确认</button>
+          <button data-action="close-settings">再按 / 取消</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+    <script>
+      setInterval(() => {
+        document.getElementById("clock").textContent = new Date().toLocaleString("zh-CN", { hour12: false });
+      }, 1000);
+    </script>
+  </body>
+</html>

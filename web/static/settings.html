@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>门球设置</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body class="settings-page">
+    <main class="settings-shell">
+      <h1 class="settings-title">门球设置</h1>
+      <form class="settings-form" data-settings-form>
+        <label>
+          比赛标题
+          <input name="title" autocomplete="off">
+        </label>
+        <label>
+          红队队名
+          <input name="redTeam" autocomplete="off">
+        </label>
+        <label>
+          白队队名
+          <input name="whiteTeam" autocomplete="off">
+        </label>
+        <label>
+          比赛时长（分钟）
+          <input name="durationMinutes" type="number" min="1" max="120">
+        </label>
+        <label class="check">
+          <input name="allowScoringWhenPaused" type="checkbox">
+          暂停期间允许计分
+        </label>
+        <label>
+          当前设置密码
+          <input name="password" inputmode="numeric" autocomplete="off" placeholder="默认 1234">
+        </label>
+        <label>
+          新结束密码
+          <input name="finishPassword" inputmode="numeric" autocomplete="off" placeholder="不改请留空">
+        </label>
+        <label>
+          新设置密码
+          <input name="settingsPassword" inputmode="numeric" autocomplete="off" placeholder="不改请留空">
+        </label>
+        <button class="primary" type="submit">保存设置</button>
+        <strong data-save-result></strong>
+      </form>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
+

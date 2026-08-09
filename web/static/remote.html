@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>门球手机遥控</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body class="remote-page" data-remote>
+    <main class="remote-shell">
+      <h1 class="remote-title">门球遥控器</h1>
+      <section class="remote-status">
+        <strong>当前：<span data-current>1号球</span></strong>
+        <span data-remote-score>红队 0 : 0 白队</span>
+        <span>剩余时间：<span data-remote-time>30:00</span></span>
+        <span data-remote-message>等待开始</span>
+      </section>
+
+      <section class="ball-grid">
+        <button data-action="select" data-ball="1">1</button>
+        <button data-action="select" data-ball="2">2</button>
+        <button data-action="select" data-ball="3">3</button>
+        <button data-action="select" data-ball="4">4</button>
+        <button data-action="select" data-ball="5">5</button>
+        <button data-action="select" data-ball="6">6</button>
+        <button data-action="select" data-ball="7">7</button>
+        <button data-action="select" data-ball="8">8</button>
+        <button data-action="select" data-ball="9">9</button>
+        <button data-action="select" data-ball="10">10</button>
+      </section>
+
+      <section class="remote-actions">
+        <button data-action="undo">- 撤销</button>
+        <button class="primary" data-action="advance">+ 计分</button>
+        <button class="wide" data-action="toggle_timer">开始 / 暂停</button>
+        <button class="wide danger" data-action="finish-dialog">结束比赛</button>
+      </section>
+    </main>
+
+    <div class="dialog" data-finish-dialog>
+      <div class="dialog-box">
+        <h2 class="dialog-title">结束比赛密码</h2>
+        <div class="password-dots" data-finish-password></div>
+        <div class="dialog-actions">
+          <button class="primary" data-action="confirm-finish">Enter 确认</button>
+          <button data-action="close-finish">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
