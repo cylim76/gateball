@@ -650,8 +650,8 @@ button {
 
 .remote-score-panel {
   display: grid;
-  gap: 10px;
-  align-content: center;
+  gap: 8px;
+  align-content: end;
   min-height: 100%;
 }
 

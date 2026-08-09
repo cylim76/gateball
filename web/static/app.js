@@ -308,6 +308,10 @@ function renderRemote() {
   if (!currentState) return;
   document.querySelector("[data-remote-title]").textContent = currentState.title;
   document.querySelector("[data-remote-time]").textContent = formatTime(currentState.remainingSeconds);
+  const timerAction = document.querySelector("[data-action='toggle_timer']");
+  if (timerAction) {
+    timerAction.textContent = currentState.running ? "暂停" : (currentState.timerStarted && !currentState.timeExpired ? "继续" : "开始");
+  }
   setTeamName("[data-remote-red-team]", currentState.redTeam);
   setTeamName("[data-remote-white-team]", currentState.whiteTeam);
   document.querySelector("[data-remote-red-total]").textContent = currentState.redTotal;
