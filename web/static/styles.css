@@ -8,6 +8,8 @@
   --gold: #ffd43b;
   --green: #36d36a;
   --ink: #050505;
+  --display-number-font: Verdana, Arial, "Liberation Sans", sans-serif;
+  --heavy-number-font: "Arial Black", Impact, Verdana, Arial, sans-serif;
 }
 
 * {
@@ -19,7 +21,7 @@ body {
   margin: 0;
   min-height: 100%;
   background: #020202;
-  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "WenQuanYi Micro Hei", Arial, sans-serif;
   letter-spacing: 0;
 }
 
@@ -144,7 +146,7 @@ body.scoreboard {
   display: grid;
   place-items: center;
   background: #020202;
-  font-family: "Arial Black", Impact, sans-serif;
+  font-family: var(--heavy-number-font);
   font-size: clamp(58px, 6vw, 116px);
   color: #ff111a;
 }
@@ -176,7 +178,7 @@ body.scoreboard {
   color: var(--gold);
   width: 100%;
   min-height: clamp(70px, 8.5vw, 116px);
-  font-family: "Arial Black", Impact, sans-serif;
+  font-family: var(--display-number-font);
   font-size: clamp(58px, 6vw, 116px);
   font-weight: 900;
   line-height: 1;
@@ -361,7 +363,8 @@ tr.selected {
 
 .log-time {
   color: var(--gold);
-  font-family: "Arial Black", Impact, sans-serif;
+  font-family: var(--display-number-font);
+  font-weight: 900;
 }
 
 .log-main {
