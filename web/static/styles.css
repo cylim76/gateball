@@ -208,9 +208,9 @@ body.scoreboard {
 .segment-a,
 .segment-d,
 .segment-g {
-  left: 18%;
-  width: 64%;
-  height: 9%;
+  left: 16%;
+  width: 68%;
+  height: 16%;
 }
 
 .segment-a {
@@ -229,7 +229,7 @@ body.scoreboard {
 .segment-c,
 .segment-e,
 .segment-f {
-  width: 13%;
+  width: 22%;
   height: 40%;
 }
 
@@ -337,7 +337,7 @@ td {
 
 thead th {
   height: clamp(38px, 5.2vh, 60px);
-  font-size: clamp(34px, 3.5vw, 68px);
+  font-size: clamp(31px, 3.15vw, 61px);
   font-weight: 900;
   line-height: 1;
   white-space: nowrap;
