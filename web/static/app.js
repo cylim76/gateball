@@ -64,6 +64,12 @@ function historyTime(entry) {
   return formatTime(Math.max(0, seconds));
 }
 
+function clockTime(entry) {
+  const value = entry.time || "";
+  const match = value.match(/(\d{2}:\d{2}:\d{2})$/);
+  return match ? match[1] : "";
+}
+
 function speak(text) {
   beep();
   if (!("speechSynthesis" in window)) return;
@@ -144,7 +150,7 @@ function renderRecentLog() {
     return;
   }
   log.innerHTML = entries.map((entry) => (
-    `<div class="log-line"><span class="log-time">[${historyTime(entry)}]</span> ${entry.message}</div>`
+    `<div class="log-line"><span class="log-main"><span class="log-time">[${historyTime(entry)}]</span> ${entry.message}</span><span class="log-clock">${clockTime(entry)}</span></div>`
   )).join("");
 }
 

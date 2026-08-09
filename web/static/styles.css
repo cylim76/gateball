@@ -275,14 +275,27 @@ tr.selected {
 }
 
 .log-line {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: baseline;
 }
 
 .log-time {
   color: var(--gold);
   font-family: "Arial Black", Impact, sans-serif;
+}
+
+.log-main {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-clock {
+  color: #8d8d8d;
+  font-size: .72em;
+  font-family: Consolas, "Courier New", monospace;
 }
 
 #clock {
