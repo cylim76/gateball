@@ -72,36 +72,40 @@ function clockTime(entry) {
   return match ? match[1] : "";
 }
 
-function teamNameLines(name) {
-  const text = String(name || "").trim();
-  const parts = text.split(/\s+/).filter(Boolean);
-  if (parts.length < 2) return [text];
-
-  const target = text.replace(/\s+/g, "").length / 2;
-  let bestIndex = 1;
-  let bestDistance = Infinity;
-  for (let index = 1; index < parts.length; index += 1) {
-    const leftLength = parts.slice(0, index).join("").length;
-    const distance = Math.abs(leftLength - target);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestIndex = index;
-    }
-  }
-  return [
-    parts.slice(0, bestIndex).join(" "),
-    parts.slice(bestIndex).join(" "),
-  ];
+function defaultTeamName(selector) {
+  return selector.includes("white") ? ["白队", "White Team"] : ["红队", "Red Team"];
 }
 
 function setTeamName(selector, name) {
   const element = document.querySelector(selector);
   if (!element) return;
+  const text = String(name || "").trim();
   element.replaceChildren();
-  teamNameLines(name).forEach((line) => {
-    const span = document.createElement("span");
-    span.textContent = line;
-    element.appendChild(span);
+  element.classList.remove("scrolling");
+  element.classList.toggle("default-team-name", !text);
+  element.style.removeProperty("--team-scroll-distance");
+
+  if (!text) {
+    defaultTeamName(selector).forEach((line, index) => {
+      const span = document.createElement("span");
+      span.className = index === 0 ? "team-name-primary" : "team-name-secondary";
+      span.textContent = line;
+      element.appendChild(span);
+    });
+    return;
+  }
+
+  const span = document.createElement("span");
+  span.className = "team-name-scroll";
+  span.textContent = text;
+  element.appendChild(span);
+
+  requestAnimationFrame(() => {
+    const distance = Math.ceil(span.scrollWidth - element.clientWidth);
+    element.classList.toggle("scrolling", distance > 4);
+    if (distance > 4) {
+      element.style.setProperty("--team-scroll-distance", `${distance}px`);
+    }
   });
 }
 

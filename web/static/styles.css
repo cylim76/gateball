@@ -77,9 +77,10 @@ body.scoreboard {
 
 .team-name {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
+  min-width: 0;
+  overflow: hidden;
   font-size: clamp(30px, 3.4vw, 60px);
   line-height: 1.05;
   text-align: center;
@@ -87,13 +88,37 @@ body.scoreboard {
   background: linear-gradient(145deg, #be0006, #710005);
 }
 
-.team-name span {
+.team-name-scroll,
+.team-name-primary,
+.team-name-secondary {
   display: block;
-  max-width: 100%;
+  max-width: calc(100% - 16px);
   overflow: hidden;
   padding: 0 8px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.team-name.scrolling .team-name-scroll {
+  flex: 0 0 auto;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  animation: team-pan 7s ease-in-out infinite alternate;
+}
+
+.team-name.scrolling {
+  justify-content: flex-start;
+}
+
+.team-name.default-team-name {
+  flex-direction: column;
+}
+
+.team-name-secondary {
+  margin-top: .12em;
+  font-size: .42em;
+  opacity: .85;
 }
 
 .team-total.white .team-name {
@@ -482,6 +507,7 @@ button {
 
 .remote-total {
   display: grid;
+  grid-template-rows: 34px 1fr;
   place-items: center;
   min-height: 112px;
   border-radius: 8px;
@@ -489,20 +515,54 @@ button {
   background: #070707;
 }
 
-.remote-total span {
+.white-total-mobile {
+  grid-template-rows: 1fr 34px;
+}
+
+.remote-total > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
   font-size: clamp(15px, 3.4vw, 20px);
   line-height: 1.08;
   text-align: center;
   font-weight: 900;
 }
 
-.remote-total span span {
+.remote-total .team-name-scroll,
+.remote-total .team-name-primary,
+.remote-total .team-name-secondary {
   display: block;
-  max-width: 100%;
+  max-width: calc(100% - 8px);
   overflow: hidden;
   padding: 0 4px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.remote-total > span.scrolling .team-name-scroll {
+  flex: 0 0 auto;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  animation: team-pan 6s ease-in-out infinite alternate;
+}
+
+.remote-total > span.scrolling {
+  justify-content: flex-start;
+}
+
+.remote-total > span.default-team-name {
+  flex-direction: column;
+}
+
+.remote-total .team-name-secondary {
+  margin-top: 1px;
+  font-size: .68em;
+  opacity: .72;
 }
 
 .remote-total strong {
@@ -517,6 +577,15 @@ button {
 
 .white-total-mobile {
   color: #f3f3f3;
+}
+
+@keyframes team-pan {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-1 * var(--team-scroll-distance, 0px)));
+  }
 }
 
 .remote-actions {
