@@ -63,6 +63,47 @@ function formatTime(seconds) {
   return `${two(min)}:${two(sec)}`;
 }
 
+const sevenSegmentMap = {
+  "0": ["a", "b", "c", "d", "e", "f"],
+  "1": ["b", "c"],
+  "2": ["a", "b", "g", "e", "d"],
+  "3": ["a", "b", "c", "d", "g"],
+  "4": ["f", "g", "b", "c"],
+  "5": ["a", "f", "g", "c", "d"],
+  "6": ["a", "f", "g", "e", "c", "d"],
+  "7": ["a", "b", "c"],
+  "8": ["a", "b", "c", "d", "e", "f", "g"],
+  "9": ["a", "b", "c", "d", "f", "g"],
+};
+
+function renderSevenSegmentTime(element, seconds) {
+  const value = formatTime(seconds);
+  element.setAttribute("aria-label", value);
+  element.replaceChildren();
+
+  [...value].forEach((char) => {
+    if (char === ":") {
+      const colon = document.createElement("span");
+      colon.className = "seven-colon";
+      colon.appendChild(document.createElement("span"));
+      colon.appendChild(document.createElement("span"));
+      element.appendChild(colon);
+      return;
+    }
+
+    const digit = document.createElement("span");
+    digit.className = "seven-digit";
+    const activeSegments = new Set(sevenSegmentMap[char] || []);
+    ["a", "b", "c", "d", "e", "f", "g"].forEach((segmentName) => {
+      const segment = document.createElement("span");
+      segment.className = `seven-segment segment-${segmentName}`;
+      if (activeSegments.has(segmentName)) segment.classList.add("active");
+      digit.appendChild(segment);
+    });
+    element.appendChild(digit);
+  });
+}
+
 function historyTime(entry) {
   const seconds = Number.isFinite(entry.remainingSeconds) ? entry.remainingSeconds : currentState.remainingSeconds;
   return formatTime(Math.max(0, seconds));
@@ -226,7 +267,7 @@ function renderScoreboard() {
   setTeamName("[data-white-team]", currentState.whiteTeam);
   document.querySelector("[data-red-total]").textContent = currentState.redTotal;
   document.querySelector("[data-white-total]").textContent = currentState.whiteTotal;
-  document.querySelector("[data-time]").textContent = formatTime(currentState.remainingSeconds);
+  renderSevenSegmentTime(document.querySelector("[data-time]"), currentState.remainingSeconds);
   const timer = document.querySelector("[data-scoreboard-timer]");
   if (timer) {
     timer.classList.toggle("is-running", currentState.running);
