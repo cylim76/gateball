@@ -40,6 +40,7 @@ DEFAULT_STATE = {
     "deadline": None,
     "announcedMinuteWarnings": [],
     "timerStarted": False,
+    "lastTickRemainingSeconds": None,
 }
 
 
@@ -65,6 +66,8 @@ class Store:
             self.state["timerStarted"] = False
         if self.state.get("running"):
             self.state["timerStarted"] = True
+        if self.state.get("lastTickRemainingSeconds") is None:
+            self.state["lastTickRemainingSeconds"] = self.state.get("remainingSeconds")
         self.balls = {
             int(number): BallState.from_dict(ball)
             for number, ball in data.get("balls", {}).items()
@@ -88,6 +91,7 @@ class Store:
         deadline = self.state.get("deadline")
         if not deadline:
             return
+        previous_remaining = self.state.get("lastTickRemainingSeconds")
         remaining = max(0, int(deadline - time.time()))
         self.state["remainingSeconds"] = remaining
         changed = False
@@ -95,7 +99,8 @@ class Store:
         if remaining > 0:
             for minute in [15, 10, 5, 1]:
                 threshold = minute * 60
-                if remaining <= threshold and minute not in announced:
+                crossed_threshold = previous_remaining is not None and previous_remaining > threshold >= remaining
+                if crossed_threshold and minute not in announced:
                     announced.add(minute)
                     self.state["announcedMinuteWarnings"] = sorted(announced, reverse=True)
                     self.state["lastMessage"] = f"比赛时间剩余 {minute} 分钟"
@@ -108,6 +113,7 @@ class Store:
             self.state["lastMessage"] = "叮，时间到"
             self.record("time_expired", None, self.state["lastMessage"])
             changed = True
+        self.state["lastTickRemainingSeconds"] = remaining
         if changed:
             self.save()
 
@@ -146,6 +152,7 @@ class Store:
         self.state["deadline"] = None
         self.state["announcedMinuteWarnings"] = []
         self.state["timerStarted"] = False
+        self.state["lastTickRemainingSeconds"] = self.state["remainingSeconds"]
         self.state["selectedBall"] = 1
         self.state["lastMessage"] = f"第{self.state['matchNumber']}场，等待开始"
         self.record("next_match", None, self.state["lastMessage"])
@@ -192,7 +199,9 @@ class Store:
                     self.state["timeExpired"] = False
                     self.state["announcedMinuteWarnings"] = []
                     self.state["timerStarted"] = False
+                    self.state["lastTickRemainingSeconds"] = self.state["remainingSeconds"]
                 self.state["running"] = True
+                self.state["lastTickRemainingSeconds"] = self.state["remainingSeconds"]
                 self.state["deadline"] = time.time() + int(self.state["remainingSeconds"])
                 message = "比赛开始" if not self.state.get("timerStarted") else "比赛继续"
                 self.state["timerStarted"] = True
@@ -220,6 +229,7 @@ class Store:
                     if not self.state["running"]:
                         self.state["remainingSeconds"] = minutes * 60
                         self.state["announcedMinuteWarnings"] = []
+                        self.state["lastTickRemainingSeconds"] = self.state["remainingSeconds"]
                 if payload.get("finishPassword"):
                     self.state["finishPassword"] = str(payload["finishPassword"])[:8]
                 if payload.get("settingsPassword"):
