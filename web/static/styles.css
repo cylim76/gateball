@@ -174,96 +174,13 @@ body.scoreboard {
 
 .time {
   color: var(--gold);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(4px, .55vw, 9px);
   width: 100%;
   min-height: clamp(70px, 8.5vw, 116px);
+  font-family: "Arial Black", Impact, sans-serif;
+  font-size: clamp(58px, 6vw, 116px);
+  font-weight: 900;
+  line-height: 1;
   letter-spacing: 0;
-}
-
-.seven-digit {
-  position: relative;
-  display: inline-block;
-  width: clamp(36px, 4.1vw, 68px);
-  height: clamp(66px, 7.7vw, 116px);
-}
-
-.seven-segment {
-  position: absolute;
-  opacity: .1;
-  background: currentColor;
-  border-radius: 999px;
-  box-shadow: none;
-}
-
-.seven-segment.active {
-  opacity: 1;
-}
-
-.segment-a,
-.segment-d,
-.segment-g {
-  left: 14%;
-  width: 72%;
-  height: 20%;
-}
-
-.segment-a {
-  top: 3%;
-}
-
-.segment-g {
-  top: 45.5%;
-}
-
-.segment-d {
-  bottom: 3%;
-}
-
-.segment-b,
-.segment-c,
-.segment-e,
-.segment-f {
-  width: 26%;
-  height: 40%;
-}
-
-.segment-b,
-.segment-c {
-  right: 2%;
-}
-
-.segment-f,
-.segment-e {
-  left: 2%;
-}
-
-.segment-b,
-.segment-f {
-  top: 8%;
-}
-
-.segment-c,
-.segment-e {
-  bottom: 8%;
-}
-
-.seven-colon {
-  display: grid;
-  gap: clamp(14px, 1.6vw, 24px);
-  align-content: center;
-  width: clamp(10px, 1.1vw, 18px);
-  height: clamp(66px, 7.7vw, 116px);
-}
-
-.seven-colon span {
-  display: block;
-  width: clamp(10px, 1vw, 17px);
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: currentColor;
 }
 
 .timer.is-paused .time {
