@@ -15,11 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from common.gateball_rules import BallState, new_balls, team_for_ball
+from common.results_store import ResultsStore
 
 
 HOST = "0.0.0.0"
 PORT = 8000
 DATA_FILE = ROOT / "data" / "web_state.json"
+RESULTS_DB_FILE = ROOT / "data" / "gateball.sqlite3"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 WEATHER_CACHE: dict = {"timestamp": 0.0, "payload": {"ok": False}}
 
@@ -42,6 +44,7 @@ DEFAULT_STATE = {
     "deadline": None,
     "announcedMinuteWarnings": [],
     "timerStarted": False,
+    "matchStartedAt": None,
     "lastTickRemainingSeconds": None,
     "tenSecondCountdownId": None,
     "tenSecondCountdownStartedAt": None,
@@ -73,6 +76,8 @@ class Store:
             self.state["announcedMinuteWarnings"] = []
         if not isinstance(self.state.get("timerStarted"), bool):
             self.state["timerStarted"] = False
+        if "matchStartedAt" not in self.state:
+            self.state["matchStartedAt"] = None
         if not isinstance(self.state.get("keyBindings"), dict):
             self.state["keyBindings"] = {}
         if self.state.get("finishPassword") == "1234":
@@ -167,6 +172,7 @@ class Store:
         self.state["deadline"] = None
         self.state["announcedMinuteWarnings"] = []
         self.state["timerStarted"] = False
+        self.state["matchStartedAt"] = None
         self.state["lastTickRemainingSeconds"] = self.state["remainingSeconds"]
         self.state["selectedBall"] = 1
         self.state["lastMessage"] = f"第{self.state['matchNumber']}场，等待开始"
@@ -221,6 +227,8 @@ class Store:
                 self.state["lastTickRemainingSeconds"] = self.state["remainingSeconds"]
                 self.state["deadline"] = time.time() + int(self.state["remainingSeconds"])
                 message = "比赛开始" if not self.state.get("timerStarted") else "比赛继续"
+                if not self.state.get("timerStarted"):
+                    self.state["matchStartedAt"] = time.strftime("%Y-%m-%d %H:%M:%S")
                 self.state["timerStarted"] = True
             self.state["lastMessage"] = message
             self.record("toggle_timer", None, message)
@@ -274,6 +282,7 @@ class Store:
 
         elif action == "finish":
             if payload.get("password") == self.state["finishPassword"]:
+                results_store.save_match(self.snapshot())
                 message = self.reset_match()
             else:
                 message = "密码错误"
@@ -339,6 +348,7 @@ class Store:
         return {"ok": message != "密码错误", "message": message, "state": self.snapshot()}
 
 
+results_store = ResultsStore(RESULTS_DB_FILE)
 store = Store()
 
 
@@ -483,10 +493,24 @@ class Handler(BaseHTTPRequestHandler):
             self.serve_file(STATIC_DIR / "scoreboard.html")
         elif path == "/remote":
             self.serve_file(STATIC_DIR / "remote.html")
+        elif path == "/results":
+            self.serve_file(STATIC_DIR / "results.html")
         elif path == "/set":
             self.serve_file(STATIC_DIR / "settings.html")
         elif path == "/api/state":
             self.send_json(store.snapshot())
+        elif path == "/api/results/month":
+            params = parse_qs(urlparse(self.path).query)
+            now = time.localtime()
+            year = int(params.get("year", [now.tm_year])[0])
+            month = int(params.get("month", [now.tm_mon])[0])
+            self.send_json(results_store.month_summary(year, month))
+        elif path == "/api/results/day":
+            params = parse_qs(urlparse(self.path).query)
+            self.send_json(results_store.matches_for_day(params.get("date", [""])[0]))
+        elif path == "/api/results/match":
+            params = parse_qs(urlparse(self.path).query)
+            self.send_json(results_store.match_detail(int(params.get("id", ["0"])[0])))
         elif path == "/api/weather":
             self.send_json(fetch_weather())
         elif path == "/api/weather/search":

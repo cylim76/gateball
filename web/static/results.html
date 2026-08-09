@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>比赛成绩</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body class="results-page" data-results>
+    <main class="results-shell">
+      <header class="results-header">
+        <div class="results-selectors">
+          <select data-results-year aria-label="年度"></select>
+          <select data-results-month aria-label="月份"></select>
+        </div>
+        <a class="results-close" href="/remote" aria-label="关闭">关闭</a>
+      </header>
+
+      <section class="calendar-panel">
+        <div class="calendar-weekdays">
+          <span>日</span>
+          <span>一</span>
+          <span>二</span>
+          <span>三</span>
+          <span>四</span>
+          <span>五</span>
+          <span>六</span>
+        </div>
+        <div class="calendar-grid" data-calendar-grid></div>
+      </section>
+
+      <section class="day-results">
+        <h2 data-selected-date-title>请选择日期</h2>
+        <div class="results-table-wrap">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th>红队名称</th>
+                <th>红队分数</th>
+                <th>白队分数</th>
+                <th>白队名称</th>
+              </tr>
+            </thead>
+            <tbody data-results-day-body>
+              <tr><td colspan="4">请选择有绿点的日期</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <div class="result-detail-dialog" data-result-detail-dialog>
+      <div class="result-detail-box" data-result-detail-box></div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

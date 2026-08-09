@@ -27,27 +27,26 @@
 
       <section class="remote-board">
         <div class="ball-column">
-          <button class="red-ball" data-action="select" data-ball="1"><span>1</span></button>
-          <button class="red-ball" data-action="select" data-ball="3"><span>3</span></button>
-          <button class="red-ball" data-action="select" data-ball="5"><span>5</span></button>
-          <button class="red-ball" data-action="select" data-ball="7"><span>7</span></button>
-          <button class="red-ball" data-action="select" data-ball="9"><span>9</span></button>
+          <button class="red-ball" data-action="select" data-ball="1"><span class="ball-number">1</span><span class="ball-score-badge">0</span></button>
+          <button class="red-ball" data-action="select" data-ball="3"><span class="ball-number">3</span><span class="ball-score-badge">0</span></button>
+          <button class="red-ball" data-action="select" data-ball="5"><span class="ball-number">5</span><span class="ball-score-badge">0</span></button>
+          <button class="red-ball" data-action="select" data-ball="7"><span class="ball-number">7</span><span class="ball-score-badge">0</span></button>
+          <button class="red-ball" data-action="select" data-ball="9"><span class="ball-number">9</span><span class="ball-score-badge">0</span></button>
         </div>
         <div class="remote-score-panel">
-          <div class="remote-total red-total-mobile">
-            <strong data-remote-red-total>0</strong>
-          </div>
-          <div class="remote-total white-total-mobile">
-            <strong data-remote-white-total>0</strong>
+          <div class="remote-total-scoreline" aria-label="比分">
+            <strong class="red-total-mobile" data-remote-red-total>0</strong>
+            <span>:</span>
+            <strong class="white-total-mobile" data-remote-white-total>0</strong>
           </div>
           <button class="timer-action" data-action="toggle_timer">开始</button>
         </div>
         <div class="ball-column">
-          <button class="white-ball" data-action="select" data-ball="2"><span>2</span></button>
-          <button class="white-ball" data-action="select" data-ball="4"><span>4</span></button>
-          <button class="white-ball" data-action="select" data-ball="6"><span>6</span></button>
-          <button class="white-ball" data-action="select" data-ball="8"><span>8</span></button>
-          <button class="white-ball" data-action="select" data-ball="10"><span>10</span></button>
+          <button class="white-ball" data-action="select" data-ball="2"><span class="ball-number">2</span><span class="ball-score-badge">0</span></button>
+          <button class="white-ball" data-action="select" data-ball="4"><span class="ball-number">4</span><span class="ball-score-badge">0</span></button>
+          <button class="white-ball" data-action="select" data-ball="6"><span class="ball-number">6</span><span class="ball-score-badge">0</span></button>
+          <button class="white-ball" data-action="select" data-ball="8"><span class="ball-number">8</span><span class="ball-score-badge">0</span></button>
+          <button class="white-ball" data-action="select" data-ball="10"><span class="ball-number">10</span><span class="ball-score-badge">0</span></button>
         </div>
       </section>
 
@@ -56,7 +55,10 @@
         <button class="score-action" data-action="advance">+ 得分</button>
         <button class="swap-team-action" data-action="swap_team_names">队名更换</button>
         <button class="countdown-action compact" data-action="ten-second-countdown">10秒倒计时</button>
-        <button class="wide danger" data-action="finish-dialog">结束比赛</button>
+        <div class="finish-results-row">
+          <button class="danger" data-action="finish-dialog">结束比赛</button>
+          <a class="results-link" href="/results">成绩</a>
+        </div>
       </section>
       <section class="remote-recent-log recent-log" data-remote-recent-log>
         <div class="log-line"><span class="log-main"><span class="log-time">[30:00]</span> 等待开始</span></div>
@@ -171,6 +173,10 @@
           <button class="finish-cancel" type="button" data-action="close-settings-save-password">取消</button>
         </div>
       </div>
+    </div>
+
+    <div class="countdown-overlay" data-countdown-overlay aria-hidden="true">
+      <div class="countdown-number" data-countdown-number></div>
     </div>
 
     <script src="/app.js"></script>

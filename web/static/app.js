@@ -15,6 +15,18 @@ const api = {
     const res = await fetch(`/api/weather/search?q=${encodeURIComponent(query)}`, { cache: "no-store" });
     return res.json();
   },
+  async resultsMonth(year, month) {
+    const res = await fetch(`/api/results/month?year=${year}&month=${month}`, { cache: "no-store" });
+    return res.json();
+  },
+  async resultsDay(date) {
+    const res = await fetch(`/api/results/day?date=${encodeURIComponent(date)}`, { cache: "no-store" });
+    return res.json();
+  },
+  async resultMatch(id) {
+    const res = await fetch(`/api/results/match?id=${encodeURIComponent(id)}`, { cache: "no-store" });
+    return res.json();
+  },
 };
 
 const keyBindingSpecs = [
@@ -71,6 +83,10 @@ let lastRenderedCountdownDigit = null;
 let speechHistoryInitialized = false;
 let lastSpokenHistoryKey = "";
 let weatherSearchTimer = null;
+let resultsYear = new Date().getFullYear();
+let resultsMonth = new Date().getMonth() + 1;
+let selectedResultsDate = "";
+let resultDays = new Map();
 const guardedActions = new Set(["toggle_timer", "undo", "advance", "swap_team_names", "ten-second-countdown", "ten_second_countdown"]);
 const guardedActionTimes = new Map();
 const ACTION_GUARD_MS = 800;
@@ -83,6 +99,20 @@ function formatTime(seconds) {
   const min = Math.floor(seconds / 60);
   const sec = seconds % 60;
   return `${two(min)}:${two(sec)}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[char]);
+}
+
+function isoDate(year, month, day) {
+  return `${year}-${two(month)}-${two(day)}`;
 }
 
 function bindingForSpec(spec) {
@@ -481,7 +511,7 @@ function stopTenSecondCountdown(shouldNotify = true) {
   getTenSecondCountdownIntroAudio().currentTime = 0;
   getTenSecondCountdownAudio().currentTime = 0;
   if ("speechSynthesis" in window) speechSynthesis.cancel();
-  clearScoreboardCountdownOverlay();
+  clearCountdownOverlay();
   if (shouldNotify) {
     sendAction({ action: "cancel_ten_second_countdown" }, false).catch((error) => {
       console.warn("10 second countdown cancel event failed", error);
@@ -604,7 +634,7 @@ function renderScoreboard() {
   renderRecentLog();
   document.querySelector("[data-red-rows]").innerHTML = renderRows("red");
   document.querySelector("[data-white-rows]").innerHTML = renderRows("white");
-  renderScoreboardCountdownOverlay();
+  renderCountdownOverlay();
 }
 
 function renderRecentLog(selector = "[data-recent-log]", limit = 3) {
@@ -653,7 +683,11 @@ function renderRemote() {
   document.querySelector("[data-remote-white-total]").textContent = currentState.whiteTotal;
   const showSelection = shouldShowBallSelection();
   document.querySelectorAll("[data-ball]").forEach((button) => {
-    button.classList.toggle("active", showSelection && Number(button.dataset.ball) === currentState.selectedBall);
+    const number = Number(button.dataset.ball);
+    const ball = currentState.balls.find((item) => item.number === number);
+    button.classList.toggle("active", showSelection && number === currentState.selectedBall);
+    const badge = button.querySelector(".ball-score-badge");
+    if (badge && ball) badge.textContent = String(ball.score);
   });
   renderRecentLog("[data-remote-recent-log]", 6);
 }
@@ -688,7 +722,7 @@ function shouldShowBallSelection() {
   return latest.ball === currentState?.selectedBall && historyEntryAgeSeconds(latest) <= 30;
 }
 
-function clearScoreboardCountdownOverlay() {
+function clearCountdownOverlay() {
   const overlay = document.querySelector("[data-countdown-overlay]");
   const number = document.querySelector("[data-countdown-number]");
   overlay?.classList.remove("show");
@@ -697,7 +731,7 @@ function clearScoreboardCountdownOverlay() {
   lastRenderedCountdownDigit = null;
 }
 
-function renderScoreboardCountdownOverlay() {
+function renderCountdownOverlay() {
   const overlay = document.querySelector("[data-countdown-overlay]");
   const number = document.querySelector("[data-countdown-number]");
   if (!overlay || !number) return;
@@ -705,14 +739,14 @@ function renderScoreboardCountdownOverlay() {
   const startedAt = Number(currentState?.tenSecondCountdownStartedAt);
   const serverTime = Number(currentState?.serverTime);
   if (!countdownId || !Number.isFinite(startedAt) || !Number.isFinite(serverTime)) {
-    clearScoreboardCountdownOverlay();
+    clearCountdownOverlay();
     return;
   }
 
   const elapsed = serverTime - startedAt;
   const digit = 10 - Math.floor(Math.max(0, elapsed));
   if (elapsed < 0 || elapsed >= 10 || digit < 1) {
-    clearScoreboardCountdownOverlay();
+    clearCountdownOverlay();
     return;
   }
 
@@ -843,6 +877,168 @@ function selectWeatherLocation(target) {
   form.weatherLatitude.value = target.dataset.latitude || "";
   form.weatherLongitude.value = target.dataset.longitude || "";
   clearWeatherResults(form);
+}
+
+function initResultsPage() {
+  if (!document.querySelector("[data-results]")) return;
+  const yearSelect = document.querySelector("[data-results-year]");
+  const monthSelect = document.querySelector("[data-results-month]");
+  const now = new Date();
+  resultsYear = now.getFullYear();
+  resultsMonth = now.getMonth() + 1;
+
+  if (yearSelect) {
+    yearSelect.replaceChildren();
+    for (let year = resultsYear - 5; year <= resultsYear + 1; year += 1) {
+      const option = document.createElement("option");
+      option.value = String(year);
+      option.textContent = `${year}年`;
+      option.selected = year === resultsYear;
+      yearSelect.appendChild(option);
+    }
+  }
+  if (monthSelect) {
+    monthSelect.replaceChildren();
+    for (let month = 1; month <= 12; month += 1) {
+      const option = document.createElement("option");
+      option.value = String(month);
+      option.textContent = `${month}月`;
+      option.selected = month === resultsMonth;
+      monthSelect.appendChild(option);
+    }
+  }
+  loadResultsMonth();
+}
+
+async function loadResultsMonth() {
+  if (!document.querySelector("[data-results]")) return;
+  const data = await api.resultsMonth(resultsYear, resultsMonth);
+  resultDays = new Map((data.days || []).map((day) => [day.date, day.count]));
+  selectedResultsDate = "";
+  renderResultsCalendar();
+  renderResultsEmptyDay();
+}
+
+function renderResultsCalendar() {
+  const grid = document.querySelector("[data-calendar-grid]");
+  if (!grid) return;
+  grid.replaceChildren();
+  const firstWeekday = new Date(resultsYear, resultsMonth - 1, 1).getDay();
+  const daysInMonth = new Date(resultsYear, resultsMonth, 0).getDate();
+
+  for (let index = 0; index < firstWeekday; index += 1) {
+    const empty = document.createElement("span");
+    empty.className = "calendar-empty";
+    grid.appendChild(empty);
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const date = isoDate(resultsYear, resultsMonth, day);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "calendar-day";
+    button.dataset.action = "select-result-date";
+    button.dataset.date = date;
+    button.classList.toggle("has-results", resultDays.has(date));
+    button.classList.toggle("selected", selectedResultsDate === date);
+    button.innerHTML = `<span>${day}</span>${resultDays.has(date) ? '<i></i>' : ""}`;
+    grid.appendChild(button);
+  }
+}
+
+function renderResultsEmptyDay(message = "请选择有绿点的日期") {
+  const title = document.querySelector("[data-selected-date-title]");
+  const body = document.querySelector("[data-results-day-body]");
+  if (title) title.textContent = selectedResultsDate || "请选择日期";
+  if (body) body.innerHTML = `<tr><td colspan="4">${escapeHtml(message)}</td></tr>`;
+}
+
+async function selectResultDate(date) {
+  selectedResultsDate = date;
+  renderResultsCalendar();
+  const title = document.querySelector("[data-selected-date-title]");
+  if (title) title.textContent = date;
+  const body = document.querySelector("[data-results-day-body]");
+  if (!body) return;
+  body.innerHTML = `<tr><td colspan="4">正在读取...</td></tr>`;
+  const data = await api.resultsDay(date);
+  const matches = data.matches || [];
+  if (!matches.length) {
+    renderResultsEmptyDay("当天没有比赛记录");
+    return;
+  }
+  body.innerHTML = matches.map((match) => `
+    <tr class="result-row" data-action="open-result-match" data-match-id="${match.id}">
+      <td class="ellipsis">${escapeHtml(match.red_team || "红队")}</td>
+      <td class="score-cell">${match.red_score}</td>
+      <td class="score-cell">${match.white_score}</td>
+      <td class="ellipsis">${escapeHtml(match.white_team || "白队")}</td>
+    </tr>
+  `).join("");
+}
+
+function ballStepLabel(step) {
+  return ["0分", "一门", "二门", "三门"][Number(step)] || "0分";
+}
+
+function renderDetailTeamTable(title, balls) {
+  return `
+    <section class="detail-team-table">
+      <h3>${escapeHtml(title)}</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>球号</th>
+            <th>位置</th>
+            <th>中柱</th>
+            <th>分数</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${balls.map((ball) => `
+            <tr>
+              <th>${ball.number}</th>
+              <td>${ballStepLabel(ball.step)}</td>
+              <td class="pillar-cell">${renderPillars(ball.pillarCount || 0)}</td>
+              <td class="score-cell">${ball.score}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </section>
+  `;
+}
+
+async function openResultMatch(matchId) {
+  const data = await api.resultMatch(matchId);
+  if (!data.ok) return;
+  const match = data.match;
+  const balls = match.balls || [];
+  const redBalls = balls.filter((ball) => ball.number % 2 === 1);
+  const whiteBalls = balls.filter((ball) => ball.number % 2 === 0);
+  const dialog = document.querySelector("[data-result-detail-dialog]");
+  const box = document.querySelector("[data-result-detail-box]");
+  if (!dialog || !box) return;
+  box.innerHTML = `
+    <header class="detail-head">
+      <strong>${escapeHtml(match.title || "比赛成绩")}</strong>
+      <span>${escapeHtml(match.ended_at || "")}</span>
+    </header>
+    <section class="detail-score-line">
+      <div><span>${escapeHtml(match.red_team || "红队")}</span><strong>${match.red_score}</strong></div>
+      <b>:</b>
+      <div><strong>${match.white_score}</strong><span>${escapeHtml(match.white_team || "白队")}</span></div>
+    </section>
+    <div class="detail-tables">
+      ${renderDetailTeamTable("红队", redBalls)}
+      ${renderDetailTeamTable("白队", whiteBalls)}
+    </div>
+  `;
+  dialog.classList.add("open");
+}
+
+function closeResultDetail() {
+  document.querySelector("[data-result-detail-dialog]")?.classList.remove("open");
 }
 
 async function refresh() {
@@ -1253,6 +1449,8 @@ document.addEventListener("click", (event) => {
   if (action === "close-edit-team") return closeEditTeamDialog();
   if (action === "close-edit-title") return closeEditTitleDialog();
   if (action === "select-weather-location") return selectWeatherLocation(target);
+  if (action === "select-result-date") return selectResultDate(target.dataset.date);
+  if (action === "open-result-match") return openResultMatch(target.dataset.matchId);
   if (action === "capture-key-binding") {
     keyCaptureAction = target.dataset.bindingAction || "";
     renderKeyBindings();
@@ -1273,6 +1471,25 @@ document.addEventListener("input", (event) => {
   }
   if (!event.target.closest("[data-settings-save-password-input]")) return;
   trySavePendingSettings();
+});
+
+document.addEventListener("change", (event) => {
+  const yearSelect = event.target.closest("[data-results-year]");
+  if (yearSelect) {
+    resultsYear = Number(yearSelect.value);
+    loadResultsMonth();
+    return;
+  }
+  const monthSelect = event.target.closest("[data-results-month]");
+  if (monthSelect) {
+    resultsMonth = Number(monthSelect.value);
+    loadResultsMonth();
+  }
+});
+
+document.addEventListener("pointerdown", (event) => {
+  const dialog = event.target.closest("[data-result-detail-dialog]");
+  if (dialog && event.target === dialog) closeResultDetail();
 });
 
 document.addEventListener("submit", async (event) => {
@@ -1302,5 +1519,8 @@ document.addEventListener("submit", async (event) => {
   openSettingsSavePasswordDialog(collectSettingsPayload(form));
 });
 
-refresh();
-setInterval(refresh, 1000);
+initResultsPage();
+if (!document.querySelector("[data-results]")) {
+  refresh();
+  setInterval(refresh, 1000);
+}
