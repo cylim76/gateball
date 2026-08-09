@@ -164,6 +164,7 @@ async function sendAction(payload, shouldSpeak = true) {
   if (document.querySelector("[data-scoreboard]")) renderScoreboard();
   if (document.querySelector("[data-remote]")) renderRemote();
   if (shouldSpeak) speak(result.message);
+  return result;
 }
 
 function openFinishDialog() {
@@ -197,6 +198,12 @@ function confirmFinish() {
   closeFinishDialog();
 }
 
+function isEditableTarget(target) {
+  if (!target) return false;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+}
+
 function handlePasswordKey(event) {
   const digit = event.key >= "0" && event.key <= "9" ? event.key : "";
   if (finishDialogOpen) {
@@ -223,6 +230,9 @@ function handlePasswordKey(event) {
 }
 
 document.addEventListener("keydown", (event) => {
+  if (!finishDialogOpen && !settingsDialogOpen && isEditableTarget(event.target)) {
+    return;
+  }
   if (["Backspace", "Tab", "Enter", "+", "-", "*", "/"].includes(event.key) || event.code in keyMap) {
     event.preventDefault();
   }
@@ -252,7 +262,11 @@ document.addEventListener("submit", async (event) => {
   if (!form) return;
   event.preventDefault();
   const params = new URLSearchParams(window.location.search);
-  await sendAction({
+  const resultEl = document.querySelector("[data-save-result]");
+  const submitButton = form.querySelector("button[type='submit']");
+  if (resultEl) resultEl.textContent = "正在保存...";
+  if (submitButton) submitButton.disabled = true;
+  const result = await sendAction({
     action: "update_settings",
     password: params.get("password") || form.password.value,
     title: form.title.value,
@@ -263,7 +277,11 @@ document.addEventListener("submit", async (event) => {
     finishPassword: form.finishPassword.value,
     settingsPassword: form.settingsPassword.value,
   }, false);
-  document.querySelector("[data-save-result]").textContent = "设置已保存";
+  if (resultEl) {
+    resultEl.textContent = result.message;
+    resultEl.classList.toggle("error", !result.ok);
+  }
+  if (submitButton) submitButton.disabled = false;
   settingsHydrated = false;
 });
 
