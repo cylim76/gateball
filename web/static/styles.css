@@ -175,6 +175,8 @@ body.scoreboard {
 }
 
 .time {
+  display: grid;
+  place-items: center;
   color: var(--gold);
   width: 100%;
   min-height: clamp(70px, 8.5vw, 116px);
@@ -183,6 +185,7 @@ body.scoreboard {
   font-weight: 900;
   line-height: 1;
   letter-spacing: 0;
+  text-align: center;
 }
 
 .timer.is-paused .time {
