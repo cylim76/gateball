@@ -80,6 +80,7 @@ let tenSecondCountdownRunId = 0;
 let tenSecondCountdownActive = false;
 let lastRenderedCountdownId = "";
 let lastRenderedCountdownDigit = null;
+let scoreboardAudioEnabled = false;
 let speechHistoryInitialized = false;
 let lastSpokenHistoryKey = "";
 let weatherSearchTimer = null;
@@ -385,9 +386,15 @@ function speak(text, onComplete) {
     voiceAudio.onerror = () => speakWithBrowser(text, onComplete);
     const playResult = voiceAudio.play();
     if (playResult?.catch) {
-      playResult.catch(() => speakWithBrowser(text, onComplete));
+      playResult.catch(() => {
+        showScoreboardSoundPrompt();
+        speakWithBrowser(text, onComplete);
+      });
     }
-  }).catch(() => speakWithBrowser(text, onComplete));
+  }).catch(() => {
+    showScoreboardSoundPrompt();
+    speakWithBrowser(text, onComplete);
+  });
 }
 
 function getFinishPromptAudio() {
@@ -455,8 +462,30 @@ function playAudio(audio, warningLabel) {
   audio.currentTime = 0;
   const playResult = audio.play();
   if (playResult?.catch) {
-    playResult.catch((error) => console.warn(`${warningLabel} audio failed`, error));
+    playResult.catch((error) => {
+      console.warn(`${warningLabel} audio failed`, error);
+      showScoreboardSoundPrompt();
+    });
   }
+}
+
+function showScoreboardSoundPrompt() {
+  const button = document.querySelector("[data-sound-enable]");
+  if (button && !scoreboardAudioEnabled) button.hidden = false;
+}
+
+function hideScoreboardSoundPrompt() {
+  const button = document.querySelector("[data-sound-enable]");
+  if (button) button.hidden = true;
+}
+
+function enableScoreboardSound() {
+  scoreboardAudioEnabled = true;
+  hideScoreboardSoundPrompt();
+  prepareAudio(getAlertPromptAudio());
+  prepareAudio(getFinishPromptAudio());
+  prepareTenSecondCountdownAudio();
+  speak("声音已启用");
 }
 
 function playTenSecondCountdownIntroAudio() {
@@ -762,7 +791,20 @@ function renderCountdownOverlay() {
 }
 
 function latestSpeakableHistoryEntry() {
-  const speakableActions = new Set(["timer_warning", "time_expired"]);
+  const scoreboard = Boolean(document.querySelector("[data-scoreboard]"));
+  const speakableActions = scoreboard
+    ? new Set([
+      "select",
+      "advance",
+      "undo",
+      "toggle_timer",
+      "ten_second_countdown",
+      "cancel_ten_second_countdown",
+      "next_match",
+      "timer_warning",
+      "time_expired",
+    ])
+    : new Set(["timer_warning", "time_expired"]);
   return [...(currentState?.history || [])].reverse().find((entry) => speakableActions.has(entry.action));
 }
 
@@ -782,6 +824,8 @@ function autoSpeakServerEvents() {
       if (isFreshTimerWarning(latest)) {
         speakWithAlert(latest.message);
       }
+    } else if (latest.action === "toggle_timer") {
+      speakWithAlert(latest.message);
     } else {
       speak(latest.message);
     }
@@ -1065,6 +1109,11 @@ async function sendAction(payload, shouldSpeak = true) {
       speakWithAlert(result.message);
     } else {
       speak(result.message);
+    }
+    const latest = latestSpeakableHistoryEntry();
+    if (latest) {
+      speechHistoryInitialized = true;
+      lastSpokenHistoryKey = historyKey(latest);
     }
   }
   return result;
@@ -1451,6 +1500,7 @@ document.addEventListener("click", (event) => {
   if (action === "select-weather-location") return selectWeatherLocation(target);
   if (action === "select-result-date") return selectResultDate(target.dataset.date);
   if (action === "open-result-match") return openResultMatch(target.dataset.matchId);
+  if (action === "enable-scoreboard-sound") return enableScoreboardSound();
   if (action === "capture-key-binding") {
     keyCaptureAction = target.dataset.bindingAction || "";
     renderKeyBindings();
