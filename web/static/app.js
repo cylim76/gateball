@@ -76,12 +76,38 @@ function defaultTeamName(selector) {
   return selector.includes("white") ? ["白队", "White Team"] : ["红队", "Red Team"];
 }
 
+function teamNameLines(name) {
+  const text = String(name || "").trim();
+  const parts = text.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return [text];
+
+  const compactLength = parts.join("").length;
+  const target = compactLength / 2;
+  let bestIndex = 1;
+  let bestDistance = Infinity;
+
+  for (let index = 1; index < parts.length; index += 1) {
+    const leftLength = parts.slice(0, index).join("").length;
+    const distance = Math.abs(leftLength - target);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  }
+
+  return [
+    parts.slice(0, bestIndex).join(" "),
+    parts.slice(bestIndex).join(" "),
+  ];
+}
+
 function setTeamName(selector, name) {
   const element = document.querySelector(selector);
   if (!element) return;
   const text = String(name || "").trim();
   element.replaceChildren();
   element.classList.remove("scrolling");
+  element.classList.remove("multi-line-team-name");
   element.classList.toggle("default-team-name", !text);
   element.style.removeProperty("--team-scroll-distance");
 
@@ -95,17 +121,30 @@ function setTeamName(selector, name) {
     return;
   }
 
-  const span = document.createElement("span");
-  span.className = "team-name-scroll";
-  span.textContent = text;
-  element.appendChild(span);
+  const lines = teamNameLines(text);
+  element.classList.toggle("multi-line-team-name", lines.length > 1);
+  lines.forEach((line) => {
+    const lineBox = document.createElement("span");
+    lineBox.className = "team-name-line";
+
+    const scrollText = document.createElement("span");
+    scrollText.className = "team-name-scroll";
+    scrollText.textContent = line;
+    lineBox.appendChild(scrollText);
+    element.appendChild(lineBox);
+  });
 
   requestAnimationFrame(() => {
-    const distance = Math.ceil(span.scrollWidth - element.clientWidth);
-    element.classList.toggle("scrolling", distance > 4);
-    if (distance > 4) {
-      element.style.setProperty("--team-scroll-distance", `${distance}px`);
-    }
+    element.querySelectorAll(".team-name-line").forEach((lineBox) => {
+      const scrollText = lineBox.querySelector(".team-name-scroll");
+      const distance = Math.ceil(scrollText.scrollWidth - lineBox.clientWidth);
+      lineBox.classList.toggle("scrolling", distance > 4);
+      if (distance > 4) {
+        lineBox.style.setProperty("--team-scroll-distance", `${distance}px`);
+      } else {
+        lineBox.style.removeProperty("--team-scroll-distance");
+      }
+    });
   });
 }
 
