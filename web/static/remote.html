@@ -8,25 +8,36 @@
   </head>
   <body class="remote-page" data-remote>
     <main class="remote-shell">
-      <h1 class="remote-title">门球遥控器</h1>
+      <h1 class="remote-title" data-remote-title>红星村老年会门球比赛</h1>
       <section class="remote-status">
-        <strong>当前：<span data-current>1号球</span></strong>
-        <span data-remote-score>红队 0 : 0 白队</span>
         <span>剩余时间：<span data-remote-time>30:00</span></span>
-        <span data-remote-message>等待开始</span>
       </section>
 
-      <section class="ball-grid">
-        <button class="red-ball" data-action="select" data-ball="1"><span>1</span></button>
-        <button class="white-ball" data-action="select" data-ball="2"><span>2</span></button>
-        <button class="red-ball" data-action="select" data-ball="3"><span>3</span></button>
-        <button class="white-ball" data-action="select" data-ball="4"><span>4</span></button>
-        <button class="red-ball" data-action="select" data-ball="5"><span>5</span></button>
-        <button class="white-ball" data-action="select" data-ball="6"><span>6</span></button>
-        <button class="red-ball" data-action="select" data-ball="7"><span>7</span></button>
-        <button class="white-ball" data-action="select" data-ball="8"><span>8</span></button>
-        <button class="red-ball" data-action="select" data-ball="9"><span>9</span></button>
-        <button class="white-ball" data-action="select" data-ball="10"><span>10</span></button>
+      <section class="remote-board">
+        <div class="ball-column">
+          <button class="red-ball" data-action="select" data-ball="1"><span>1</span></button>
+          <button class="red-ball" data-action="select" data-ball="3"><span>3</span></button>
+          <button class="red-ball" data-action="select" data-ball="5"><span>5</span></button>
+          <button class="red-ball" data-action="select" data-ball="7"><span>7</span></button>
+          <button class="red-ball" data-action="select" data-ball="9"><span>9</span></button>
+        </div>
+        <div class="remote-score-panel">
+          <div class="remote-total red-total-mobile">
+            <span data-remote-red-team>红队</span>
+            <strong data-remote-red-total>0</strong>
+          </div>
+          <div class="remote-total white-total-mobile">
+            <span data-remote-white-team>白队</span>
+            <strong data-remote-white-total>0</strong>
+          </div>
+        </div>
+        <div class="ball-column">
+          <button class="white-ball" data-action="select" data-ball="2"><span>2</span></button>
+          <button class="white-ball" data-action="select" data-ball="4"><span>4</span></button>
+          <button class="white-ball" data-action="select" data-ball="6"><span>6</span></button>
+          <button class="white-ball" data-action="select" data-ball="8"><span>8</span></button>
+          <button class="white-ball" data-action="select" data-ball="10"><span>10</span></button>
+        </div>
       </section>
 
       <section class="remote-actions">

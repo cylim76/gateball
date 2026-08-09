@@ -169,10 +169,12 @@ function renderRecentLog() {
 
 function renderRemote() {
   if (!currentState) return;
-  document.querySelector("[data-current]").textContent = `${currentState.selectedBall}号球`;
+  document.querySelector("[data-remote-title]").textContent = currentState.title;
   document.querySelector("[data-remote-time]").textContent = formatTime(currentState.remainingSeconds);
-  document.querySelector("[data-remote-score]").textContent = `${currentState.redTeam} ${currentState.redTotal} : ${currentState.whiteTotal} ${currentState.whiteTeam}`;
-  document.querySelector("[data-remote-message]").textContent = currentState.lastMessage;
+  document.querySelector("[data-remote-red-team]").textContent = currentState.redTeam;
+  document.querySelector("[data-remote-white-team]").textContent = currentState.whiteTeam;
+  document.querySelector("[data-remote-red-total]").textContent = currentState.redTotal;
+  document.querySelector("[data-remote-white-total]").textContent = currentState.whiteTotal;
   document.querySelectorAll("[data-ball]").forEach((button) => {
     button.classList.toggle("active", Number(button.dataset.ball) === currentState.selectedBall);
   });
