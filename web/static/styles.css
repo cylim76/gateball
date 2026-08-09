@@ -200,17 +200,14 @@ body.scoreboard {
 
 .seven-segment.active {
   opacity: 1;
-  box-shadow:
-    0 0 6px currentColor,
-    0 0 16px rgba(255, 212, 59, .5);
 }
 
 .segment-a,
 .segment-d,
 .segment-g {
-  left: 16%;
-  width: 68%;
-  height: 16%;
+  left: 14%;
+  width: 72%;
+  height: 20%;
 }
 
 .segment-a {
@@ -229,18 +226,18 @@ body.scoreboard {
 .segment-c,
 .segment-e,
 .segment-f {
-  width: 22%;
+  width: 26%;
   height: 40%;
 }
 
 .segment-b,
 .segment-c {
-  right: 4%;
+  right: 2%;
 }
 
 .segment-f,
 .segment-e {
-  left: 4%;
+  left: 2%;
 }
 
 .segment-b,
@@ -263,38 +260,19 @@ body.scoreboard {
 
 .seven-colon span {
   display: block;
-  width: clamp(8px, .85vw, 14px);
+  width: clamp(10px, 1vw, 17px);
   aspect-ratio: 1;
   border-radius: 50%;
   background: currentColor;
-  box-shadow:
-    0 0 6px currentColor,
-    0 0 14px rgba(255, 212, 59, .5);
-}
-
-.timer.is-paused .seven-segment.active,
-.timer.is-expired .seven-segment.active,
-.timer.is-paused .seven-colon span,
-.timer.is-expired .seven-colon span {
-  box-shadow:
-    0 0 7px currentColor,
-    0 0 18px rgba(255, 26, 34, .6);
 }
 
 .timer.is-paused .time {
   color: #ff1a22;
-  text-shadow:
-    0 0 7px rgba(255, 26, 34, .95),
-    0 0 20px rgba(255, 26, 34, .55),
-    0 0 1px #ffd3d3;
   animation: timer-blink 1s steps(2, start) infinite;
 }
 
 .timer.is-expired .time {
   color: #ff1a22;
-  text-shadow:
-    0 0 7px rgba(255, 26, 34, .95),
-    0 0 20px rgba(255, 26, 34, .55);
 }
 
 .timer-meta {
