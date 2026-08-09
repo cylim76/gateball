@@ -6,7 +6,8 @@ from threading import RLock
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, quote, urlparse
+from urllib.request import Request, urlopen
 
 import sys
 
@@ -20,6 +21,7 @@ HOST = "0.0.0.0"
 PORT = 8000
 DATA_FILE = ROOT / "data" / "web_state.json"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+WEATHER_CACHE: dict = {"timestamp": 0.0, "payload": {"ok": False}}
 
 
 DEFAULT_STATE = {
@@ -31,7 +33,7 @@ DEFAULT_STATE = {
     "running": False,
     "timeExpired": False,
     "selectedBall": 1,
-    "finishPassword": "1234",
+    "finishPassword": "0000",
     "settingsPassword": "1234",
     "allowScoringWhenPaused": False,
     "matchNumber": 1,
@@ -43,6 +45,11 @@ DEFAULT_STATE = {
     "lastTickRemainingSeconds": None,
     "tenSecondCountdownId": None,
     "tenSecondCountdownStartedAt": None,
+    "keyBindings": {},
+    "voiceProfile": "female",
+    "weatherLocation": "",
+    "weatherLatitude": None,
+    "weatherLongitude": None,
 }
 
 
@@ -66,6 +73,10 @@ class Store:
             self.state["announcedMinuteWarnings"] = []
         if not isinstance(self.state.get("timerStarted"), bool):
             self.state["timerStarted"] = False
+        if not isinstance(self.state.get("keyBindings"), dict):
+            self.state["keyBindings"] = {}
+        if self.state.get("finishPassword") == "1234":
+            self.state["finishPassword"] = "0000"
         if self.state.get("running"):
             self.state["timerStarted"] = True
         if self.state.get("lastTickRemainingSeconds") is None:
@@ -179,6 +190,8 @@ class Store:
         elif action == "advance":
             if not self.state["running"] and not self.state["allowScoringWhenPaused"] and not self.state["timeExpired"]:
                 message = "暂停期间不能计分"
+            elif self.state.get("timeExpired"):
+                message = "时间到"
             else:
                 number = int(self.state["selectedBall"])
                 message = self.balls[number].advance()
@@ -252,6 +265,13 @@ class Store:
             self.state["lastMessage"] = message
             self.record("set_team_name", None, message)
 
+        elif action == "set_title":
+            title = str(payload.get("title", "")).strip()[:40]
+            self.state["title"] = title or DEFAULT_STATE["title"]
+            message = "比赛标题已保存"
+            self.state["lastMessage"] = message
+            self.record("set_title", None, message)
+
         elif action == "finish":
             if payload.get("password") == self.state["finishPassword"]:
                 message = self.reset_match()
@@ -264,9 +284,21 @@ class Store:
             if payload.get("password") != self.state["settingsPassword"]:
                 message = "密码错误"
             else:
-                for key in ["title", "redTeam", "whiteTeam", "allowScoringWhenPaused"]:
+                for key in ["title", "allowScoringWhenPaused", "weatherLocation"]:
                     if key in payload:
-                        self.state[key] = payload[key]
+                        self.state[key] = str(payload[key]).strip() if key == "weatherLocation" else payload[key]
+                        if key == "weatherLocation":
+                            WEATHER_CACHE["timestamp"] = 0.0
+                if "weatherLatitude" in payload and "weatherLongitude" in payload:
+                    try:
+                        self.state["weatherLatitude"] = float(payload["weatherLatitude"]) if str(payload["weatherLatitude"]).strip() else None
+                        self.state["weatherLongitude"] = float(payload["weatherLongitude"]) if str(payload["weatherLongitude"]).strip() else None
+                        WEATHER_CACHE["timestamp"] = 0.0
+                    except ValueError:
+                        self.state["weatherLatitude"] = None
+                        self.state["weatherLongitude"] = None
+                if payload.get("voiceProfile") in {"female", "male"}:
+                    self.state["voiceProfile"] = payload["voiceProfile"]
                 if "durationMinutes" in payload:
                     minutes = max(1, int(payload["durationMinutes"]))
                     self.state["durationSeconds"] = minutes * 60
@@ -282,6 +314,24 @@ class Store:
                 self.state["lastMessage"] = message
                 self.record("settings", None, message)
 
+        elif action == "update_key_binding":
+            binding_action = str(payload.get("bindingAction", "")).strip()
+            code = str(payload.get("code", "")).strip()
+            key = str(payload.get("key", "")).strip()
+            label = str(payload.get("label", "")).strip()
+            if binding_action and (code or key):
+                bindings = self.state.setdefault("keyBindings", {})
+                bindings[binding_action] = {
+                    "code": code,
+                    "key": key,
+                    "label": label or code or key,
+                }
+                message = "按键映射已保存"
+                self.state["lastMessage"] = message
+                self.record("key_binding", None, message)
+            else:
+                message = "按键映射失败"
+
         else:
             message = "未知操作"
 
@@ -290,6 +340,140 @@ class Store:
 
 
 store = Store()
+
+
+def weather_icon(code: int) -> str:
+    if code == 113:
+        return "☀"
+    if code in {116, 119, 122, 143, 248, 260}:
+        return "☁"
+    if code in {176, 263, 266, 281, 284, 293, 296, 299, 302, 305, 308, 353, 356, 359}:
+        return "☂"
+    if code in {179, 182, 185, 227, 230, 311, 314, 317, 320, 323, 326, 329, 332, 335, 338, 362, 365, 368, 371, 374, 377}:
+        return "❄"
+    if code in {200, 386, 389, 392, 395}:
+        return "⚡"
+    return "☁"
+
+
+def open_meteo_weather_icon(code: int) -> str:
+    if code == 0:
+        return "☀"
+    if code in {1, 2, 3, 45, 48}:
+        return "☁"
+    if code in {51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82}:
+        return "☂"
+    if code in {71, 73, 75, 77, 85, 86}:
+        return "❄"
+    if code in {95, 96, 99}:
+        return "⚡"
+    return "☁"
+
+
+def fetch_weather() -> dict:
+    now = time.time()
+    if now - float(WEATHER_CACHE.get("timestamp", 0)) < 1800:
+        return WEATHER_CACHE["payload"]
+
+    try:
+        latitude = store.state.get("weatherLatitude")
+        longitude = store.state.get("weatherLongitude")
+        if latitude is not None and longitude is not None:
+            url = (
+                "https://api.open-meteo.com/v1/forecast"
+                f"?latitude={float(latitude):.5f}&longitude={float(longitude):.5f}"
+                "&daily=weather_code,temperature_2m_max,temperature_2m_min"
+                "&timezone=auto&forecast_days=1"
+            )
+            with urlopen(url, timeout=4) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            daily = data["daily"]
+            code = int(daily["weather_code"][0])
+            payload = {
+                "ok": True,
+                "icon": open_meteo_weather_icon(code),
+                "minTempC": int(round(float(daily["temperature_2m_min"][0]))),
+                "maxTempC": int(round(float(daily["temperature_2m_max"][0]))),
+            }
+        else:
+            with urlopen("https://wttr.in/auto:ip?format=j1&lang=zh", timeout=4) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            today = data["weather"][0]
+            current = data["current_condition"][0]
+            code = int(current.get("weatherCode", 0))
+            payload = {
+                "ok": True,
+                "icon": weather_icon(code),
+                "minTempC": int(float(today["mintempC"])),
+                "maxTempC": int(float(today["maxtempC"])),
+            }
+    except Exception:
+        payload = {"ok": False}
+
+    WEATHER_CACHE["timestamp"] = now
+    WEATHER_CACHE["payload"] = payload
+    return payload
+
+
+def search_weather_locations(query: str) -> dict:
+    query = query.strip()
+    if not query:
+        return {"ok": True, "results": []}
+    try:
+        url = (
+            "https://geocoding-api.open-meteo.com/v1/search"
+            f"?name={quote(query)}&count=8&language=zh&format=json"
+        )
+        with urlopen(url, timeout=5) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        results = []
+        for item in data.get("results", []):
+            parts = [
+                item.get("name"),
+                item.get("admin3"),
+                item.get("admin2"),
+                item.get("admin1"),
+                item.get("country"),
+            ]
+            label = " / ".join(dict.fromkeys(str(part) for part in parts if part))
+            results.append(
+                {
+                    "name": label,
+                    "latitude": item.get("latitude"),
+                    "longitude": item.get("longitude"),
+                }
+            )
+        if results:
+            return {"ok": True, "results": results}
+        return search_backup_weather_locations(query)
+    except Exception:
+        return search_backup_weather_locations(query)
+
+
+def search_backup_weather_locations(query: str) -> dict:
+    try:
+        url = (
+            "https://nominatim.openstreetmap.org/search"
+            f"?q={quote(query)}&format=json&limit=8&accept-language=zh-CN"
+        )
+        request = Request(url, headers={"User-Agent": "gateball-scoreboard/1.0"})
+        with urlopen(request, timeout=5) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        results = []
+        for item in data:
+            label = item.get("display_name") or item.get("name")
+            if not label:
+                continue
+            results.append(
+                {
+                    "name": label,
+                    "latitude": item.get("lat"),
+                    "longitude": item.get("lon"),
+                }
+            )
+        return {"ok": True, "results": results}
+    except Exception:
+        return {"ok": False, "results": []}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -303,6 +487,11 @@ class Handler(BaseHTTPRequestHandler):
             self.serve_file(STATIC_DIR / "settings.html")
         elif path == "/api/state":
             self.send_json(store.snapshot())
+        elif path == "/api/weather":
+            self.send_json(fetch_weather())
+        elif path == "/api/weather/search":
+            params = parse_qs(urlparse(self.path).query)
+            self.send_json(search_weather_locations(params.get("q", [""])[0]))
         else:
             target = STATIC_DIR / path.lstrip("/")
             if target.exists() and target.is_file():

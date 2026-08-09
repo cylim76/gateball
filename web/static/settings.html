@@ -15,24 +15,26 @@
           <input name="title" autocomplete="off">
         </label>
         <label>
-          红队队名
-          <input name="redTeam" autocomplete="off">
-        </label>
-        <label>
-          白队队名
-          <input name="whiteTeam" autocomplete="off">
-        </label>
-        <label>
           比赛时长（分钟）
           <input name="durationMinutes" type="number" min="1" max="120">
+        </label>
+        <label>
+          播报声音
+          <select name="voiceProfile">
+            <option value="female">女声</option>
+            <option value="male">男声</option>
+          </select>
+        </label>
+        <label>
+          天气位置
+          <input name="weatherLocation" data-weather-location-input autocomplete="off" placeholder="输入城市搜索，留空自动定位">
+          <input name="weatherLatitude" type="hidden">
+          <input name="weatherLongitude" type="hidden">
+          <div class="weather-search-results" data-weather-search-results></div>
         </label>
         <label class="check">
           <input name="allowScoringWhenPaused" type="checkbox">
           暂停期间允许计分
-        </label>
-        <label>
-          当前设置密码
-          <input name="password" inputmode="numeric" autocomplete="off" placeholder="默认 1234">
         </label>
         <label>
           新结束密码
@@ -45,7 +47,25 @@
         <button class="primary" type="submit">保存设置</button>
         <strong data-save-result></strong>
       </form>
+      <section class="key-binding-panel">
+        <h2>按键映射</h2>
+        <div class="key-binding-head">
+          <span>名称</span>
+          <span>按键</span>
+        </div>
+        <div class="key-binding-list" data-key-binding-list></div>
+      </section>
     </main>
+    <div class="dialog" data-settings-save-password-dialog>
+      <div class="dialog-box">
+        <h2 class="dialog-title">输入设置密码</h2>
+        <input class="dialog-input" data-settings-save-password-input inputmode="numeric" autocomplete="off" maxlength="8">
+        <strong class="dialog-result" data-settings-save-password-result></strong>
+        <div class="dialog-actions">
+          <button class="finish-cancel" type="button" data-action="close-settings-save-password">取消</button>
+        </div>
+      </div>
+    </div>
     <script src="/app.js"></script>
   </body>
 </html>

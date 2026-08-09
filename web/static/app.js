@@ -11,48 +11,55 @@ const api = {
     });
     return res.json();
   },
+  async weatherSearch(query) {
+    const res = await fetch(`/api/weather/search?q=${encodeURIComponent(query)}`, { cache: "no-store" });
+    return res.json();
+  },
 };
 
-const keyMap = {
-  Digit1: { action: "select", ball: 1 },
-  Digit2: { action: "select", ball: 2 },
-  Digit3: { action: "select", ball: 3 },
-  Digit4: { action: "select", ball: 4 },
-  Digit5: { action: "select", ball: 5 },
-  Digit6: { action: "select", ball: 6 },
-  Digit7: { action: "select", ball: 7 },
-  Digit8: { action: "select", ball: 8 },
-  Digit9: { action: "select", ball: 9 },
-  Digit0: { action: "select", ball: 10 },
-  Numpad1: { action: "select", ball: 1 },
-  Numpad2: { action: "select", ball: 2 },
-  Numpad3: { action: "select", ball: 3 },
-  Numpad4: { action: "select", ball: 4 },
-  Numpad5: { action: "select", ball: 5 },
-  Numpad6: { action: "select", ball: 6 },
-  Numpad7: { action: "select", ball: 7 },
-  Numpad8: { action: "select", ball: 8 },
-  Numpad9: { action: "select", ball: 9 },
-  Numpad0: { action: "select", ball: 10 },
-  NumpadAdd: { action: "advance" },
-  Equal: { action: "advance" },
-  NumpadSubtract: { action: "undo" },
-  Minus: { action: "undo" },
-  Enter: { action: "toggle_timer" },
-  NumpadEnter: { action: "toggle_timer" },
-};
+const keyBindingSpecs = [
+  { id: "ball_1", name: "1号球", payload: { action: "select", ball: 1 }, defaults: [{ code: "Digit1", key: "1", label: "1" }, { code: "Numpad1", key: "1", label: "小键盘 1" }] },
+  { id: "ball_2", name: "2号球", payload: { action: "select", ball: 2 }, defaults: [{ code: "Digit2", key: "2", label: "2" }, { code: "Numpad2", key: "2", label: "小键盘 2" }] },
+  { id: "ball_3", name: "3号球", payload: { action: "select", ball: 3 }, defaults: [{ code: "Digit3", key: "3", label: "3" }, { code: "Numpad3", key: "3", label: "小键盘 3" }] },
+  { id: "ball_4", name: "4号球", payload: { action: "select", ball: 4 }, defaults: [{ code: "Digit4", key: "4", label: "4" }, { code: "Numpad4", key: "4", label: "小键盘 4" }] },
+  { id: "ball_5", name: "5号球", payload: { action: "select", ball: 5 }, defaults: [{ code: "Digit5", key: "5", label: "5" }, { code: "Numpad5", key: "5", label: "小键盘 5" }] },
+  { id: "ball_6", name: "6号球", payload: { action: "select", ball: 6 }, defaults: [{ code: "Digit6", key: "6", label: "6" }, { code: "Numpad6", key: "6", label: "小键盘 6" }] },
+  { id: "ball_7", name: "7号球", payload: { action: "select", ball: 7 }, defaults: [{ code: "Digit7", key: "7", label: "7" }, { code: "Numpad7", key: "7", label: "小键盘 7" }] },
+  { id: "ball_8", name: "8号球", payload: { action: "select", ball: 8 }, defaults: [{ code: "Digit8", key: "8", label: "8" }, { code: "Numpad8", key: "8", label: "小键盘 8" }] },
+  { id: "ball_9", name: "9号球", payload: { action: "select", ball: 9 }, defaults: [{ code: "Digit9", key: "9", label: "9" }, { code: "Numpad9", key: "9", label: "小键盘 9" }] },
+  { id: "ball_10", name: "10号球", payload: { action: "select", ball: 10 }, defaults: [{ code: "Digit0", key: "0", label: "0" }, { code: "Numpad0", key: "0", label: "小键盘 0" }] },
+  { id: "toggle_timer", name: "开始/暂停/继续", payload: { action: "toggle_timer" }, defaults: [{ code: "Enter", key: "Enter", label: "Enter" }, { code: "NumpadEnter", key: "Enter", label: "小键盘 Enter" }] },
+  { id: "undo", name: "撤销", payload: { action: "undo" }, defaults: [{ code: "NumpadSubtract", key: "-", label: "小键盘 -" }, { code: "Minus", key: "-", label: "-" }] },
+  { id: "advance", name: "得分", payload: { action: "advance" }, defaults: [{ code: "NumpadAdd", key: "+", label: "小键盘 +" }, { code: "Equal", key: "+", label: "+" }] },
+  { id: "swap_team_names", name: "队名更换", payload: { action: "swap_team_names" }, defaults: [{ code: "Tab", key: "Tab", label: "Tab" }] },
+  { id: "ten_second_countdown", name: "10秒倒计时", special: "ten-second-countdown", defaults: [{ code: "Backspace", key: "Backspace", label: "Backspace" }] },
+  { id: "finish_dialog", name: "结束比赛", special: "finish-dialog", defaults: [{ code: "NumpadMultiply", key: "*", label: "小键盘 *" }] },
+  { id: "finish_cancel", name: "结束取消", special: "finish-cancel", defaults: [{ code: "NumpadMultiply", key: "*", label: "小键盘 *" }, { code: "Escape", key: "Escape", label: "Esc" }] },
+  { id: "settings_dialog", name: "打开设置", special: "remote-settings-dialog", defaults: [{ code: "NumpadDivide", key: "/", label: "小键盘 /" }] },
+];
+
+const keyBindingSpecById = Object.fromEntries(keyBindingSpecs.map((spec) => [spec.id, spec]));
 
 let currentState = null;
 let finishDialogOpen = false;
 let finishPassword = "";
+let finishVerifyInFlight = false;
 let settingsDialogOpen = false;
 let settingsPassword = "";
 let settingsHydrated = false;
 let swapTeamDialogOpen = false;
 let editTeamDialogOpen = false;
 let editTeamTarget = "";
+let editTitleDialogOpen = false;
+let remoteSettingsDialogOpen = false;
+let settingsSavePasswordDialogOpen = false;
+let pendingSettingsPayload = null;
+let settingsSaveInFlight = false;
+let keyCaptureAction = "";
 let alertPromptAudio = null;
 let finishPromptAudio = null;
+let voiceManifestCache = {};
+let voiceAudio = null;
 let tenSecondCountdownIntroAudio = null;
 let tenSecondCountdownAudio = null;
 let tenSecondCountdownTimer = null;
@@ -63,6 +70,10 @@ let lastRenderedCountdownId = "";
 let lastRenderedCountdownDigit = null;
 let speechHistoryInitialized = false;
 let lastSpokenHistoryKey = "";
+let weatherSearchTimer = null;
+const guardedActions = new Set(["toggle_timer", "undo", "advance", "swap_team_names", "ten-second-countdown", "ten_second_countdown"]);
+const guardedActionTimes = new Map();
+const ACTION_GUARD_MS = 800;
 
 function two(num) {
   return String(num).padStart(2, "0");
@@ -72,6 +83,76 @@ function formatTime(seconds) {
   const min = Math.floor(seconds / 60);
   const sec = seconds % 60;
   return `${two(min)}:${two(sec)}`;
+}
+
+function bindingForSpec(spec) {
+  const custom = currentState?.keyBindings?.[spec.id];
+  if (custom && (custom.code || custom.key)) return custom;
+  return spec.defaults[0];
+}
+
+function allBindingsForSpec(spec) {
+  const custom = currentState?.keyBindings?.[spec.id];
+  if (custom && (custom.code || custom.key)) return [custom];
+  return spec.defaults;
+}
+
+function eventMatchesBindingSpec(event, spec) {
+  return allBindingsForSpec(spec).some((binding) => (
+    (binding.code && event.code === binding.code) || (binding.key && event.key === binding.key)
+  ));
+}
+
+function keyLabelFromEvent(event) {
+  if (event.code?.startsWith("Numpad")) {
+    const suffix = event.code.replace("Numpad", "");
+    const names = {
+      Add: "+",
+      Subtract: "-",
+      Multiply: "*",
+      Divide: "/",
+      Decimal: ".",
+      Enter: "Enter",
+    };
+    return `小键盘 ${names[suffix] || suffix}`;
+  }
+  if (event.key === " ") return "空格";
+  if (event.key && event.key.length === 1) return event.key;
+  return event.key || event.code;
+}
+
+function keyboardActionForEvent(event) {
+  for (const spec of keyBindingSpecs) {
+    if (eventMatchesBindingSpec(event, spec)) return spec;
+  }
+  return null;
+}
+
+function isMappedKeyboardEvent(event) {
+  return Boolean(keyboardActionForEvent(event));
+}
+
+function shouldIgnoreGuardedAction(actionId) {
+  if (!guardedActions.has(actionId)) return false;
+  const now = Date.now();
+  const last = guardedActionTimes.get(actionId) || 0;
+  if (now - last < ACTION_GUARD_MS) return true;
+  guardedActionTimes.set(actionId, now);
+  return false;
+}
+
+function runKeyboardAction(spec) {
+  if (!spec) return;
+  if (shouldIgnoreGuardedAction(spec.id)) return;
+  if (spec.id === "toggle_timer" && currentState?.timeExpired && !currentState?.running) return;
+  if (spec.special === "ten-second-countdown") return startTenSecondCountdown();
+  if (spec.special === "finish-dialog") return openFinishDialog();
+  if (spec.special === "finish-cancel") return closeFinishDialog();
+  if (spec.special === "remote-settings-dialog") {
+    if (document.querySelector("[data-remote-settings-dialog]")) return openRemoteSettingsDialog();
+    return openSettingsDialog();
+  }
+  if (spec.payload) sendAction(spec.payload);
 }
 
 function historyTime(entry) {
@@ -161,7 +242,78 @@ function setTeamName(selector, name) {
   });
 }
 
-function speak(text, onComplete) {
+function voiceProfilePath() {
+  return currentState?.voiceProfile === "male" ? "voice-male" : "voice";
+}
+
+function normalizeSpeechText(text) {
+  return String(text || "").replace(/\s+/g, " ").trim();
+}
+
+function voiceKeyForText(text) {
+  const normalized = normalizeSpeechText(text);
+  const exact = {
+    "比赛开始": "match_start",
+    "比赛暂停": "match_pause",
+    "比赛继续": "match_resume",
+    "等待开始": "match_waiting",
+    "下一场比赛，等待开始": "next_match_waiting",
+    "时间到": "time_up",
+    "请输入密码结束比赛": "finish_password_prompt",
+    "密码错误": "password_wrong",
+    "设置已保存": "settings_saved",
+    "按键映射已保存": "key_binding_saved",
+    "按键映射失败": "key_binding_failed",
+    "暂停期间不能计分": "scoring_paused_denied",
+    "红白队名已更换": "team_swap_saved",
+    "队名为空": "team_name_empty",
+    "红队队名已保存": "red_team_saved",
+    "白队队名已保存": "white_team_saved",
+    "未知队伍": "unknown_team",
+    "未知操作": "unknown_action",
+    "倒计时10秒": "countdown_10",
+    "10秒倒计时": "countdown_10",
+    "10秒倒计时已停止": "countdown_10_stopped",
+  };
+  if (exact[normalized]) return exact[normalized];
+
+  let match = normalized.match(/^比赛时间剩余\s*(15|10|5|1)\s*分钟$/);
+  if (match) return `time_remaining_${match[1]}min`;
+
+  match = normalized.match(/^(\d{1,2})号球$/);
+  if (match) return `ball_${match[1]}`;
+
+  match = normalized.match(/^(\d{1,2})号球[，,](一门得分|二门得分|三门得分|中柱得分)$/);
+  if (match) {
+    const suffix = { 一门得分: "gate1", 二门得分: "gate2", 三门得分: "gate3", 中柱得分: "pillar" }[match[2]];
+    return `ball_${match[1]}_${suffix}`;
+  }
+
+  match = normalized.match(/^(\d{1,2})号球已到上限$/);
+  if (match) return `ball_${match[1]}_limit`;
+
+  match = normalized.match(/^(\d{1,2})号球没有可撤销记录$/);
+  if (match) return `ball_${match[1]}_no_undo`;
+
+  match = normalized.match(/^撤销[，,](\d{1,2})号球[，,](一门得分|二门得分|三门得分|中柱得分|回到0分)$/);
+  if (match) {
+    const suffix = { 一门得分: "gate1", 二门得分: "gate2", 三门得分: "gate3", 中柱得分: "pillar", 回到0分: "zero" }[match[2]];
+    return `undo_ball_${match[1]}_${suffix}`;
+  }
+
+  return "";
+}
+
+async function getVoiceManifest(profilePath) {
+  if (!voiceManifestCache[profilePath]) {
+    const response = await fetch(`/audio/${profilePath}/manifest.json`, { cache: "force-cache" });
+    if (!response.ok) throw new Error(`Voice manifest missing: ${profilePath}`);
+    voiceManifestCache[profilePath] = await response.json();
+  }
+  return voiceManifestCache[profilePath];
+}
+
+function speakWithBrowser(text, onComplete) {
   if (!text) {
     onComplete?.();
     return;
@@ -182,10 +334,37 @@ function speak(text, onComplete) {
   speechSynthesis.speak(utter);
 }
 
+function speak(text, onComplete) {
+  if (!text) {
+    onComplete?.();
+    return;
+  }
+  const key = voiceKeyForText(text);
+  if (!key) return speakWithBrowser(text, onComplete);
+  getVoiceManifest(voiceProfilePath()).then((manifest) => {
+    const file = manifest.items?.[key]?.file;
+    if (!file) {
+      speakWithBrowser(text, onComplete);
+      return;
+    }
+    if (!voiceAudio) voiceAudio = new Audio();
+    voiceAudio.pause();
+    voiceAudio.currentTime = 0;
+    voiceAudio.src = file;
+    voiceAudio.onended = () => onComplete?.();
+    voiceAudio.onerror = () => speakWithBrowser(text, onComplete);
+    const playResult = voiceAudio.play();
+    if (playResult?.catch) {
+      playResult.catch(() => speakWithBrowser(text, onComplete));
+    }
+  }).catch(() => speakWithBrowser(text, onComplete));
+}
+
 function getFinishPromptAudio() {
   if (!finishPromptAudio) {
     finishPromptAudio = new Audio("/audio/finished.mp3");
     finishPromptAudio.preload = "auto";
+    finishPromptAudio.volume = 0.45;
   }
   return finishPromptAudio;
 }
@@ -194,6 +373,7 @@ function getAlertPromptAudio() {
   if (!alertPromptAudio) {
     alertPromptAudio = new Audio("/audio/alert.mp3");
     alertPromptAudio.preload = "auto";
+    alertPromptAudio.volume = 0.45;
   }
   return alertPromptAudio;
 }
@@ -202,6 +382,7 @@ function getTenSecondCountdownAudio() {
   if (!tenSecondCountdownAudio) {
     tenSecondCountdownAudio = new Audio("/audio/timeout.mp3");
     tenSecondCountdownAudio.preload = "auto";
+    tenSecondCountdownAudio.volume = 0.6;
   }
   return tenSecondCountdownAudio;
 }
@@ -210,6 +391,7 @@ function getTenSecondCountdownIntroAudio() {
   if (!tenSecondCountdownIntroAudio) {
     tenSecondCountdownIntroAudio = new Audio("/audio/countdown.mp3");
     tenSecondCountdownIntroAudio.preload = "auto";
+    tenSecondCountdownIntroAudio.volume = 0.5;
   }
   return tenSecondCountdownIntroAudio;
 }
@@ -241,7 +423,6 @@ function prepareTenSecondCountdownAudio() {
 function playAudio(audio, warningLabel) {
   audio.pause();
   audio.currentTime = 0;
-  audio.volume = 1;
   const playResult = audio.play();
   if (playResult?.catch) {
     playResult.catch((error) => console.warn(`${warningLabel} audio failed`, error));
@@ -384,9 +565,10 @@ function renderPillars(count) {
 
 function renderRows(team) {
   const numbers = team === "red" ? [1, 3, 5, 7, 9] : [2, 4, 6, 8, 10];
+  const showSelection = shouldShowBallSelection();
   return numbers.map((number) => {
     const ball = currentState.balls.find((item) => item.number === number);
-    const selected = currentState.selectedBall === number ? " selected" : "";
+    const selected = showSelection && currentState.selectedBall === number ? " selected" : "";
     const cells = [0, 1, 2, 3].map((step) => {
       const active = ball.step === step ? " active" : "";
       return `<td><span class="slot${active}"></span></td>`;
@@ -413,26 +595,27 @@ function renderScoreboard() {
   const timer = document.querySelector("[data-scoreboard-timer]");
   if (timer) {
     timer.classList.toggle("is-running", currentState.running);
-    timer.classList.toggle("is-paused", !currentState.running && !currentState.timeExpired);
+    timer.classList.toggle("is-waiting", !currentState.running && !currentState.timeExpired && !currentState.timerStarted);
+    timer.classList.toggle("is-paused", !currentState.running && !currentState.timeExpired && currentState.timerStarted);
     timer.classList.toggle("is-expired", currentState.timeExpired);
   }
   document.querySelector("[data-match]").textContent = `第 ${currentState.matchNumber} 场`;
-  document.querySelector("[data-status]").textContent = currentState.running ? "比赛中" : (currentState.timeExpired ? "时间到" : "暂停/待开始");
+  document.querySelector("[data-status]").textContent = currentState.running ? "比赛中" : (currentState.timeExpired ? "时间到" : (currentState.timerStarted ? "比赛暂停" : "等待开始"));
   renderRecentLog();
   document.querySelector("[data-red-rows]").innerHTML = renderRows("red");
   document.querySelector("[data-white-rows]").innerHTML = renderRows("white");
   renderScoreboardCountdownOverlay();
 }
 
-function renderRecentLog() {
-  const log = document.querySelector("[data-recent-log]");
+function renderRecentLog(selector = "[data-recent-log]", limit = 3) {
+  const log = document.querySelector(selector);
   if (!log) return;
   const entries = (currentState.history || [])
     .filter((entry) => entry.action !== "select")
-    .slice(-3)
+    .slice(-limit)
     .reverse();
   if (!entries.length) {
-    log.innerHTML = `<div class="log-line">[${formatTime(currentState.remainingSeconds)}] ${currentState.lastMessage}</div>`;
+    log.innerHTML = `<div class="log-line"><span class="log-main"><span class="log-time">[${formatTime(currentState.remainingSeconds)}]</span> ${currentState.lastMessage}</span></div>`;
     return;
   }
   log.innerHTML = entries.map((entry) => (
@@ -443,24 +626,36 @@ function renderRecentLog() {
 function renderRemote() {
   if (!currentState) return;
   document.querySelector("[data-remote-title]").textContent = currentState.title;
-  document.querySelector("[data-remote-time]").textContent = formatTime(currentState.remainingSeconds);
+  const remoteTime = document.querySelector("[data-remote-time]");
+  const remoteState = document.querySelector("[data-remote-state]");
+  const remoteStatusTime = document.querySelector(".remote-status-time");
+  if (remoteTime) remoteTime.textContent = formatTime(currentState.remainingSeconds);
+  if (remoteState) remoteState.textContent = currentState.running ? "比赛中" : (currentState.timeExpired ? "时间到" : (currentState.timerStarted ? "比赛暂停" : "等待开始"));
+  if (remoteStatusTime) {
+    remoteStatusTime.classList.toggle("is-running", currentState.running);
+    remoteStatusTime.classList.toggle("is-waiting", !currentState.running && !currentState.timeExpired && !currentState.timerStarted);
+    remoteStatusTime.classList.toggle("is-paused", !currentState.running && !currentState.timeExpired && currentState.timerStarted);
+    remoteStatusTime.classList.toggle("is-expired", currentState.timeExpired);
+  }
   const timerAction = document.querySelector("[data-action='toggle_timer']");
   if (timerAction) {
     timerAction.textContent = currentState.running ? "暂停" : (currentState.timerStarted && !currentState.timeExpired ? "继续" : "开始");
+    timerAction.disabled = currentState.timeExpired && !currentState.running;
+    timerAction.classList.toggle("disabled", currentState.timeExpired && !currentState.running);
   }
   const countdownAction = document.querySelector("[data-action='ten-second-countdown']");
   if (countdownAction) {
     countdownAction.textContent = tenSecondCountdownActive ? "停止倒计时" : "10秒倒计时";
   }
-  setTeamName("[data-remote-red-team]", currentState.redTeam);
-  setTeamName("[data-remote-white-team]", currentState.whiteTeam);
   setTeamName("[data-remote-status-red-team]", currentState.redTeam);
   setTeamName("[data-remote-status-white-team]", currentState.whiteTeam);
   document.querySelector("[data-remote-red-total]").textContent = currentState.redTotal;
   document.querySelector("[data-remote-white-total]").textContent = currentState.whiteTotal;
+  const showSelection = shouldShowBallSelection();
   document.querySelectorAll("[data-ball]").forEach((button) => {
-    button.classList.toggle("active", Number(button.dataset.ball) === currentState.selectedBall);
+    button.classList.toggle("active", showSelection && Number(button.dataset.ball) === currentState.selectedBall);
   });
+  renderRecentLog("[data-remote-recent-log]", 6);
 }
 
 function historyKey(entry) {
@@ -481,6 +676,16 @@ function historyEntryAgeSeconds(entry) {
 
 function isFreshTimerWarning(entry) {
   return historyEntryAgeSeconds(entry) <= 8;
+}
+
+function latestSelectEntry() {
+  return [...(currentState?.history || [])].reverse().find((entry) => entry.action === "select");
+}
+
+function shouldShowBallSelection() {
+  const latest = latestSelectEntry();
+  if (!latest) return false;
+  return latest.ball === currentState?.selectedBall && historyEntryAgeSeconds(latest) <= 30;
 }
 
 function clearScoreboardCountdownOverlay() {
@@ -555,11 +760,89 @@ function renderSettings() {
   if (!form) return;
   if (settingsHydrated) return;
   form.title.value = currentState.title;
-  form.redTeam.value = currentState.redTeam;
-  form.whiteTeam.value = currentState.whiteTeam;
   form.durationMinutes.value = Math.round(currentState.durationSeconds / 60);
+  if (form.voiceProfile) form.voiceProfile.value = currentState.voiceProfile || "female";
+  if (form.weatherLocation) form.weatherLocation.value = currentState.weatherLocation || "";
+  if (form.weatherLatitude) form.weatherLatitude.value = currentState.weatherLatitude ?? "";
+  if (form.weatherLongitude) form.weatherLongitude.value = currentState.weatherLongitude ?? "";
   form.allowScoringWhenPaused.checked = currentState.allowScoringWhenPaused;
   settingsHydrated = true;
+}
+
+function renderKeyBindings() {
+  const list = document.querySelector("[data-key-binding-list]");
+  if (!list) return;
+  list.replaceChildren();
+  keyBindingSpecs.forEach((spec) => {
+    const row = document.createElement("div");
+    row.className = "key-binding-row";
+
+    const name = document.createElement("span");
+    name.className = "key-binding-name";
+    name.textContent = spec.name;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "key-binding-button";
+    button.dataset.action = "capture-key-binding";
+    button.dataset.bindingAction = spec.id;
+    const binding = bindingForSpec(spec);
+    button.textContent = keyCaptureAction === spec.id ? "请按键..." : (binding.label || binding.code || binding.key || "未设置");
+
+    row.append(name, button);
+    list.appendChild(row);
+  });
+}
+
+function clearWeatherResults(form) {
+  const results = form?.querySelector("[data-weather-search-results]");
+  if (results) results.replaceChildren();
+}
+
+async function searchWeatherLocation(input) {
+  const form = input.closest("[data-settings-form]");
+  const results = form?.querySelector("[data-weather-search-results]");
+  if (!form || !results) return;
+  const query = input.value.trim();
+  form.weatherLatitude.value = "";
+  form.weatherLongitude.value = "";
+  results.replaceChildren();
+  if (query.length < 2) return;
+
+  const data = await api.weatherSearch(query);
+  if (!data.ok || !data.results?.length) {
+    const empty = document.createElement("div");
+    empty.className = "weather-search-empty";
+    empty.textContent = "没有找到位置，可试试拼音、上级城市，或清空使用自动定位";
+    results.appendChild(empty);
+    return;
+  }
+
+  data.results.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "weather-search-option";
+    button.dataset.action = "select-weather-location";
+    button.dataset.name = item.name;
+    button.dataset.latitude = item.latitude;
+    button.dataset.longitude = item.longitude;
+    button.textContent = item.name;
+    results.appendChild(button);
+  });
+}
+
+function scheduleWeatherSearch(input) {
+  if (weatherSearchTimer) window.clearTimeout(weatherSearchTimer);
+  weatherSearchTimer = window.setTimeout(() => searchWeatherLocation(input), 400);
+}
+
+function selectWeatherLocation(target) {
+  const form = target.closest("[data-settings-form]");
+  if (!form) return;
+  form.weatherLocation.value = target.dataset.name || "";
+  form.weatherLatitude.value = target.dataset.latitude || "";
+  form.weatherLongitude.value = target.dataset.longitude || "";
+  clearWeatherResults(form);
 }
 
 async function refresh() {
@@ -571,6 +854,7 @@ async function refresh() {
   if (document.querySelector("[data-scoreboard]")) renderScoreboard();
   if (document.querySelector("[data-remote]")) renderRemote();
   if (document.querySelector("[data-settings-form]")) renderSettings();
+  renderKeyBindings();
   autoSpeakServerEvents();
 }
 
@@ -579,6 +863,7 @@ async function sendAction(payload, shouldSpeak = true) {
   currentState = result.state;
   if (document.querySelector("[data-scoreboard]")) renderScoreboard();
   if (document.querySelector("[data-remote]")) renderRemote();
+  renderKeyBindings();
   if (shouldSpeak) {
     if (payload.action === "toggle_timer") {
       speakWithAlert(result.message);
@@ -590,16 +875,27 @@ async function sendAction(payload, shouldSpeak = true) {
 }
 
 function openFinishDialog() {
+  if (finishDialogOpen) {
+    closeFinishDialog();
+    return;
+  }
   finishDialogOpen = true;
   finishPassword = "";
+  finishVerifyInFlight = false;
   document.querySelector("[data-finish-dialog]")?.classList.add("open");
   document.querySelector("[data-finish-password]").textContent = "";
+  const result = document.querySelector("[data-finish-result]");
+  if (result) {
+    result.textContent = "";
+    result.classList.remove("error");
+  }
   playFinishPromptSound(() => speak("请输入密码结束比赛"));
 }
 
 function closeFinishDialog() {
   finishDialogOpen = false;
   finishPassword = "";
+  finishVerifyInFlight = false;
   document.querySelector("[data-finish-dialog]")?.classList.remove("open");
 }
 
@@ -614,6 +910,119 @@ function closeSettingsDialog() {
   settingsDialogOpen = false;
   settingsPassword = "";
   document.querySelector("[data-settings-dialog]")?.classList.remove("open");
+}
+
+function openRemoteSettingsDialog() {
+  remoteSettingsDialogOpen = true;
+  keyCaptureAction = "";
+  settingsHydrated = false;
+  document.querySelector("[data-remote-settings-dialog]")?.classList.add("open");
+  renderSettings();
+  renderKeyBindings();
+}
+
+function closeRemoteSettingsDialog() {
+  remoteSettingsDialogOpen = false;
+  keyCaptureAction = "";
+  document.querySelector("[data-remote-settings-dialog]")?.classList.remove("open");
+  renderKeyBindings();
+}
+
+function collectSettingsPayload(form) {
+  return {
+    action: "update_settings",
+    title: form.title.value,
+    durationMinutes: form.durationMinutes.value,
+    voiceProfile: form.voiceProfile?.value || "female",
+    weatherLocation: form.weatherLocation?.value || "",
+    weatherLatitude: form.weatherLatitude?.value || "",
+    weatherLongitude: form.weatherLongitude?.value || "",
+    allowScoringWhenPaused: form.allowScoringWhenPaused.checked,
+    finishPassword: form.finishPassword.value,
+    settingsPassword: form.settingsPassword.value,
+  };
+}
+
+function validateWeatherLocation(form) {
+  const location = form.weatherLocation?.value.trim() || "";
+  const latitude = form.weatherLatitude?.value.trim() || "";
+  const longitude = form.weatherLongitude?.value.trim() || "";
+  if (!location || (latitude && longitude)) return true;
+
+  const resultEl = document.querySelector("[data-save-result]");
+  if (resultEl) {
+    resultEl.textContent = "请先从天气搜索结果中选择位置，或清空位置使用自动定位";
+    resultEl.classList.add("error");
+  }
+  form.weatherLocation?.focus();
+  return false;
+}
+
+function openSettingsSavePasswordDialog(payload) {
+  pendingSettingsPayload = payload;
+  settingsSavePasswordDialogOpen = true;
+  const dialog = document.querySelector("[data-settings-save-password-dialog]");
+  const input = document.querySelector("[data-settings-save-password-input]");
+  const result = document.querySelector("[data-settings-save-password-result]");
+  if (input) input.value = "";
+  if (result) {
+    result.textContent = "";
+    result.classList.remove("error");
+  }
+  dialog?.classList.add("open");
+  window.setTimeout(() => input?.focus(), 0);
+}
+
+function closeSettingsSavePasswordDialog() {
+  settingsSavePasswordDialogOpen = false;
+  pendingSettingsPayload = null;
+  settingsSaveInFlight = false;
+  document.querySelector("[data-settings-save-password-dialog]")?.classList.remove("open");
+}
+
+async function trySavePendingSettings() {
+  const input = document.querySelector("[data-settings-save-password-input]");
+  const resultEl = document.querySelector("[data-settings-save-password-result]");
+  const password = input?.value || "";
+  if (!pendingSettingsPayload || settingsSaveInFlight || !password) return;
+  settingsSaveInFlight = true;
+  if (resultEl) {
+    resultEl.textContent = "正在检查...";
+    resultEl.classList.remove("error");
+  }
+  try {
+    const result = await sendAction({ ...pendingSettingsPayload, password }, false);
+    if (result.ok) {
+      const saveResult = document.querySelector("[data-save-result]");
+      if (saveResult) {
+        saveResult.textContent = result.message;
+        saveResult.classList.remove("error");
+      }
+      settingsHydrated = false;
+      closeSettingsSavePasswordDialog();
+    } else if (resultEl) {
+      resultEl.textContent = "密码错误";
+      resultEl.classList.add("error");
+    }
+  } finally {
+    settingsSaveInFlight = false;
+  }
+}
+
+async function saveKeyBindingFromEvent(event) {
+  const spec = keyBindingSpecById[keyCaptureAction];
+  if (!spec) return;
+  const bindingAction = spec.id;
+  keyCaptureAction = "";
+  const result = await sendAction({
+    action: "update_key_binding",
+    bindingAction,
+    code: event.code || "",
+    key: event.key || "",
+    label: keyLabelFromEvent(event),
+  }, false);
+  currentState = result.state;
+  renderKeyBindings();
 }
 
 function openSwapTeamDialog() {
@@ -653,14 +1062,59 @@ function saveEditedTeamName() {
   closeEditTeamDialog();
 }
 
+function openEditTitleDialog() {
+  editTitleDialogOpen = true;
+  const dialog = document.querySelector("[data-edit-title-dialog]");
+  const input = document.querySelector("[data-edit-title-input]");
+  if (input) input.value = currentState?.title || "";
+  dialog?.classList.add("open");
+  window.setTimeout(() => input?.focus(), 0);
+}
+
+function closeEditTitleDialog() {
+  editTitleDialogOpen = false;
+  document.querySelector("[data-edit-title-dialog]")?.classList.remove("open");
+}
+
+function saveEditedTitle() {
+  const input = document.querySelector("[data-edit-title-input]");
+  const title = input ? input.value.trim() : "";
+  sendAction({ action: "set_title", title });
+  closeEditTitleDialog();
+}
+
 function confirmSwapTeam() {
   sendAction({ action: "swap_team_names" });
   closeSwapTeamDialog();
 }
 
-function confirmFinish() {
-  sendAction({ action: "finish", password: finishPassword });
-  closeFinishDialog();
+async function tryFinishWithPassword() {
+  if (finishVerifyInFlight || finishPassword.length < 4) return;
+  finishVerifyInFlight = true;
+  const resultEl = document.querySelector("[data-finish-result]");
+  if (resultEl) {
+    resultEl.textContent = "正在检查...";
+    resultEl.classList.remove("error");
+  }
+  try {
+    const result = await sendAction({ action: "finish", password: finishPassword }, false);
+    if (result.ok) {
+      speak(result.message);
+      closeFinishDialog();
+    } else {
+      finishVerifyInFlight = false;
+      if (resultEl) {
+        resultEl.textContent = "密码错误";
+        resultEl.classList.add("error");
+      }
+    }
+  } catch (error) {
+    finishVerifyInFlight = false;
+    if (resultEl) {
+      resultEl.textContent = "校验失败";
+      resultEl.classList.add("error");
+    }
+  }
 }
 
 function isEditableTarget(target) {
@@ -681,14 +1135,30 @@ function handlePasswordKey(event) {
     if (event.key === "Escape") closeEditTeamDialog();
     return event.key === "Enter" || event.code === "NumpadEnter" || event.key === "Escape";
   }
+  if (editTitleDialogOpen) {
+    if (event.key === "Enter" || event.code === "NumpadEnter") saveEditedTitle();
+    if (event.key === "Escape") closeEditTitleDialog();
+    return event.key === "Enter" || event.code === "NumpadEnter" || event.key === "Escape";
+  }
+  if (settingsSavePasswordDialogOpen) {
+    if (event.key === "Escape") closeSettingsSavePasswordDialog();
+    return event.key === "Escape";
+  }
   if (finishDialogOpen) {
-    if (event.key === "*") return closeFinishDialog();
+    if (eventMatchesBindingSpec(event, keyBindingSpecById.finish_dialog)) return closeFinishDialog();
+    if (eventMatchesBindingSpec(event, keyBindingSpecById.finish_cancel)) return closeFinishDialog();
     if (digit && finishPassword.length < 4) finishPassword += digit;
-    if (event.key === "Backspace") finishPassword = finishPassword.slice(0, -1);
-    document.querySelector("[data-finish-password]").textContent = "●".repeat(finishPassword.length);
-    if (event.key === "Enter" || event.code === "NumpadEnter") {
-      confirmFinish();
+    if (event.key === "Backspace") {
+      finishPassword = finishPassword.slice(0, -1);
+      finishVerifyInFlight = false;
+      const result = document.querySelector("[data-finish-result]");
+      if (result) {
+        result.textContent = "";
+        result.classList.remove("error");
+      }
     }
+    document.querySelector("[data-finish-password]").textContent = "●".repeat(finishPassword.length);
+    if (finishPassword.length >= 4) tryFinishWithPassword();
     return true;
   }
   if (settingsDialogOpen) {
@@ -705,6 +1175,28 @@ function handlePasswordKey(event) {
 }
 
 document.addEventListener("keydown", (event) => {
+  if (keyCaptureAction) {
+    event.preventDefault();
+    saveKeyBindingFromEvent(event);
+    return;
+  }
+  if (settingsSavePasswordDialogOpen && isEditableTarget(event.target)) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeSettingsSavePasswordDialog();
+    }
+    return;
+  }
+  if (editTitleDialogOpen && isEditableTarget(event.target)) {
+    if (event.key === "Enter" || event.code === "NumpadEnter") {
+      event.preventDefault();
+      saveEditedTitle();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeEditTitleDialog();
+    }
+    return;
+  }
   if (editTeamDialogOpen && isEditableTarget(event.target)) {
     if (event.key === "Enter" || event.code === "NumpadEnter") {
       event.preventDefault();
@@ -715,40 +1207,82 @@ document.addEventListener("keydown", (event) => {
     }
     return;
   }
-  if (!finishDialogOpen && !settingsDialogOpen && !swapTeamDialogOpen && !editTeamDialogOpen && isEditableTarget(event.target)) {
+  if (remoteSettingsDialogOpen && event.key === "Escape" && !isEditableTarget(event.target)) {
+    event.preventDefault();
+    closeRemoteSettingsDialog();
     return;
   }
-  if (["Backspace", "Tab", "Enter", "+", "-", "*", "/"].includes(event.key) || event.code in keyMap) {
+  if (remoteSettingsDialogOpen && isEditableTarget(event.target)) {
+    return;
+  }
+  if (remoteSettingsDialogOpen) {
+    event.preventDefault();
+    return;
+  }
+  if (!finishDialogOpen && !settingsDialogOpen && !swapTeamDialogOpen && !editTeamDialogOpen && !editTitleDialogOpen && !remoteSettingsDialogOpen && isEditableTarget(event.target)) {
+    return;
+  }
+  if (["Backspace", "Tab", "Enter", "+", "-", "*", "/"].includes(event.key) || isMappedKeyboardEvent(event)) {
     event.preventDefault();
   }
   if (handlePasswordKey(event)) return;
-  if (event.key === "*") return openFinishDialog();
-  if (event.key === "/") return openSettingsDialog();
-  const mapped = keyMap[event.code] || keyMap[event.key];
-  if (mapped) sendAction(mapped);
+  const mapped = keyboardActionForEvent(event);
+  if (mapped) runKeyboardAction(mapped);
 });
 
 document.addEventListener("click", (event) => {
   const target = event.target.closest("[data-action]");
   if (!target) return;
   const action = target.dataset.action;
+  if (shouldIgnoreGuardedAction(action)) {
+    event.preventDefault();
+    return;
+  }
   if (action === "finish-dialog") return openFinishDialog();
   if (action === "ten-second-countdown") return startTenSecondCountdown();
+  if (action === "edit-title-dialog") return openEditTitleDialog();
   if (action === "edit-team-dialog") return openEditTeamDialog(target.dataset.team);
   if (action === "swap-team-dialog") return openSwapTeamDialog();
   if (action === "settings-dialog") return openSettingsDialog();
+  if (action === "remote-settings-dialog") return openRemoteSettingsDialog();
   if (action === "close-finish") return closeFinishDialog();
   if (action === "close-settings") return closeSettingsDialog();
+  if (action === "close-remote-settings") return closeRemoteSettingsDialog();
+  if (action === "close-settings-save-password") return closeSettingsSavePasswordDialog();
   if (action === "close-swap-team") return closeSwapTeamDialog();
   if (action === "close-edit-team") return closeEditTeamDialog();
-  if (action === "confirm-finish") return confirmFinish();
+  if (action === "close-edit-title") return closeEditTitleDialog();
+  if (action === "select-weather-location") return selectWeatherLocation(target);
+  if (action === "capture-key-binding") {
+    keyCaptureAction = target.dataset.bindingAction || "";
+    renderKeyBindings();
+    return;
+  }
   if (action === "confirm-swap-team") return confirmSwapTeam();
+  if (action === "toggle_timer" && currentState?.timeExpired && !currentState?.running) return;
   const payload = { action };
   if (target.dataset.ball) payload.ball = Number(target.dataset.ball);
   sendAction(payload);
 });
 
+document.addEventListener("input", (event) => {
+  const weatherInput = event.target.closest("[data-weather-location-input]");
+  if (weatherInput) {
+    scheduleWeatherSearch(weatherInput);
+    return;
+  }
+  if (!event.target.closest("[data-settings-save-password-input]")) return;
+  trySavePendingSettings();
+});
+
 document.addEventListener("submit", async (event) => {
+  const editTitleForm = event.target.closest("[data-edit-title-form]");
+  if (editTitleForm) {
+    event.preventDefault();
+    saveEditedTitle();
+    return;
+  }
+
   const editTeamForm = event.target.closest("[data-edit-team-form]");
   if (editTeamForm) {
     event.preventDefault();
@@ -759,28 +1293,13 @@ document.addEventListener("submit", async (event) => {
   const form = event.target.closest("[data-settings-form]");
   if (!form) return;
   event.preventDefault();
-  const params = new URLSearchParams(window.location.search);
   const resultEl = document.querySelector("[data-save-result]");
-  const submitButton = form.querySelector("button[type='submit']");
-  if (resultEl) resultEl.textContent = "正在保存...";
-  if (submitButton) submitButton.disabled = true;
-  const result = await sendAction({
-    action: "update_settings",
-    password: params.get("password") || form.password.value,
-    title: form.title.value,
-    redTeam: form.redTeam.value,
-    whiteTeam: form.whiteTeam.value,
-    durationMinutes: form.durationMinutes.value,
-    allowScoringWhenPaused: form.allowScoringWhenPaused.checked,
-    finishPassword: form.finishPassword.value,
-    settingsPassword: form.settingsPassword.value,
-  }, false);
   if (resultEl) {
-    resultEl.textContent = result.message;
-    resultEl.classList.toggle("error", !result.ok);
+    resultEl.textContent = "";
+    resultEl.classList.remove("error");
   }
-  if (submitButton) submitButton.disabled = false;
-  settingsHydrated = false;
+  if (!validateWeatherLocation(form)) return;
+  openSettingsSavePasswordDialog(collectSettingsPayload(form));
 });
 
 refresh();

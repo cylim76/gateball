@@ -8,12 +8,18 @@
   </head>
   <body class="remote-page" data-remote>
     <main class="remote-shell">
-      <h1 class="remote-title" data-remote-title>红星村老年会门球比赛</h1>
+      <header class="remote-header">
+        <button class="remote-title remote-title-button" type="button" data-action="edit-title-dialog" data-remote-title>红星村老年会门球比赛</button>
+        <button class="remote-settings-trigger" type="button" data-action="remote-settings-dialog" aria-label="设置">⚙</button>
+      </header>
       <section class="remote-status">
         <button class="remote-status-team red-status-team" data-action="edit-team-dialog" data-team="red">
           <span data-remote-status-red-team>红队</span>
         </button>
-        <span class="remote-status-time">剩余时间：<span data-remote-time>30:00</span></span>
+        <span class="remote-status-time">
+          <span data-remote-state>暂停/待开始</span>
+          <span data-remote-time>30:00</span>
+        </span>
         <button class="remote-status-team white-status-team" data-action="edit-team-dialog" data-team="white">
           <span data-remote-status-white-team>白队</span>
         </button>
@@ -29,12 +35,10 @@
         </div>
         <div class="remote-score-panel">
           <div class="remote-total red-total-mobile">
-            <span data-remote-red-team>红队</span>
             <strong data-remote-red-total>0</strong>
           </div>
           <div class="remote-total white-total-mobile">
             <strong data-remote-white-total>0</strong>
-            <span data-remote-white-team>白队</span>
           </div>
           <button class="timer-action" data-action="toggle_timer">开始</button>
         </div>
@@ -49,10 +53,13 @@
 
       <section class="remote-actions">
         <button class="undo-action" data-action="undo">- 撤销</button>
-        <button class="score-action" data-action="advance">得分</button>
+        <button class="score-action" data-action="advance">+ 得分</button>
         <button class="swap-team-action" data-action="swap_team_names">队名更换</button>
         <button class="countdown-action compact" data-action="ten-second-countdown">10秒倒计时</button>
         <button class="wide danger" data-action="finish-dialog">结束比赛</button>
+      </section>
+      <section class="remote-recent-log recent-log" data-remote-recent-log>
+        <div class="log-line"><span class="log-main"><span class="log-time">[30:00]</span> 等待开始</span></div>
       </section>
     </main>
 
@@ -60,8 +67,8 @@
       <div class="dialog-box">
         <h2 class="dialog-title">结束比赛密码</h2>
         <div class="password-dots" data-finish-password></div>
+        <strong class="dialog-result" data-finish-result></strong>
         <div class="dialog-actions">
-          <button class="finish-confirm" data-action="confirm-finish">确认</button>
           <button class="finish-cancel" data-action="close-finish">取消</button>
         </div>
       </div>
@@ -86,6 +93,84 @@
           <button class="finish-cancel" type="button" data-action="close-edit-team">取消</button>
         </div>
       </form>
+    </div>
+
+    <div class="dialog" data-edit-title-dialog>
+      <form class="dialog-box" data-edit-title-form>
+        <h2 class="dialog-title">修改比赛标题</h2>
+        <input class="dialog-input" name="matchTitle" data-edit-title-input autocomplete="off" maxlength="40">
+        <div class="dialog-actions">
+          <button class="finish-confirm" type="submit">保存</button>
+          <button class="finish-cancel" type="button" data-action="close-edit-title">取消</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="dialog" data-remote-settings-dialog>
+      <div class="dialog-box remote-settings-box">
+        <div class="settings-modal-head">
+          <h2 class="dialog-title">设置</h2>
+          <button class="settings-close" type="button" data-action="close-remote-settings" aria-label="关闭">×</button>
+        </div>
+        <form class="settings-form" data-settings-form>
+          <label>
+            比赛标题
+            <input name="title" autocomplete="off">
+          </label>
+          <label>
+            比赛时长（分钟）
+            <input name="durationMinutes" type="number" min="1" max="120">
+          </label>
+          <label>
+            播报声音
+            <select name="voiceProfile">
+              <option value="female">女声</option>
+              <option value="male">男声</option>
+            </select>
+          </label>
+          <label>
+            天气位置
+            <input name="weatherLocation" data-weather-location-input autocomplete="off" placeholder="输入城市搜索，留空自动定位">
+            <input name="weatherLatitude" type="hidden">
+            <input name="weatherLongitude" type="hidden">
+            <div class="weather-search-results" data-weather-search-results></div>
+          </label>
+          <label class="check">
+            <input name="allowScoringWhenPaused" type="checkbox">
+            暂停期间允许计分
+          </label>
+          <label>
+            新结束密码
+            <input name="finishPassword" inputmode="numeric" autocomplete="off" placeholder="不改请留空">
+          </label>
+          <label>
+            新设置密码
+            <input name="settingsPassword" inputmode="numeric" autocomplete="off" placeholder="不改请留空">
+          </label>
+          <button class="primary" type="submit">保存设置</button>
+          <strong data-save-result></strong>
+        </form>
+
+        <section class="key-binding-panel">
+          <h3>按键映射</h3>
+          <div class="key-binding-head">
+            <span>名称</span>
+            <span>按键</span>
+          </div>
+          <div class="key-binding-list" data-key-binding-list></div>
+        </section>
+      </div>
+    </div>
+
+    <div class="dialog" data-settings-save-password-dialog>
+      <div class="dialog-box">
+        <h2 class="dialog-title">输入设置密码</h2>
+        <input class="dialog-input" data-settings-save-password-input inputmode="numeric" autocomplete="off" maxlength="8">
+        <strong class="dialog-result" data-settings-save-password-result></strong>
+        <div class="dialog-actions">
+          <button class="finish-cancel" type="button" data-action="close-settings-save-password">取消</button>
+        </div>
+      </div>
     </div>
 
     <script src="/app.js"></script>

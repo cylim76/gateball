@@ -57,10 +57,49 @@ body.scoreboard {
   border: 7px solid transparent;
 }
 
-.title {
-  margin: 0 0 12px;
+.board-header {
+  position: relative;
+  min-height: clamp(48px, 4.9vw, 76px);
+}
+
+.header-info {
+  position: absolute;
+  bottom: 8px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: .6em;
+  color: #e8e8e8;
+  font-family: var(--display-number-font);
+  font-size: clamp(18px, 1.8vw, 32px);
+  font-weight: 900;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  white-space: nowrap;
+}
+
+.header-left {
+  left: 0;
+}
+
+.header-right {
+  right: 0;
+}
+
+.weather-chip {
   color: var(--gold);
-  font-size: clamp(28px, 3.6vw, 60px);
+}
+
+.weather-chip[hidden] {
+  display: none;
+}
+
+.title {
+  margin: 0 0 18px;
+  padding: 0 clamp(170px, 22vw, 360px);
+  color: var(--gold);
+  font-size: clamp(34px, 4.4vw, 76px);
   line-height: 1.05;
   text-align: center;
   font-weight: 900;
@@ -208,6 +247,16 @@ body.scoreboard {
   text-align: center;
 }
 
+.timer.is-waiting .time {
+  color: #f7f7f7;
+  animation: none;
+}
+
+.timer.is-running .time {
+  color: var(--gold);
+  animation: none;
+}
+
 .timer.is-paused .time {
   color: #ff1a22;
   animation: timer-blink 1s steps(2, start) infinite;
@@ -219,7 +268,9 @@ body.scoreboard {
 
 .timer-meta {
   display: flex;
-  gap: 24px;
+  justify-content: center;
+  align-items: baseline;
+  gap: clamp(12px, 1.6vw, 24px);
   color: #ddd;
   font-size: clamp(14px, 1.4vw, 22px);
 }
@@ -362,10 +413,7 @@ tr.selected {
 }
 
 .footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: end;
-  gap: 20px;
+  display: block;
   margin-top: 8px;
   padding-top: 6px;
   border-top: 2px solid #b00006;
@@ -377,15 +425,14 @@ tr.selected {
   display: grid;
   gap: 1px;
   min-width: 0;
-  max-width: 70vw;
+  max-width: min(82vw, 1120px);
   line-height: 1.08;
 }
 
 .log-line {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px;
+  display: flex;
   align-items: baseline;
+  min-width: 0;
 }
 
 .log-time {
@@ -401,13 +448,12 @@ tr.selected {
 }
 
 .log-clock {
+  flex: 0 0 auto;
+  margin-left: 18px;
   color: #8d8d8d;
   font-size: .72em;
   font-family: Consolas, "Courier New", monospace;
-}
-
-#clock {
-  flex: 0 0 auto;
+  text-align: right;
 }
 
 .dialog {
@@ -443,6 +489,19 @@ tr.selected {
   padding: 10px;
   border: 1px solid #777;
   font-size: 36px;
+}
+
+.dialog-result {
+  display: block;
+  min-height: 22px;
+  margin-top: 10px;
+  color: var(--gold);
+  font-size: 16px;
+  text-align: center;
+}
+
+.dialog-result.error {
+  color: #ff5964;
 }
 
 .dialog-actions {
@@ -492,6 +551,40 @@ button {
   text-align: center;
 }
 
+.remote-header {
+  position: relative;
+}
+
+.remote-header .remote-title {
+  padding: 0 42px;
+}
+
+.remote-title-button {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.remote-settings-trigger {
+  position: absolute;
+  top: -4px;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  min-height: 40px;
+  border-radius: 50%;
+  border: 1px solid #555;
+  color: var(--gold);
+  background: #101010;
+  font-size: 24px;
+  line-height: 1;
+}
+
 .remote-status {
   display: grid;
   grid-template-columns: minmax(84px, 1fr) minmax(104px, .92fr) minmax(84px, 1fr);
@@ -511,6 +604,38 @@ button {
   min-height: 46px;
   text-align: center;
   font-weight: 900;
+}
+
+.remote-status-time [data-remote-state] {
+  font-size: clamp(13px, 3.4vw, 17px);
+  line-height: 1;
+}
+
+.remote-status-time [data-remote-time] {
+  font-family: var(--display-number-font);
+  font-size: clamp(22px, 5vw, 30px);
+  font-weight: 900;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.remote-status-time.is-waiting [data-remote-time] {
+  color: #f7f7f7;
+  animation: none;
+}
+
+.remote-status-time.is-running [data-remote-time] {
+  color: var(--gold);
+  animation: none;
+}
+
+.remote-status-time.is-paused [data-remote-time] {
+  color: #ff1a22;
+  animation: timer-blink 1s steps(2, start) infinite;
+}
+
+.remote-status-time.is-expired [data-remote-time] {
+  color: #ff1a22;
 }
 
 .remote-status-team {
@@ -665,16 +790,11 @@ button {
 
 .remote-total {
   display: grid;
-  grid-template-rows: 34px 1fr;
   place-items: center;
   min-height: 112px;
   border-radius: 8px;
   border: 2px solid currentColor;
   background: #070707;
-}
-
-.white-total-mobile {
-  grid-template-rows: 1fr 34px;
 }
 
 .remote-total > span {
@@ -739,16 +859,18 @@ button {
 
 .remote-total strong {
   font-family: var(--heavy-number-font);
-  font-size: clamp(44px, 12vw, 66px);
+  font-size: clamp(58px, 16vw, 86px);
   line-height: 1;
 }
 
 .red-total-mobile {
   color: #ff1018;
+  transform: translateX(-20%);
 }
 
 .white-total-mobile {
   color: #f3f3f3;
+  transform: translateX(20%);
 }
 
 @keyframes team-pan {
@@ -776,10 +898,45 @@ button {
 
 .remote-actions button {
   min-height: 52px;
+  border: 1px solid rgba(255, 255, 255, .32);
+  box-shadow:
+    inset 0 3px 6px rgba(255,255,255,.24),
+    inset 0 -8px 12px rgba(0,0,0,.2),
+    0 5px 11px rgba(0,0,0,.42);
+  text-shadow: 0 1px 0 rgba(255,255,255,.22);
+  transition: transform .08s ease, box-shadow .08s ease, filter .08s ease;
+}
+
+.remote-actions button:active {
+  transform: translateY(2px) scale(.985);
+  box-shadow:
+    inset 0 2px 5px rgba(255,255,255,.16),
+    inset 0 -4px 8px rgba(0,0,0,.28),
+    0 2px 6px rgba(0,0,0,.42);
+  filter: brightness(.94);
 }
 
 .remote-actions .wide {
   grid-column: span 2;
+}
+
+.remote-recent-log {
+  max-width: none;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid #333;
+  border-bottom: 1px solid #333;
+  color: #e8e8e8;
+  font-size: clamp(13px, 3.3vw, 16px);
+}
+
+.remote-recent-log .log-line {
+  min-height: 20px;
+}
+
+.remote-recent-log .log-clock {
+  margin-left: 10px;
+  font-size: .72em;
 }
 
 .timer-action {
@@ -809,6 +966,17 @@ button {
     inset 0 -7px 10px rgba(0,0,0,.24),
     0 3px 8px rgba(0,0,0,.42);
   filter: brightness(.96);
+}
+
+.timer-action:disabled,
+.timer-action.disabled {
+  color: #777;
+  border-color: #555;
+  background: #2f2f2f;
+  box-shadow: none;
+  text-shadow: none;
+  cursor: not-allowed;
+  filter: grayscale(1);
 }
 
 .danger {
@@ -892,7 +1060,8 @@ button {
   font-size: 16px;
 }
 
-.settings-form input {
+.settings-form input,
+.settings-form select {
   width: 100%;
   min-height: 44px;
   padding: 8px 10px;
@@ -915,4 +1084,103 @@ button {
 
 .settings-form button {
   min-height: 52px;
+}
+
+.weather-search-results {
+  display: grid;
+  gap: 6px;
+}
+
+.weather-search-option,
+.weather-search-empty {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: white;
+  background: #151515;
+  font-size: 15px;
+  text-align: left;
+}
+
+.weather-search-empty {
+  color: #999;
+}
+
+.remote-settings-box {
+  width: min(680px, calc(100vw - 24px));
+  max-height: calc(100vh - 28px);
+  overflow: auto;
+}
+
+.settings-modal-head {
+  display: grid;
+  grid-template-columns: 1fr 44px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.settings-modal-head .dialog-title {
+  margin: 0;
+}
+
+.settings-close {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  border-radius: 50%;
+  color: #111;
+  background: #f3f3f3;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.key-binding-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #333;
+}
+
+.key-binding-panel h2,
+.key-binding-panel h3 {
+  margin: 0;
+  color: var(--gold);
+  font-size: 20px;
+}
+
+.key-binding-head,
+.key-binding-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(128px, .86fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.key-binding-head {
+  color: #aaa;
+  font-size: 14px;
+}
+
+.key-binding-row {
+  min-height: 46px;
+}
+
+.key-binding-name {
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.key-binding-button {
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid #555;
+  border-radius: 6px;
+  color: white;
+  background: #111;
+  font-size: 16px;
+  font-weight: 800;
 }
