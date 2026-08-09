@@ -556,6 +556,8 @@ class Handler(BaseHTTPRequestHandler):
             self.serve_file(STATIC_DIR / "results.html")
         elif path == "/set":
             self.serve_file(STATIC_DIR / "settings.html")
+        elif path == "/api/events":
+            self.send_events()
         elif path == "/api/state":
             self.send_json(store.snapshot())
         elif path == "/api/results/month":
@@ -613,6 +615,49 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
+
+    def send_events(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+        last_key: tuple | None = None
+        last_heartbeat = time.time()
+        while True:
+            with store.lock:
+                snapshot = store.snapshot()
+            event_key = (
+                snapshot.get("lastUpdated"),
+                snapshot.get("remainingSeconds"),
+                snapshot.get("running"),
+                snapshot.get("timeExpired"),
+                snapshot.get("selectedBall"),
+                snapshot.get("selectedBallAt"),
+                snapshot.get("redTotal"),
+                snapshot.get("whiteTotal"),
+                snapshot.get("tenSecondCountdownId"),
+            )
+            now = time.time()
+            should_send = event_key != last_key
+            should_heartbeat = now - last_heartbeat >= 15
+            if should_send:
+                data = json.dumps(snapshot, ensure_ascii=False)
+                try:
+                    self.wfile.write(f"data: {data}\n\n".encode("utf-8"))
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    return
+                last_key = event_key
+                last_heartbeat = now
+            elif should_heartbeat:
+                try:
+                    self.wfile.write(b": keep-alive\n\n")
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    return
+                last_heartbeat = now
+            time.sleep(0.2)
 
     def log_message(self, format: str, *args: object) -> None:
         return

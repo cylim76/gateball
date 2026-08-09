@@ -86,6 +86,8 @@ let lastSpokenHistoryKey = "";
 let weatherSearchTimer = null;
 let wakeLockSentinel = null;
 let wakeLockWanted = false;
+let stateEventSource = null;
+let refreshTimer = null;
 let resultsYear = new Date().getFullYear();
 let resultsMonth = new Date().getMonth() + 1;
 let selectedResultsDate = "";
@@ -1133,25 +1135,59 @@ function closeResultDetail() {
   document.querySelector("[data-result-detail-dialog]")?.classList.remove("open");
 }
 
-async function refresh() {
-  try {
-    currentState = await api.state();
-  } catch (error) {
-    return;
-  }
+function applyState(state, options = {}) {
+  currentState = state;
   if (document.querySelector("[data-scoreboard]")) renderScoreboard();
   if (document.querySelector("[data-remote]")) renderRemote();
   if (document.querySelector("[data-settings-form]")) renderSettings();
   renderKeyBindings();
-  autoSpeakServerEvents();
+  if (options.speakEvents !== false) autoSpeakServerEvents();
+}
+
+async function refresh() {
+  try {
+    applyState(await api.state());
+  } catch (error) {
+    return;
+  }
+}
+
+function startPolling() {
+  if (refreshTimer) return;
+  refresh();
+  refreshTimer = window.setInterval(refresh, 1000);
+}
+
+function stopPolling() {
+  if (!refreshTimer) return;
+  window.clearInterval(refreshTimer);
+  refreshTimer = null;
+}
+
+function startStateEvents() {
+  if (document.querySelector("[data-results]")) return;
+  if (!("EventSource" in window)) {
+    startPolling();
+    return;
+  }
+  refresh();
+  stateEventSource = new EventSource("/api/events");
+  stateEventSource.onmessage = (event) => {
+    try {
+      applyState(JSON.parse(event.data));
+      stopPolling();
+    } catch (error) {
+      console.warn("State event parse failed", error);
+    }
+  };
+  stateEventSource.onerror = () => {
+    startPolling();
+  };
 }
 
 async function sendAction(payload, shouldSpeak = true) {
   const result = await api.action(payload);
-  currentState = result.state;
-  if (document.querySelector("[data-scoreboard]")) renderScoreboard();
-  if (document.querySelector("[data-remote]")) renderRemote();
-  renderKeyBindings();
+  applyState(result.state, { speakEvents: false });
   if (shouldSpeak) {
     if (payload.action === "toggle_timer") {
       speakWithAlert(result.message);
@@ -1649,7 +1685,4 @@ document.addEventListener("submit", async (event) => {
 
 initScreenWakeLock();
 initResultsPage();
-if (!document.querySelector("[data-results]")) {
-  refresh();
-  setInterval(refresh, 1000);
-}
+startStateEvents();
