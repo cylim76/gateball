@@ -153,14 +153,14 @@ function setTeamName(selector, name) {
 function speak(text) {
   if (!text) return;
   unlockAudio();
-  beep();
+  playDing();
   if (!("speechSynthesis" in window)) return;
   speechSynthesis.cancel();
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = "zh-CN";
   utter.rate = 1;
   utter.onerror = (event) => console.warn("Speech failed", event.error);
-  speechSynthesis.speak(utter);
+  window.setTimeout(() => speechSynthesis.speak(utter), 240);
 }
 
 function unlockAudio() {
@@ -171,22 +171,25 @@ function unlockAudio() {
   audioUnlocked = true;
 }
 
-function beep() {
+function playDing() {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   if (!AudioContext) return;
   const ctx = audioContext || new AudioContext();
   audioContext = ctx;
   if (ctx.state === "suspended") ctx.resume();
+
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
-  osc.frequency.value = 660;
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(1046.5, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(1568, ctx.currentTime + 0.09);
   gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.16);
+  gain.gain.exponentialRampToValueAtTime(0.22, ctx.currentTime + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
   osc.connect(gain);
   gain.connect(ctx.destination);
   osc.start();
-  osc.stop(ctx.currentTime + 0.18);
+  osc.stop(ctx.currentTime + 0.24);
 }
 
 function renderPillars(count) {
