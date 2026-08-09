@@ -48,12 +48,17 @@ let finishPassword = "";
 let settingsDialogOpen = false;
 let settingsPassword = "";
 let settingsHydrated = false;
+let swapTeamDialogOpen = false;
+let editTeamDialogOpen = false;
+let editTeamTarget = "";
+let alertPromptAudio = null;
 let finishPromptAudio = null;
 let tenSecondCountdownIntroAudio = null;
 let tenSecondCountdownAudio = null;
 let tenSecondCountdownTimer = null;
 let tenSecondCountdownIntroTimers = [];
 let tenSecondCountdownRunId = 0;
+let tenSecondCountdownActive = false;
 let lastRenderedCountdownId = "";
 let lastRenderedCountdownDigit = null;
 let speechHistoryInitialized = false;
@@ -185,6 +190,14 @@ function getFinishPromptAudio() {
   return finishPromptAudio;
 }
 
+function getAlertPromptAudio() {
+  if (!alertPromptAudio) {
+    alertPromptAudio = new Audio("/audio/alert.mp3");
+    alertPromptAudio.preload = "auto";
+  }
+  return alertPromptAudio;
+}
+
 function getTenSecondCountdownAudio() {
   if (!tenSecondCountdownAudio) {
     tenSecondCountdownAudio = new Audio("/audio/timeout.mp3");
@@ -243,6 +256,32 @@ function playTenSecondCountdownAudio() {
   playAudio(getTenSecondCountdownAudio(), "10 second countdown");
 }
 
+function playAlertPromptSound(onComplete) {
+  const audio = getAlertPromptAudio();
+  let completed = false;
+  const complete = () => {
+    if (completed) return;
+    completed = true;
+    onComplete?.();
+  };
+
+  audio.pause();
+  audio.currentTime = 0;
+  audio.onended = complete;
+  audio.onerror = complete;
+  const playResult = audio.play();
+  if (playResult?.catch) {
+    playResult.catch((error) => {
+      console.warn("Alert prompt audio failed", error);
+      complete();
+    });
+  }
+}
+
+function speakWithAlert(text) {
+  playAlertPromptSound(() => speak(text));
+}
+
 function clearTenSecondCountdownTimers() {
   if (tenSecondCountdownTimer) {
     window.clearTimeout(tenSecondCountdownTimer);
@@ -252,8 +291,25 @@ function clearTenSecondCountdownTimers() {
   tenSecondCountdownIntroTimers = [];
 }
 
+function stopTenSecondCountdown(shouldNotify = true) {
+  tenSecondCountdownRunId += 1;
+  tenSecondCountdownActive = false;
+  clearTenSecondCountdownTimers();
+  getTenSecondCountdownIntroAudio().pause();
+  getTenSecondCountdownAudio().pause();
+  getTenSecondCountdownIntroAudio().currentTime = 0;
+  getTenSecondCountdownAudio().currentTime = 0;
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  clearScoreboardCountdownOverlay();
+  if (shouldNotify) {
+    sendAction({ action: "cancel_ten_second_countdown" }, false).catch((error) => {
+      console.warn("10 second countdown cancel event failed", error);
+    });
+  }
+}
+
 function scheduleTenSecondCountdownIntro(runId, startedAt) {
-  const countdownBeepOffsets = [3000, 4000, 5000, 6000];
+  const countdownBeepOffsets = [0, 1000, 2000, 3000, 4000, 5000];
   countdownBeepOffsets.forEach((offset) => {
     const delay = Math.max(0, startedAt + offset - Date.now());
     const timer = window.setTimeout(() => {
@@ -266,25 +322,34 @@ function scheduleTenSecondCountdownIntro(runId, startedAt) {
 }
 
 function startTenSecondCountdown() {
+  if (tenSecondCountdownActive) {
+    stopTenSecondCountdown();
+    return;
+  }
   tenSecondCountdownRunId += 1;
   const runId = tenSecondCountdownRunId;
-  const startedAt = Date.now();
+  tenSecondCountdownActive = true;
   clearTenSecondCountdownTimers();
   getTenSecondCountdownIntroAudio().pause();
   getTenSecondCountdownAudio().pause();
   prepareTenSecondCountdownAudio();
   speak("倒计时10秒", () => {
-    if (runId === tenSecondCountdownRunId) {
-      scheduleTenSecondCountdownIntro(runId, startedAt);
-    }
-  });
-  tenSecondCountdownTimer = window.setTimeout(() => {
     if (runId !== tenSecondCountdownRunId) return;
-    tenSecondCountdownTimer = null;
-    playTenSecondCountdownAudio();
-  }, 7000);
-  sendAction({ action: "ten_second_countdown" }, false).catch((error) => {
-    console.warn("10 second countdown event failed", error);
+    const startedAt = Date.now();
+    scheduleTenSecondCountdownIntro(runId, startedAt);
+    tenSecondCountdownTimer = window.setTimeout(() => {
+      if (runId !== tenSecondCountdownRunId) return;
+      tenSecondCountdownTimer = null;
+      playTenSecondCountdownAudio();
+    }, 6000);
+    window.setTimeout(() => {
+      if (runId === tenSecondCountdownRunId) {
+        tenSecondCountdownActive = false;
+      }
+    }, 10000);
+    sendAction({ action: "ten_second_countdown" }, false).catch((error) => {
+      console.warn("10 second countdown event failed", error);
+    });
   });
 }
 
@@ -383,8 +448,14 @@ function renderRemote() {
   if (timerAction) {
     timerAction.textContent = currentState.running ? "暂停" : (currentState.timerStarted && !currentState.timeExpired ? "继续" : "开始");
   }
+  const countdownAction = document.querySelector("[data-action='ten-second-countdown']");
+  if (countdownAction) {
+    countdownAction.textContent = tenSecondCountdownActive ? "停止倒计时" : "10秒倒计时";
+  }
   setTeamName("[data-remote-red-team]", currentState.redTeam);
   setTeamName("[data-remote-white-team]", currentState.whiteTeam);
+  setTeamName("[data-remote-status-red-team]", currentState.redTeam);
+  setTeamName("[data-remote-status-white-team]", currentState.whiteTeam);
   document.querySelector("[data-remote-red-total]").textContent = currentState.redTotal;
   document.querySelector("[data-remote-white-total]").textContent = currentState.whiteTotal;
   document.querySelectorAll("[data-ball]").forEach((button) => {
@@ -396,6 +467,20 @@ function historyKey(entry) {
   if (!entry) return "";
   if (entry.id) return String(entry.id);
   return `${entry.time || ""}|${entry.remainingSeconds ?? ""}|${entry.action || ""}|${entry.message || ""}`;
+}
+
+function historyEntryAgeSeconds(entry) {
+  const timestamp = Number.parseFloat(entry?.id || "");
+  if (Number.isFinite(timestamp)) {
+    const serverTime = Number(currentState?.serverTime);
+    const nowSeconds = Number.isFinite(serverTime) ? serverTime : Date.now() / 1000;
+    return nowSeconds - timestamp;
+  }
+  return Infinity;
+}
+
+function isFreshTimerWarning(entry) {
+  return historyEntryAgeSeconds(entry) <= 8;
 }
 
 function clearScoreboardCountdownOverlay() {
@@ -454,6 +539,10 @@ function autoSpeakServerEvents() {
     lastSpokenHistoryKey = key;
     if (latest.action === "time_expired") {
       playFinishPromptSound(() => speak(latest.message));
+    } else if (latest.action === "timer_warning") {
+      if (isFreshTimerWarning(latest)) {
+        speakWithAlert(latest.message);
+      }
     } else {
       speak(latest.message);
     }
@@ -490,7 +579,13 @@ async function sendAction(payload, shouldSpeak = true) {
   currentState = result.state;
   if (document.querySelector("[data-scoreboard]")) renderScoreboard();
   if (document.querySelector("[data-remote]")) renderRemote();
-  if (shouldSpeak) speak(result.message);
+  if (shouldSpeak) {
+    if (payload.action === "toggle_timer") {
+      speakWithAlert(result.message);
+    } else {
+      speak(result.message);
+    }
+  }
   return result;
 }
 
@@ -521,6 +616,48 @@ function closeSettingsDialog() {
   document.querySelector("[data-settings-dialog]")?.classList.remove("open");
 }
 
+function openSwapTeamDialog() {
+  swapTeamDialogOpen = true;
+  document.querySelector("[data-swap-team-dialog]")?.classList.add("open");
+}
+
+function closeSwapTeamDialog() {
+  swapTeamDialogOpen = false;
+  document.querySelector("[data-swap-team-dialog]")?.classList.remove("open");
+}
+
+function openEditTeamDialog(team) {
+  editTeamTarget = team === "white" ? "white" : "red";
+  editTeamDialogOpen = true;
+  const isWhite = editTeamTarget === "white";
+  const currentName = isWhite ? currentState?.whiteTeam : currentState?.redTeam;
+  const dialog = document.querySelector("[data-edit-team-dialog]");
+  const title = document.querySelector("[data-edit-team-title]");
+  const input = document.querySelector("[data-edit-team-input]");
+  if (title) title.textContent = isWhite ? "修改白队队名" : "修改红队队名";
+  if (input) input.value = currentName || "";
+  dialog?.classList.add("open");
+  window.setTimeout(() => input?.focus(), 0);
+}
+
+function closeEditTeamDialog() {
+  editTeamDialogOpen = false;
+  editTeamTarget = "";
+  document.querySelector("[data-edit-team-dialog]")?.classList.remove("open");
+}
+
+function saveEditedTeamName() {
+  const input = document.querySelector("[data-edit-team-input]");
+  const name = input ? input.value.trim() : "";
+  sendAction({ action: "set_team_name", team: editTeamTarget, name });
+  closeEditTeamDialog();
+}
+
+function confirmSwapTeam() {
+  sendAction({ action: "swap_team_names" });
+  closeSwapTeamDialog();
+}
+
 function confirmFinish() {
   sendAction({ action: "finish", password: finishPassword });
   closeFinishDialog();
@@ -534,6 +671,16 @@ function isEditableTarget(target) {
 
 function handlePasswordKey(event) {
   const digit = event.key >= "0" && event.key <= "9" ? event.key : "";
+  if (swapTeamDialogOpen) {
+    if (event.key === "Enter" || event.code === "NumpadEnter") confirmSwapTeam();
+    if (event.key === "Backspace" || event.key === "Escape") closeSwapTeamDialog();
+    return true;
+  }
+  if (editTeamDialogOpen) {
+    if (event.key === "Enter" || event.code === "NumpadEnter") saveEditedTeamName();
+    if (event.key === "Escape") closeEditTeamDialog();
+    return event.key === "Enter" || event.code === "NumpadEnter" || event.key === "Escape";
+  }
   if (finishDialogOpen) {
     if (event.key === "*") return closeFinishDialog();
     if (digit && finishPassword.length < 4) finishPassword += digit;
@@ -558,7 +705,17 @@ function handlePasswordKey(event) {
 }
 
 document.addEventListener("keydown", (event) => {
-  if (!finishDialogOpen && !settingsDialogOpen && isEditableTarget(event.target)) {
+  if (editTeamDialogOpen && isEditableTarget(event.target)) {
+    if (event.key === "Enter" || event.code === "NumpadEnter") {
+      event.preventDefault();
+      saveEditedTeamName();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeEditTeamDialog();
+    }
+    return;
+  }
+  if (!finishDialogOpen && !settingsDialogOpen && !swapTeamDialogOpen && !editTeamDialogOpen && isEditableTarget(event.target)) {
     return;
   }
   if (["Backspace", "Tab", "Enter", "+", "-", "*", "/"].includes(event.key) || event.code in keyMap) {
@@ -577,16 +734,28 @@ document.addEventListener("click", (event) => {
   const action = target.dataset.action;
   if (action === "finish-dialog") return openFinishDialog();
   if (action === "ten-second-countdown") return startTenSecondCountdown();
+  if (action === "edit-team-dialog") return openEditTeamDialog(target.dataset.team);
+  if (action === "swap-team-dialog") return openSwapTeamDialog();
   if (action === "settings-dialog") return openSettingsDialog();
   if (action === "close-finish") return closeFinishDialog();
   if (action === "close-settings") return closeSettingsDialog();
+  if (action === "close-swap-team") return closeSwapTeamDialog();
+  if (action === "close-edit-team") return closeEditTeamDialog();
   if (action === "confirm-finish") return confirmFinish();
+  if (action === "confirm-swap-team") return confirmSwapTeam();
   const payload = { action };
   if (target.dataset.ball) payload.ball = Number(target.dataset.ball);
   sendAction(payload);
 });
 
 document.addEventListener("submit", async (event) => {
+  const editTeamForm = event.target.closest("[data-edit-team-form]");
+  if (editTeamForm) {
+    event.preventDefault();
+    saveEditedTeamName();
+    return;
+  }
+
   const form = event.target.closest("[data-settings-form]");
   if (!form) return;
   event.preventDefault();

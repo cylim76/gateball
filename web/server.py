@@ -220,6 +220,38 @@ class Store:
             self.state["lastMessage"] = message
             self.record("ten_second_countdown", None, message)
 
+        elif action == "cancel_ten_second_countdown":
+            message = "10秒倒计时已停止"
+            self.state["tenSecondCountdownId"] = None
+            self.state["tenSecondCountdownStartedAt"] = None
+            self.state["lastMessage"] = message
+            self.record("cancel_ten_second_countdown", None, message)
+
+        elif action == "swap_team_names":
+            red_team = str(self.state.get("redTeam", "")).strip()
+            white_team = str(self.state.get("whiteTeam", "")).strip()
+            if red_team or white_team:
+                self.state["redTeam"], self.state["whiteTeam"] = self.state["whiteTeam"], self.state["redTeam"]
+                message = "红白队名已更换"
+            else:
+                message = "队名为空"
+            self.state["lastMessage"] = message
+            self.record("swap_team_names", None, message)
+
+        elif action == "set_team_name":
+            team = payload.get("team")
+            name = str(payload.get("name", ""))[:40]
+            if team == "red":
+                self.state["redTeam"] = name
+                message = "红队队名已保存"
+            elif team == "white":
+                self.state["whiteTeam"] = name
+                message = "白队队名已保存"
+            else:
+                message = "未知队伍"
+            self.state["lastMessage"] = message
+            self.record("set_team_name", None, message)
+
         elif action == "finish":
             if payload.get("password") == self.state["finishPassword"]:
                 message = self.reset_match()

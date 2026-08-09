@@ -82,7 +82,7 @@ body.scoreboard {
 
 .team-total {
   display: grid;
-  grid-template-columns: 0.9fr 1fr;
+  grid-template-columns: minmax(0, 1fr) clamp(143px, 13.2vw, 242px);
   min-height: clamp(104px, 13vh, 134px);
   border: 2px solid var(--line-red);
   border-radius: 8px;
@@ -90,7 +90,7 @@ body.scoreboard {
 }
 
 .team-total.white {
-  grid-template-columns: 1fr 0.9fr;
+  grid-template-columns: clamp(143px, 13.2vw, 242px) minmax(0, 1fr);
   border-color: var(--line-white);
 }
 
@@ -136,7 +136,7 @@ body.scoreboard {
   max-width: none;
   overflow: visible;
   text-overflow: clip;
-  animation: team-pan 7s ease-in-out infinite alternate;
+  animation: team-pan 12s ease-in-out infinite;
 }
 
 .team-name.multi-line-team-name {
@@ -164,7 +164,7 @@ body.scoreboard {
   place-items: center;
   background: #020202;
   font-family: var(--heavy-number-font);
-  font-size: clamp(58px, 6vw, 116px);
+  font-size: clamp(104px, 10.8vw, 209px);
   color: #ff111a;
 }
 
@@ -199,7 +199,7 @@ body.scoreboard {
   width: 100%;
   min-height: clamp(70px, 8.5vw, 116px);
   font-family: var(--display-number-font);
-  font-size: clamp(58px, 6vw, 116px);
+  font-size: clamp(104px, 10.8vw, 209px);
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
@@ -305,16 +305,20 @@ tbody th {
 
 .slot.active {
   border-color: rgba(255,255,255,.8);
-  background: radial-gradient(circle at 35% 28%, #fff, currentColor 42%, currentColor 70%, #111 72%);
-  box-shadow: 0 0 14px currentColor;
+  box-shadow:
+    inset 0 2px 7px rgba(255,255,255,.5),
+    inset 0 -8px 12px rgba(0,0,0,.28),
+    0 4px 12px rgba(0,0,0,.45);
 }
 
 .red-table .slot.active {
   color: #f0000a;
+  background: radial-gradient(circle at 34% 28%, #ff8f8f 0 14%, #f0000a 42%, #9a0005 100%);
 }
 
 .white-table .slot.active {
-  color: #f7f7f7;
+  color: #c80008;
+  background: radial-gradient(circle at 34% 28%, #ffffff 0 22%, #f6f6f6 52%, #cfcfcf 100%);
 }
 
 tr.selected {
@@ -489,15 +493,91 @@ button {
 }
 
 .remote-status {
-  display: flex;
-  justify-content: center;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: minmax(84px, 1fr) minmax(104px, .92fr) minmax(84px, 1fr);
+  gap: 6px;
+  align-items: stretch;
   margin-bottom: 8px;
-  padding: 7px 10px;
+  padding: 7px 0;
   border-top: 1px solid #333;
   border-bottom: 1px solid #333;
   font-size: 17px;
   color: #e8e8e8;
+}
+
+.remote-status-time {
+  display: grid;
+  place-items: center;
+  min-height: 46px;
+  text-align: center;
+  font-weight: 900;
+}
+
+.remote-status-team {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 46px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  border: 2px solid currentColor;
+  background: #070707;
+  font-size: clamp(15px, 4vw, 20px);
+  line-height: 1.08;
+  font-weight: 900;
+}
+
+.remote-status-team > span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.remote-status-team .team-name-scroll,
+.remote-status-team .team-name-primary,
+.remote-status-team .team-name-secondary {
+  display: block;
+  max-width: calc(100% - 8px);
+  overflow: hidden;
+  padding: 0 4px;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.remote-status-team .team-name-line {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.remote-status-team .team-name-line.scrolling {
+  justify-content: flex-start;
+}
+
+.remote-status-team .team-name-line.scrolling .team-name-scroll {
+  flex: 0 0 auto;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  animation: team-pan 12s ease-in-out infinite;
+}
+
+.remote-status-team .team-name-secondary {
+  display: none;
+}
+
+.red-status-team {
+  color: #ff1018;
+}
+
+.white-status-team {
+  color: #f3f3f3;
 }
 
 .remote-board {
@@ -536,9 +616,13 @@ button {
   width: clamp(72px, 9vh, 80px);
   aspect-ratio: 1;
   border-radius: 50%;
-  font-size: clamp(32px, 4vh, 38px);
+  font-size: clamp(35px, 4.25vh, 42px);
   font-weight: 900;
   box-shadow: inset 0 2px 7px rgba(255,255,255,.5), inset 0 -8px 12px rgba(0,0,0,.28), 0 4px 12px rgba(0,0,0,.45);
+}
+
+.ball-column button[data-ball="10"] span {
+  font-size: clamp(32px, 4vh, 38px);
 }
 
 .ball-column .red-ball {
@@ -635,7 +719,7 @@ button {
   max-width: none;
   overflow: visible;
   text-overflow: clip;
-  animation: team-pan 6s ease-in-out infinite alternate;
+  animation: team-pan 12s ease-in-out infinite;
 }
 
 .remote-total > span.default-team-name {
@@ -668,11 +752,18 @@ button {
 }
 
 @keyframes team-pan {
-  from {
+  0%,
+  25% {
     transform: translateX(0);
   }
-  to {
+
+  58.333%,
+  75% {
     transform: translateX(calc(-1 * var(--team-scroll-distance, 0px)));
+  }
+
+  100% {
+    transform: translateX(0);
   }
 }
 
@@ -698,8 +789,26 @@ button {
   min-height: 0;
   aspect-ratio: 1;
   border-radius: 50%;
-  color: #101010;
-  background: #f3f3f3;
+  border: 2px solid rgba(255, 255, 255, .72);
+  color: #07130a;
+  background:
+    radial-gradient(circle at 34% 24%, rgba(255,255,255,.95) 0 13%, rgba(255,255,255,.45) 14%, transparent 28%),
+    linear-gradient(145deg, #f9fff5 0%, #a7efb5 46%, #21b94b 100%);
+  box-shadow:
+    inset 0 5px 8px rgba(255,255,255,.55),
+    inset 0 -10px 14px rgba(0,0,0,.2),
+    0 7px 14px rgba(0,0,0,.45);
+  text-shadow: 0 1px 0 rgba(255,255,255,.45);
+  transition: transform .08s ease, box-shadow .08s ease, filter .08s ease;
+}
+
+.timer-action:active {
+  transform: translateY(2px) scale(.98);
+  box-shadow:
+    inset 0 3px 7px rgba(255,255,255,.42),
+    inset 0 -7px 10px rgba(0,0,0,.24),
+    0 3px 8px rgba(0,0,0,.42);
+  filter: brightness(.96);
 }
 
 .danger {

@@ -10,7 +10,13 @@
     <main class="remote-shell">
       <h1 class="remote-title" data-remote-title>红星村老年会门球比赛</h1>
       <section class="remote-status">
-        <span>剩余时间：<span data-remote-time>30:00</span></span>
+        <button class="remote-status-team red-status-team" data-action="edit-team-dialog" data-team="red">
+          <span data-remote-status-red-team>红队</span>
+        </button>
+        <span class="remote-status-time">剩余时间：<span data-remote-time>30:00</span></span>
+        <button class="remote-status-team white-status-team" data-action="edit-team-dialog" data-team="white">
+          <span data-remote-status-white-team>白队</span>
+        </button>
       </section>
 
       <section class="remote-board">
@@ -44,7 +50,8 @@
       <section class="remote-actions">
         <button class="undo-action" data-action="undo">- 撤销</button>
         <button class="score-action" data-action="advance">得分</button>
-        <button class="wide countdown-action" data-action="ten-second-countdown">10秒倒计时</button>
+        <button class="swap-team-action" data-action="swap_team_names">队名更换</button>
+        <button class="countdown-action compact" data-action="ten-second-countdown">10秒倒计时</button>
         <button class="wide danger" data-action="finish-dialog">结束比赛</button>
       </section>
     </main>
@@ -58,6 +65,27 @@
           <button class="finish-cancel" data-action="close-finish">取消</button>
         </div>
       </div>
+    </div>
+
+    <div class="dialog" data-swap-team-dialog>
+      <div class="dialog-box">
+        <h2 class="dialog-title">更换红白队名</h2>
+        <div class="dialog-actions">
+          <button class="finish-confirm" data-action="confirm-swap-team">确定</button>
+          <button class="finish-cancel" data-action="close-swap-team">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="dialog" data-edit-team-dialog>
+      <form class="dialog-box" data-edit-team-form>
+        <h2 class="dialog-title" data-edit-team-title>修改队名</h2>
+        <input class="dialog-input" name="teamName" data-edit-team-input autocomplete="off" maxlength="24">
+        <div class="dialog-actions">
+          <button class="finish-confirm" type="submit">保存</button>
+          <button class="finish-cancel" type="button" data-action="close-edit-team">取消</button>
+        </div>
+      </form>
     </div>
 
     <script src="/app.js"></script>
