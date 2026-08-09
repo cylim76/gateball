@@ -106,7 +106,7 @@ class GateballWindow(QMainWindow):
 
     def make_table(self) -> QTableWidget:
         table = QTableWidget(5, 7)
-        table.setHorizontalHeaderLabels(["球号", "0分", "1分", "2分", "3分", "得标", "分数"])
+        table.setHorizontalHeaderLabels(["球号", "0分", "1分", "2分", "3分", "中柱", "分数"])
         table.verticalHeader().setVisible(False)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.setSelectionMode(QTableWidget.NoSelection)
