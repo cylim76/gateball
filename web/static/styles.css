@@ -256,7 +256,7 @@ td {
 }
 
 thead th {
-  height: clamp(38px, 5.2vh, 60px);
+  height: clamp(49px, 6.8vh, 78px);
   font-size: clamp(31px, 3.15vw, 61px);
   font-weight: 900;
   line-height: 1;
