@@ -201,7 +201,7 @@ function speak(text) {
   utter.lang = "zh-CN";
   utter.rate = 1;
   utter.onerror = (event) => console.warn("Speech failed", event.error);
-  window.setTimeout(() => speechSynthesis.speak(utter), 240);
+  window.setTimeout(() => speechSynthesis.speak(utter), 760);
 }
 
 function unlockAudio() {
@@ -219,18 +219,25 @@ function playDing() {
   audioContext = ctx;
   if (ctx.state === "suspended") ctx.resume();
 
+  playChimeTone(ctx, 880, 0, 0.32);
+  playChimeTone(ctx, 659.25, 0.26, 0.42);
+}
+
+function playChimeTone(ctx, frequency, offset, duration) {
+  const start = ctx.currentTime + offset;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
+
   osc.type = "sine";
-  osc.frequency.setValueAtTime(1046.5, ctx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(1568, ctx.currentTime + 0.09);
-  gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.22, ctx.currentTime + 0.012);
-  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
+  osc.frequency.setValueAtTime(frequency, start);
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(0.16, start + 0.035);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
   osc.connect(gain);
   gain.connect(ctx.destination);
-  osc.start();
-  osc.stop(ctx.currentTime + 0.24);
+  osc.start(start);
+  osc.stop(start + duration + 0.03);
 }
 
 function renderPillars(count) {
