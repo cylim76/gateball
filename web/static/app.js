@@ -50,6 +50,8 @@ let settingsPassword = "";
 let settingsHydrated = false;
 let audioContext = null;
 let audioUnlocked = false;
+let speechHistoryInitialized = false;
+let lastSpokenHistoryKey = "";
 
 function two(num) {
   return String(num).padStart(2, "0");
@@ -149,6 +151,7 @@ function setTeamName(selector, name) {
 }
 
 function speak(text) {
+  if (!text) return;
   unlockAudio();
   beep();
   if (!("speechSynthesis" in window)) return;
@@ -156,6 +159,7 @@ function speak(text) {
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = "zh-CN";
   utter.rate = 1;
+  utter.onerror = (event) => console.warn("Speech failed", event.error);
   speechSynthesis.speak(utter);
 }
 
@@ -256,6 +260,30 @@ function renderRemote() {
   });
 }
 
+function historyKey(entry) {
+  if (!entry) return "";
+  return `${entry.time || ""}|${entry.remainingSeconds ?? ""}|${entry.action || ""}|${entry.message || ""}`;
+}
+
+function latestSpeakableHistoryEntry() {
+  const speakableActions = new Set(["timer_warning", "time_expired"]);
+  return [...(currentState?.history || [])].reverse().find((entry) => speakableActions.has(entry.action));
+}
+
+function autoSpeakServerEvents() {
+  const latest = latestSpeakableHistoryEntry();
+  const key = historyKey(latest);
+  if (!speechHistoryInitialized) {
+    speechHistoryInitialized = true;
+    lastSpokenHistoryKey = key;
+    return;
+  }
+  if (latest && key && key !== lastSpokenHistoryKey) {
+    lastSpokenHistoryKey = key;
+    speak(latest.message);
+  }
+}
+
 function renderSettings() {
   if (!currentState) return;
   const form = document.querySelector("[data-settings-form]");
@@ -270,10 +298,15 @@ function renderSettings() {
 }
 
 async function refresh() {
-  currentState = await api.state();
+  try {
+    currentState = await api.state();
+  } catch (error) {
+    return;
+  }
   if (document.querySelector("[data-scoreboard]")) renderScoreboard();
   if (document.querySelector("[data-remote]")) renderRemote();
   if (document.querySelector("[data-settings-form]")) renderSettings();
+  autoSpeakServerEvents();
 }
 
 async function sendAction(payload, shouldSpeak = true) {

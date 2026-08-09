@@ -38,6 +38,8 @@ DEFAULT_STATE = {
     "lastMessage": "等待开始",
     "lastUpdated": None,
     "deadline": None,
+    "announcedMinuteWarnings": [],
+    "timerStarted": False,
 }
 
 
@@ -54,6 +56,15 @@ class Store:
             return
         data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
         self.state.update(data.get("state", {}))
+        for key, value in DEFAULT_STATE.items():
+            if key not in self.state:
+                self.state[key] = value.copy() if isinstance(value, list) else value
+        if not isinstance(self.state.get("announcedMinuteWarnings"), list):
+            self.state["announcedMinuteWarnings"] = []
+        if not isinstance(self.state.get("timerStarted"), bool):
+            self.state["timerStarted"] = False
+        if self.state.get("running"):
+            self.state["timerStarted"] = True
         self.balls = {
             int(number): BallState.from_dict(ball)
             for number, ball in data.get("balls", {}).items()
@@ -79,11 +90,25 @@ class Store:
             return
         remaining = max(0, int(deadline - time.time()))
         self.state["remainingSeconds"] = remaining
+        changed = False
+        announced = set(self.state.get("announcedMinuteWarnings", []))
+        if remaining > 0:
+            for minute in [15, 10, 5, 1]:
+                threshold = minute * 60
+                if remaining <= threshold and minute not in announced:
+                    announced.add(minute)
+                    self.state["announcedMinuteWarnings"] = sorted(announced, reverse=True)
+                    self.state["lastMessage"] = f"比赛时间剩余 {minute} 分钟"
+                    self.record("timer_warning", None, self.state["lastMessage"])
+                    changed = True
+                    break
         if remaining == 0 and not self.state.get("timeExpired"):
             self.state["timeExpired"] = True
             self.state["running"] = False
             self.state["lastMessage"] = "叮，时间到"
             self.record("time_expired", None, self.state["lastMessage"])
+            changed = True
+        if changed:
             self.save()
 
     def snapshot(self) -> dict:
@@ -119,6 +144,8 @@ class Store:
         self.state["running"] = False
         self.state["timeExpired"] = False
         self.state["deadline"] = None
+        self.state["announcedMinuteWarnings"] = []
+        self.state["timerStarted"] = False
         self.state["selectedBall"] = 1
         self.state["lastMessage"] = f"第{self.state['matchNumber']}场，等待开始"
         self.record("next_match", None, self.state["lastMessage"])
@@ -163,9 +190,12 @@ class Store:
                 if self.state["remainingSeconds"] <= 0:
                     self.state["remainingSeconds"] = self.state["durationSeconds"]
                     self.state["timeExpired"] = False
+                    self.state["announcedMinuteWarnings"] = []
+                    self.state["timerStarted"] = False
                 self.state["running"] = True
                 self.state["deadline"] = time.time() + int(self.state["remainingSeconds"])
-                message = "比赛开始" if self.state["remainingSeconds"] == self.state["durationSeconds"] else "比赛继续"
+                message = "比赛开始" if not self.state.get("timerStarted") else "比赛继续"
+                self.state["timerStarted"] = True
             self.state["lastMessage"] = message
             self.record("toggle_timer", None, message)
 
@@ -189,6 +219,7 @@ class Store:
                     self.state["durationSeconds"] = minutes * 60
                     if not self.state["running"]:
                         self.state["remainingSeconds"] = minutes * 60
+                        self.state["announcedMinuteWarnings"] = []
                 if payload.get("finishPassword"):
                     self.state["finishPassword"] = str(payload["finishPassword"])[:8]
                 if payload.get("settingsPassword"):
