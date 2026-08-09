@@ -175,14 +175,17 @@ body.scoreboard {
 }
 
 .time {
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--gold);
   width: 100%;
   min-height: clamp(70px, 8.5vw, 116px);
   font-family: var(--display-number-font);
   font-size: clamp(58px, 6vw, 116px);
   font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
   line-height: 1;
   letter-spacing: 0;
   text-align: center;
