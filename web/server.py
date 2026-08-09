@@ -25,6 +25,7 @@ DATA_FILE = ROOT / "data" / "web_state.json"
 RESULTS_DB_FILE = ROOT / "data" / "gateball.sqlite3"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 WEATHER_CACHE: dict = {"timestamp": 0.0, "payload": {"ok": False}}
+SELECTION_TIMEOUT_SECONDS = 30
 
 
 DEFAULT_STATE = {
@@ -36,6 +37,7 @@ DEFAULT_STATE = {
     "running": False,
     "timeExpired": False,
     "selectedBall": 1,
+    "selectedBallAt": None,
     "finishPassword": "0000",
     "settingsPassword": "1234",
     "allowScoringWhenPaused": False,
@@ -96,6 +98,8 @@ class Store:
             self.state["matchStartedAt"] = None
         if not isinstance(self.state.get("keyBindings"), dict):
             self.state["keyBindings"] = {}
+        if "selectedBallAt" not in self.state:
+            self.state["selectedBallAt"] = None
         if self.state.get("finishPassword") == "1234":
             self.state["finishPassword"] = "0000"
         if self.state.get("running"):
@@ -201,10 +205,29 @@ class Store:
         self.state["matchStartedAt"] = None
         self.state["lastTickRemainingSeconds"] = self.state["remainingSeconds"]
         self.state["selectedBall"] = 1
+        self.state["selectedBallAt"] = None
         self.state["lastMessage"] = f"第{self.state['matchNumber']}场，等待开始"
         self.record("next_match", None, self.state["lastMessage"])
         self.save()
         return self.state["lastMessage"]
+
+    def has_fresh_selected_ball(self) -> bool:
+        selected_at = self.state.get("selectedBallAt")
+        if selected_at is None:
+            return False
+        try:
+            age = time.time() - float(selected_at)
+        except (TypeError, ValueError):
+            return False
+        return age <= SELECTION_TIMEOUT_SECONDS
+
+    def require_selected_ball(self) -> bool:
+        if self.has_fresh_selected_ball():
+            return True
+        message = "请先选择球号"
+        self.state["lastMessage"] = message
+        self.record("selection_required", None, message)
+        return False
 
     def action(self, payload: dict) -> dict:
         self.tick()
@@ -215,12 +238,15 @@ class Store:
             number = int(payload.get("ball", 1))
             if 1 <= number <= 10:
                 self.state["selectedBall"] = number
+                self.state["selectedBallAt"] = time.time()
                 message = f"{number}号球"
                 self.state["lastMessage"] = message
                 self.record("select", number, message)
 
         elif action == "advance":
-            if not self.state["running"] and not self.state["allowScoringWhenPaused"] and not self.state["timeExpired"]:
+            if not self.require_selected_ball():
+                message = self.state["lastMessage"]
+            elif not self.state["running"] and not self.state["allowScoringWhenPaused"] and not self.state["timeExpired"]:
                 message = "暂停期间不能计分"
             elif self.state.get("timeExpired"):
                 message = "时间到"
@@ -231,10 +257,13 @@ class Store:
                 self.record("advance", number, message)
 
         elif action == "undo":
-            number = int(self.state["selectedBall"])
-            message = self.balls[number].undo()
-            self.state["lastMessage"] = message
-            self.record("undo", number, message)
+            if not self.require_selected_ball():
+                message = self.state["lastMessage"]
+            else:
+                number = int(self.state["selectedBall"])
+                message = self.balls[number].undo()
+                self.state["lastMessage"] = message
+                self.record("undo", number, message)
 
         elif action == "toggle_timer":
             if self.state["running"]:

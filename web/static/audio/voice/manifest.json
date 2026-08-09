@@ -579,6 +579,10 @@
     "undo_ball_10_zero": {
       "text": "撤销，10号球，回到0分",
       "file": "/audio/voice/undo_ball_10_zero.mp3"
+    },
+    "selection_required": {
+      "text": "请先选择球号",
+      "file": "/audio/voice/selection_required.mp3"
     }
   }
 }

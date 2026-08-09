@@ -305,6 +305,7 @@ function voiceKeyForText(text) {
     "设置已保存": "settings_saved",
     "按键映射已保存": "key_binding_saved",
     "按键映射失败": "key_binding_failed",
+    "请先选择球号": "selection_required",
     "暂停期间不能计分": "scoring_paused_denied",
     "红白队名已更换": "team_swap_saved",
     "队名为空": "team_name_empty",
@@ -756,6 +757,12 @@ function latestSelectEntry() {
 }
 
 function shouldShowBallSelection() {
+  const selectedAt = Number(currentState?.selectedBallAt);
+  if (Number.isFinite(selectedAt)) {
+    const serverTime = Number(currentState?.serverTime);
+    const nowSeconds = Number.isFinite(serverTime) ? serverTime : Date.now() / 1000;
+    return nowSeconds - selectedAt <= 30;
+  }
   const latest = latestSelectEntry();
   if (!latest) return false;
   return latest.ball === currentState?.selectedBall && historyEntryAgeSeconds(latest) <= 30;
@@ -807,6 +814,7 @@ function latestSpeakableHistoryEntry() {
       "select",
       "advance",
       "undo",
+      "selection_required",
       "toggle_timer",
       "ten_second_countdown",
       "cancel_ten_second_countdown",

@@ -850,13 +850,20 @@ tr.selected {
   font-size: 36px;
 }
 
-.finish-password-input {
+.password-code-input {
+  display: block;
+  width: min(240px, 72vw);
+  height: 58px;
+  margin: 0 auto;
   text-align: center;
   color: var(--gold);
   font-family: var(--display-number-font);
-  font-size: 34px;
+  font-size: 32px;
   font-weight: 900;
-  letter-spacing: 8px;
+  letter-spacing: 6px;
+}
+
+.finish-password-input {
   -webkit-text-security: disc;
 }
 

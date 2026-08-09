@@ -69,6 +69,7 @@ def build_phrases() -> dict[str, str]:
         "settings_saved": "设置已保存",
         "key_binding_saved": "按键映射已保存",
         "key_binding_failed": "按键映射失败",
+        "selection_required": "请先选择球号",
         "scoring_paused_denied": "暂停期间不能计分",
         "team_swap_saved": "红白队名已更换",
         "team_name_empty": "队名为空",
