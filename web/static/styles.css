@@ -390,7 +390,7 @@ button {
 
 .ball-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -401,9 +401,48 @@ button {
   font-size: 24px;
 }
 
+.ball-grid button {
+  display: grid;
+  place-items: center;
+  position: relative;
+  min-height: 64px;
+  border: 2px solid transparent;
+}
+
+.ball-grid button span {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+
+.ball-grid .red-ball {
+  color: white;
+  background: linear-gradient(145deg, #c80008, #780004);
+}
+
+.ball-grid .red-ball span {
+  background: #e00008;
+}
+
+.ball-grid .white-ball {
+  color: #c80008;
+  background: linear-gradient(145deg, #ffffff, #dcdcdc);
+}
+
+.ball-grid .white-ball span {
+  background: #f7f7f7;
+}
+
 .ball-grid button.active {
-  color: #111;
-  background: var(--gold);
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px rgba(255, 212, 59, .35), 0 0 16px rgba(255, 212, 59, .45);
+}
+
+.ball-grid button.active span {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
 }
 
 .remote-actions {
