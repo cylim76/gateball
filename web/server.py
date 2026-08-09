@@ -110,7 +110,7 @@ class Store:
         if remaining == 0 and not self.state.get("timeExpired"):
             self.state["timeExpired"] = True
             self.state["running"] = False
-            self.state["lastMessage"] = "叮，时间到"
+            self.state["lastMessage"] = "时间到"
             self.record("time_expired", None, self.state["lastMessage"])
             changed = True
         self.state["lastTickRemainingSeconds"] = remaining

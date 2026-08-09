@@ -48,8 +48,7 @@ let finishPassword = "";
 let settingsDialogOpen = false;
 let settingsPassword = "";
 let settingsHydrated = false;
-let audioContext = null;
-let audioUnlocked = false;
+let finishPromptAudio = null;
 let speechHistoryInitialized = false;
 let lastSpokenHistoryKey = "";
 
@@ -193,51 +192,43 @@ function setTeamName(selector, name) {
 
 function speak(text) {
   if (!text) return;
-  unlockAudio();
-  playDing();
   if (!("speechSynthesis" in window)) return;
   speechSynthesis.cancel();
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = "zh-CN";
   utter.rate = 1;
   utter.onerror = (event) => console.warn("Speech failed", event.error);
-  window.setTimeout(() => speechSynthesis.speak(utter), 760);
+  speechSynthesis.speak(utter);
 }
 
-function unlockAudio() {
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) return;
-  if (!audioContext) audioContext = new AudioContext();
-  if (audioContext.state === "suspended") audioContext.resume();
-  audioUnlocked = true;
+function getFinishPromptAudio() {
+  if (!finishPromptAudio) {
+    finishPromptAudio = new Audio("/audio/finished.mp3");
+    finishPromptAudio.preload = "auto";
+  }
+  return finishPromptAudio;
 }
 
-function playDing() {
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) return;
-  const ctx = audioContext || new AudioContext();
-  audioContext = ctx;
-  if (ctx.state === "suspended") ctx.resume();
+function playFinishPromptSound(onComplete) {
+  const audio = getFinishPromptAudio();
+  let completed = false;
+  const complete = () => {
+    if (completed) return;
+    completed = true;
+    onComplete?.();
+  };
 
-  playChimeTone(ctx, 880, 0, 0.32);
-  playChimeTone(ctx, 659.25, 0.26, 0.42);
-}
-
-function playChimeTone(ctx, frequency, offset, duration) {
-  const start = ctx.currentTime + offset;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-
-  osc.type = "sine";
-  osc.frequency.setValueAtTime(frequency, start);
-  gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.exponentialRampToValueAtTime(0.16, start + 0.035);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start(start);
-  osc.stop(start + duration + 0.03);
+  audio.pause();
+  audio.currentTime = 0;
+  audio.onended = complete;
+  audio.onerror = complete;
+  const playResult = audio.play();
+  if (playResult?.catch) {
+    playResult.catch((error) => {
+      console.warn("Finish prompt audio failed", error);
+      complete();
+    });
+  }
 }
 
 function renderPillars(count) {
@@ -341,7 +332,11 @@ function autoSpeakServerEvents() {
   }
   if (latest && key && key !== lastSpokenHistoryKey) {
     lastSpokenHistoryKey = key;
-    speak(latest.message);
+    if (latest.action === "time_expired") {
+      playFinishPromptSound(() => speak(latest.message));
+    } else {
+      speak(latest.message);
+    }
   }
 }
 
@@ -384,7 +379,7 @@ function openFinishDialog() {
   finishPassword = "";
   document.querySelector("[data-finish-dialog]")?.classList.add("open");
   document.querySelector("[data-finish-password]").textContent = "";
-  speak("请输入密码结束比赛");
+  playFinishPromptSound(() => speak("请输入密码结束比赛"));
 }
 
 function closeFinishDialog() {
@@ -456,12 +451,7 @@ document.addEventListener("keydown", (event) => {
   if (mapped) sendAction(mapped);
 });
 
-document.addEventListener("pointerdown", () => {
-  if (!audioUnlocked) unlockAudio();
-}, { once: true });
-
 document.addEventListener("click", (event) => {
-  if (!audioUnlocked) unlockAudio();
   const target = event.target.closest("[data-action]");
   if (!target) return;
   const action = target.dataset.action;
