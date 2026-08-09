@@ -72,6 +72,39 @@ function clockTime(entry) {
   return match ? match[1] : "";
 }
 
+function teamNameLines(name) {
+  const text = String(name || "").trim();
+  const parts = text.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return [text];
+
+  const target = text.replace(/\s+/g, "").length / 2;
+  let bestIndex = 1;
+  let bestDistance = Infinity;
+  for (let index = 1; index < parts.length; index += 1) {
+    const leftLength = parts.slice(0, index).join("").length;
+    const distance = Math.abs(leftLength - target);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  }
+  return [
+    parts.slice(0, bestIndex).join(" "),
+    parts.slice(bestIndex).join(" "),
+  ];
+}
+
+function setTeamName(selector, name) {
+  const element = document.querySelector(selector);
+  if (!element) return;
+  element.replaceChildren();
+  teamNameLines(name).forEach((line) => {
+    const span = document.createElement("span");
+    span.textContent = line;
+    element.appendChild(span);
+  });
+}
+
 function speak(text) {
   unlockAudio();
   beep();
@@ -139,8 +172,8 @@ function renderRows(team) {
 function renderScoreboard() {
   if (!currentState) return;
   document.querySelector("[data-title]").textContent = currentState.title;
-  document.querySelector("[data-red-team]").textContent = currentState.redTeam;
-  document.querySelector("[data-white-team]").textContent = currentState.whiteTeam;
+  setTeamName("[data-red-team]", currentState.redTeam);
+  setTeamName("[data-white-team]", currentState.whiteTeam);
   document.querySelector("[data-red-total]").textContent = currentState.redTotal;
   document.querySelector("[data-white-total]").textContent = currentState.whiteTotal;
   document.querySelector("[data-time]").textContent = formatTime(currentState.remainingSeconds);
@@ -171,8 +204,8 @@ function renderRemote() {
   if (!currentState) return;
   document.querySelector("[data-remote-title]").textContent = currentState.title;
   document.querySelector("[data-remote-time]").textContent = formatTime(currentState.remainingSeconds);
-  document.querySelector("[data-remote-red-team]").textContent = currentState.redTeam;
-  document.querySelector("[data-remote-white-team]").textContent = currentState.whiteTeam;
+  setTeamName("[data-remote-red-team]", currentState.redTeam);
+  setTeamName("[data-remote-white-team]", currentState.whiteTeam);
   document.querySelector("[data-remote-red-total]").textContent = currentState.redTotal;
   document.querySelector("[data-remote-white-total]").textContent = currentState.whiteTotal;
   document.querySelectorAll("[data-ball]").forEach((button) => {

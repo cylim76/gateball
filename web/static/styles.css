@@ -76,11 +76,24 @@ body.scoreboard {
 }
 
 .team-name {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   font-size: clamp(30px, 3.4vw, 60px);
+  line-height: 1.05;
+  text-align: center;
   font-weight: 900;
   background: linear-gradient(145deg, #be0006, #710005);
+}
+
+.team-name span {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .team-total.white .team-name {
@@ -478,7 +491,18 @@ button {
 
 .remote-total span {
   font-size: clamp(15px, 3.4vw, 20px);
+  line-height: 1.08;
+  text-align: center;
   font-weight: 900;
+}
+
+.remote-total span span {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 4px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .remote-total strong {
