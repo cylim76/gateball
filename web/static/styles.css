@@ -158,20 +158,48 @@ body.scoreboard {
   grid-template-rows: auto 1fr auto;
   place-items: center;
   min-height: clamp(104px, 13vh, 134px);
-  padding: 8px;
+  padding: 5px 8px 7px;
   border: 2px solid #666;
   border-radius: 8px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255,255,255,.08), transparent 42%),
+    linear-gradient(#050505, #010101);
 }
 
 .timer-label {
-  font-size: clamp(20px, 2.2vw, 36px);
+  font-size: clamp(14px, 1.35vw, 24px);
   font-weight: 800;
+  color: #f2f2f2;
 }
 
 .time {
   color: var(--gold);
-  font-family: "Arial Black", Impact, sans-serif;
-  font-size: clamp(46px, 5.5vw, 104px);
+  font-family: "DS-Digital", "DSEG7 Classic", "DSEG7Classic", "Digital-7", "Quartz", "Arial Black", Impact, monospace;
+  font-size: clamp(68px, 8vw, 136px);
+  line-height: .88;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  text-shadow:
+    0 0 6px rgba(255, 212, 59, .95),
+    0 0 18px rgba(255, 212, 59, .45),
+    0 0 1px #fff2a8;
+  -webkit-text-stroke: 1px rgba(255, 236, 120, .18);
+}
+
+.timer.is-paused .time {
+  color: #ff1a22;
+  text-shadow:
+    0 0 7px rgba(255, 26, 34, .95),
+    0 0 20px rgba(255, 26, 34, .55),
+    0 0 1px #ffd3d3;
+  animation: timer-blink 1s steps(2, start) infinite;
+}
+
+.timer.is-expired .time {
+  color: #ff1a22;
+  text-shadow:
+    0 0 7px rgba(255, 26, 34, .95),
+    0 0 20px rgba(255, 26, 34, .55);
 }
 
 .timer-meta {
@@ -179,6 +207,12 @@ body.scoreboard {
   gap: 24px;
   color: #ddd;
   font-size: clamp(14px, 1.4vw, 22px);
+}
+
+@keyframes timer-blink {
+  50% {
+    opacity: .18;
+  }
 }
 
 .tables {

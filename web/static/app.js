@@ -224,6 +224,12 @@ function renderScoreboard() {
   document.querySelector("[data-red-total]").textContent = currentState.redTotal;
   document.querySelector("[data-white-total]").textContent = currentState.whiteTotal;
   document.querySelector("[data-time]").textContent = formatTime(currentState.remainingSeconds);
+  const timer = document.querySelector("[data-scoreboard-timer]");
+  if (timer) {
+    timer.classList.toggle("is-running", currentState.running);
+    timer.classList.toggle("is-paused", !currentState.running && !currentState.timeExpired);
+    timer.classList.toggle("is-expired", currentState.timeExpired);
+  }
   document.querySelector("[data-match]").textContent = `第 ${currentState.matchNumber} 场`;
   document.querySelector("[data-status]").textContent = currentState.running ? "比赛中" : (currentState.timeExpired ? "时间到" : "暂停/待开始");
   renderRecentLog();
