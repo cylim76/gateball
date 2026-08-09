@@ -49,8 +49,10 @@ let settingsDialogOpen = false;
 let settingsPassword = "";
 let settingsHydrated = false;
 let finishPromptAudio = null;
+let tenSecondCountdownIntroAudio = null;
 let tenSecondCountdownAudio = null;
 let tenSecondCountdownTimer = null;
+let tenSecondCountdownRunId = 0;
 let speechHistoryInitialized = false;
 let lastSpokenHistoryKey = "";
 
@@ -151,14 +153,24 @@ function setTeamName(selector, name) {
   });
 }
 
-function speak(text) {
-  if (!text) return;
-  if (!("speechSynthesis" in window)) return;
+function speak(text, onComplete) {
+  if (!text) {
+    onComplete?.();
+    return;
+  }
+  if (!("speechSynthesis" in window)) {
+    onComplete?.();
+    return;
+  }
   speechSynthesis.cancel();
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = "zh-CN";
   utter.rate = 1;
-  utter.onerror = (event) => console.warn("Speech failed", event.error);
+  utter.onend = () => onComplete?.();
+  utter.onerror = (event) => {
+    console.warn("Speech failed", event.error);
+    onComplete?.();
+  };
   speechSynthesis.speak(utter);
 }
 
@@ -178,8 +190,15 @@ function getTenSecondCountdownAudio() {
   return tenSecondCountdownAudio;
 }
 
-function prepareTenSecondCountdownAudio() {
-  const audio = getTenSecondCountdownAudio();
+function getTenSecondCountdownIntroAudio() {
+  if (!tenSecondCountdownIntroAudio) {
+    tenSecondCountdownIntroAudio = new Audio("/audio/countdown.mp3");
+    tenSecondCountdownIntroAudio.preload = "auto";
+  }
+  return tenSecondCountdownIntroAudio;
+}
+
+function prepareAudio(audio) {
   const originalVolume = audio.volume;
   audio.pause();
   audio.currentTime = 0;
@@ -198,25 +217,46 @@ function prepareTenSecondCountdownAudio() {
   }
 }
 
-function playTenSecondCountdownAudio() {
-  const audio = getTenSecondCountdownAudio();
+function prepareTenSecondCountdownAudio() {
+  prepareAudio(getTenSecondCountdownIntroAudio());
+  prepareAudio(getTenSecondCountdownAudio());
+}
+
+function playAudio(audio, warningLabel) {
   audio.pause();
   audio.currentTime = 0;
   audio.volume = 1;
   const playResult = audio.play();
   if (playResult?.catch) {
-    playResult.catch((error) => console.warn("10 second countdown audio failed", error));
+    playResult.catch((error) => console.warn(`${warningLabel} audio failed`, error));
   }
 }
 
+function playTenSecondCountdownIntroAudio() {
+  playAudio(getTenSecondCountdownIntroAudio(), "10 second countdown intro");
+}
+
+function playTenSecondCountdownAudio() {
+  playAudio(getTenSecondCountdownAudio(), "10 second countdown");
+}
+
 function startTenSecondCountdown() {
+  tenSecondCountdownRunId += 1;
+  const runId = tenSecondCountdownRunId;
   if (tenSecondCountdownTimer) {
     window.clearTimeout(tenSecondCountdownTimer);
     tenSecondCountdownTimer = null;
   }
+  getTenSecondCountdownIntroAudio().pause();
+  getTenSecondCountdownAudio().pause();
   prepareTenSecondCountdownAudio();
-  speak("倒计时10秒");
+  speak("倒计时10秒", () => {
+    if (runId === tenSecondCountdownRunId) {
+      playTenSecondCountdownIntroAudio();
+    }
+  });
   tenSecondCountdownTimer = window.setTimeout(() => {
+    if (runId !== tenSecondCountdownRunId) return;
     tenSecondCountdownTimer = null;
     playTenSecondCountdownAudio();
   }, 6000);
