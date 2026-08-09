@@ -444,6 +444,7 @@ button {
 
 .ball-column button,
 .remote-actions button,
+.timer-action,
 .dialog-actions button {
   min-height: 58px;
   font-size: 24px;
@@ -500,7 +501,7 @@ button {
 
 .remote-score-panel {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   align-content: center;
   min-height: 100%;
 }
@@ -601,6 +602,13 @@ button {
 
 .remote-actions .wide {
   grid-column: span 2;
+}
+
+.timer-action {
+  min-height: 52px;
+  border-radius: 8px;
+  color: #101010;
+  background: #f3f3f3;
 }
 
 .danger {
