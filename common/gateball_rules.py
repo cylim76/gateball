@@ -4,9 +4,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-STEP_SCORES = [0, 1, 2, 3, 5]
-STEP_LABELS = ["0分", "一门得分", "二门得分", "三门得分", "中柱得分"]
+STEP_SCORES = [0, 1, 2, 3]
+STEP_LABELS = ["0分", "一门得分", "二门得分", "三门得分"]
 MAX_PILLARS = 4
+
+
+def normalize_position(cycle: int, step: int) -> tuple[int, int]:
+    if step >= 4:
+        return min(cycle + 1, MAX_PILLARS), 0
+    return min(cycle, MAX_PILLARS), max(0, step)
 
 
 @dataclass
@@ -22,21 +28,21 @@ class BallState:
 
     @property
     def pillar_count(self) -> int:
-        return self.cycle + (1 if self.step == 4 else 0)
+        return self.cycle
 
     def advance(self) -> str:
-        if self.cycle >= MAX_PILLARS and self.step == 4:
+        if self.cycle >= MAX_PILLARS:
             return f"{self.number}号球已到上限"
 
         self.history.append((self.cycle, self.step))
 
-        if self.step < 4:
+        if self.step < 3:
             self.step += 1
             return f"{self.number}号球，{STEP_LABELS[self.step]}"
 
-        self.cycle = min(self.cycle + 1, MAX_PILLARS)
+        self.cycle += 1
         self.step = 0
-        return f"{self.number}号球，回到0分"
+        return f"{self.number}号球，中柱得分"
 
     def undo(self) -> str:
         if not self.history:
@@ -46,7 +52,7 @@ class BallState:
         self.cycle, self.step = self.history.pop()
         label = STEP_LABELS[old_step] if old_step > 0 else "回到0分"
         if old_step == 0 and old_cycle > self.cycle:
-            label = "中柱后回到0分"
+            label = "中柱得分"
         return f"撤销，{self.number}号球，{label}"
 
     def to_dict(self) -> dict[str, Any]:
@@ -61,12 +67,19 @@ class BallState:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "BallState":
+        cycle, step = normalize_position(
+            int(data.get("cycle", 0)),
+            int(data.get("step", 0)),
+        )
         ball = cls(
             number=int(data["number"]),
-            cycle=int(data.get("cycle", 0)),
-            step=int(data.get("step", 0)),
+            cycle=cycle,
+            step=step,
         )
-        ball.history = [tuple(item) for item in data.get("history", [])]
+        ball.history = [
+            normalize_position(int(item[0]), int(item[1]))
+            for item in data.get("history", [])
+        ]
         return ball
 
 
@@ -76,4 +89,3 @@ def new_balls() -> dict[int, BallState]:
 
 def team_for_ball(number: int) -> str:
     return "red" if number % 2 == 1 else "white"
-
