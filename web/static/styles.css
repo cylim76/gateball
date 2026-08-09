@@ -1,3 +1,19 @@
+@font-face {
+  font-family: "Gateball Noto Sans SC";
+  src: url("/fonts/NotoSansSC-wght.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gateball Roboto";
+  src: url("/fonts/Roboto-wdth-wght.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: dark;
   --red: #db1018;
@@ -8,8 +24,9 @@
   --gold: #ffd43b;
   --green: #36d36a;
   --ink: #050505;
-  --display-number-font: Verdana, Arial, "Liberation Sans", sans-serif;
-  --heavy-number-font: "Arial Black", Impact, Verdana, Arial, sans-serif;
+  --body-font: "Gateball Noto Sans SC", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "WenQuanYi Micro Hei", Arial, sans-serif;
+  --display-number-font: "Gateball Roboto", Arial, "Liberation Sans", sans-serif;
+  --heavy-number-font: "Gateball Roboto", Arial, "Liberation Sans", sans-serif;
 }
 
 * {
@@ -21,7 +38,7 @@ body {
   margin: 0;
   min-height: 100%;
   background: #020202;
-  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "WenQuanYi Micro Hei", Arial, sans-serif;
+  font-family: var(--body-font);
   letter-spacing: 0;
 }
 
@@ -637,7 +654,7 @@ button {
 }
 
 .remote-total strong {
-  font-family: "Arial Black", Impact, sans-serif;
+  font-family: var(--heavy-number-font);
   font-size: clamp(44px, 12vw, 66px);
   line-height: 1;
 }

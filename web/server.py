@@ -279,9 +279,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def serve_file(self, path: Path) -> None:
         content_type = mimetypes.guess_type(path.name)[0] or "text/html"
+        if path.suffix.lower() == ".ttf":
+            content_type = "font/ttf"
         data = path.read_bytes()
         self.send_response(200)
-        self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+        if content_type.startswith("text/") or content_type == "application/javascript":
+            content_type = f"{content_type}; charset=utf-8"
+        self.send_header("Content-Type", content_type)
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
