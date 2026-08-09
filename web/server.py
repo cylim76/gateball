@@ -51,9 +51,9 @@ DEFAULT_STATE = {
     "tenSecondCountdownStartedAt": None,
     "keyBindings": {},
     "voiceProfile": "female",
-    "weatherLocation": "",
-    "weatherLatitude": None,
-    "weatherLongitude": None,
+    "weatherLocation": "西安区, 牡丹江市, 黑龙江省, 157000, 中国",
+    "weatherLatitude": 44.488144,
+    "weatherLongitude": 129.5093059,
 }
 
 
