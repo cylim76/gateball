@@ -39,9 +39,9 @@ body.scoreboard {
 }
 
 .title {
-  margin: 0 0 12px;
+  margin: 0 0 10px;
   color: var(--gold);
-  font-size: clamp(28px, 3.6vw, 60px);
+  font-size: clamp(20px, 2vw, 34px);
   line-height: 1.05;
   text-align: center;
   font-weight: 900;
@@ -50,7 +50,7 @@ body.scoreboard {
 .title::before,
 .title::after {
   content: "★";
-  margin: 0 22px;
+  margin: 0 12px;
   color: #e00008;
 }
 
