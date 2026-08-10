@@ -34,6 +34,8 @@
         <div class="results-table-wrap">
           <table class="results-table">
             <colgroup>
+              <col class="result-seq-col">
+              <col class="result-time-col">
               <col>
               <col class="result-score-col">
               <col class="result-score-col">
@@ -41,14 +43,20 @@
             </colgroup>
             <thead>
               <tr>
-                <th>红队名称</th>
-                <th>红队分数</th>
-                <th>白队分数</th>
-                <th>白队名称</th>
+                <th class="result-time-head" rowspan="2">序</th>
+                <th class="result-time-head" rowspan="2">时间</th>
+                <th class="result-team-head red-result-head" colspan="2">红队</th>
+                <th class="result-team-head white-result-head" colspan="2">白队</th>
+              </tr>
+              <tr>
+                <th class="red-result-head">名称</th>
+                <th class="red-result-head">分数</th>
+                <th class="white-result-head">分数</th>
+                <th class="white-result-head">名称</th>
               </tr>
             </thead>
             <tbody data-results-day-body>
-              <tr><td colspan="4">请选择有绿点的日期</td></tr>
+              <tr><td colspan="6">请选择有绿点的日期</td></tr>
             </tbody>
           </table>
         </div>

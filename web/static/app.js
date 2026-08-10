@@ -251,6 +251,11 @@ function clockTime(entry) {
   return match ? match[1] : "";
 }
 
+function resultTime(value) {
+  const match = String(value || "").match(/(\d{2}:\d{2})(?::\d{2})?$/);
+  return match ? match[1] : "";
+}
+
 function defaultTeamName(selector) {
   return selector.includes("white") ? ["白队", "White Team"] : ["红队", "Red Team"];
 }
@@ -766,7 +771,7 @@ function renderRemote() {
   }
   const countdownAction = document.querySelector("[data-action='ten-second-countdown']");
   if (countdownAction) {
-    countdownAction.textContent = tenSecondCountdownActive ? "停止倒计时" : "10秒倒计时";
+    countdownAction.textContent = tenSecondCountdownActive ? "⏰ 停止倒计时" : "⏰ 10秒倒计时";
   }
   setTeamName("[data-remote-status-red-team]", currentState.redTeam);
   setTeamName("[data-remote-status-white-team]", currentState.whiteTeam);
@@ -1099,7 +1104,7 @@ function renderResultsEmptyDay(message = "请选择有绿点的日期") {
   const title = document.querySelector("[data-selected-date-title]");
   const body = document.querySelector("[data-results-day-body]");
   if (title) title.textContent = selectedResultsDate || "请选择日期";
-  if (body) body.innerHTML = `<tr><td colspan="4">${escapeHtml(message)}</td></tr>`;
+  if (body) body.innerHTML = `<tr><td colspan="6">${escapeHtml(message)}</td></tr>`;
 }
 
 async function selectResultDate(date) {
@@ -1109,15 +1114,17 @@ async function selectResultDate(date) {
   if (title) title.textContent = date;
   const body = document.querySelector("[data-results-day-body]");
   if (!body) return;
-  body.innerHTML = `<tr><td colspan="4">正在读取...</td></tr>`;
+  body.innerHTML = `<tr><td colspan="6">正在读取...</td></tr>`;
   const data = await api.resultsDay(date);
   const matches = data.matches || [];
   if (!matches.length) {
     renderResultsEmptyDay("当天没有比赛记录");
     return;
   }
-  body.innerHTML = matches.map((match) => `
+  body.innerHTML = matches.map((match, index) => `
     <tr class="result-row" data-action="open-result-match" data-match-id="${match.id}">
+      <td class="result-seq-cell">${index + 1}</td>
+      <td class="result-time-cell">${resultTime(match.ended_at)}</td>
       <td class="ellipsis">${escapeHtml(match.red_team || "红队")}</td>
       <td class="score-cell">${match.red_score}</td>
       <td class="score-cell white-score-text">${match.white_score}</td>

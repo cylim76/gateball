@@ -1528,8 +1528,18 @@ button {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
+  --result-seq-width: clamp(30px, 7vw, 38px);
+  --result-time-width: clamp(48px, 12vw, 58px);
   --result-score-width: clamp(48px, 12vw, 62px);
   background: #090909;
+}
+
+.results-table .result-seq-col {
+  width: var(--result-seq-width);
+}
+
+.results-table .result-time-col {
+  width: var(--result-time-width);
 }
 
 .results-table .result-score-col {
@@ -1548,6 +1558,35 @@ button {
 .results-table th {
   color: #ddd;
   background: #171717;
+}
+
+.results-table .result-team-head {
+  height: 36px;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.results-table .red-result-head {
+  color: #fff;
+  background: #b70008;
+}
+
+.results-table .white-result-head {
+  color: #111;
+  background: #f3f3f3;
+}
+
+.results-table .result-time-head {
+  color: #ddd;
+  background: #171717;
+}
+
+.results-table .result-seq-cell,
+.results-table .result-time-cell {
+  padding-inline: 4px;
+  color: #d8d8d8;
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .results-table .ellipsis {
