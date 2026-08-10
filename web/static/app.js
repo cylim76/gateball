@@ -1120,7 +1120,7 @@ async function selectResultDate(date) {
     <tr class="result-row" data-action="open-result-match" data-match-id="${match.id}">
       <td class="ellipsis">${escapeHtml(match.red_team || "红队")}</td>
       <td class="score-cell">${match.red_score}</td>
-      <td class="score-cell">${match.white_score}</td>
+      <td class="score-cell white-score-text">${match.white_score}</td>
       <td class="ellipsis">${escapeHtml(match.white_team || "白队")}</td>
     </tr>
   `).join("");
@@ -1130,9 +1130,9 @@ function ballStepLabel(step) {
   return ["0分", "一门", "二门", "三门"][Number(step)] || "0分";
 }
 
-function renderDetailTeamTable(title, balls) {
+function renderDetailTeamTable(team, title, balls) {
   return `
-    <section class="detail-team-table">
+    <section class="detail-team-table ${team}-detail-table">
       <h3>${escapeHtml(title)}</h3>
       <table>
         <thead>
@@ -1146,7 +1146,7 @@ function renderDetailTeamTable(title, balls) {
         <tbody>
           ${balls.map((ball) => `
             <tr>
-              <th>${ball.number}</th>
+              <th><span class="detail-ball-number">${ball.number}</span></th>
               <td>${ballStepLabel(ball.step)}</td>
               <td class="pillar-cell">${renderPillars(ball.pillarCount || 0)}</td>
               <td class="score-cell">${ball.score}</td>
@@ -1174,13 +1174,13 @@ async function openResultMatch(matchId) {
       <span>${escapeHtml(match.ended_at || "")}</span>
     </header>
     <section class="detail-score-line">
-      <div><span>${escapeHtml(match.red_team || "红队")}</span><strong>${match.red_score}</strong></div>
+      <div class="red-detail-score"><span>${escapeHtml(match.red_team || "红队")}</span><strong>${match.red_score}</strong></div>
       <b>:</b>
-      <div><strong>${match.white_score}</strong><span>${escapeHtml(match.white_team || "白队")}</span></div>
+      <div class="white-detail-score"><span>${escapeHtml(match.white_team || "白队")}</span><strong>${match.white_score}</strong></div>
     </section>
     <div class="detail-tables">
-      ${renderDetailTeamTable("红队", redBalls)}
-      ${renderDetailTeamTable("白队", whiteBalls)}
+      ${renderDetailTeamTable("red", "红队", redBalls)}
+      ${renderDetailTeamTable("white", "白队", whiteBalls)}
     </div>
   `;
   dialog.classList.add("open");
