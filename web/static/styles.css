@@ -1202,7 +1202,7 @@ button {
   width: max-content;
   min-height: clamp(76px, 9.4vh, 86px);
   line-height: 1;
-  transform: translateX(-1ch);
+  transform: translateX(-2ch);
 }
 
 .remote-total-scoreline strong {

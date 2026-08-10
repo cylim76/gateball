@@ -606,7 +606,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return
 
     def send_json(self, payload: dict) -> None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
