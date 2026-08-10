@@ -1198,8 +1198,11 @@ button {
   align-items: baseline;
   justify-content: center;
   gap: clamp(5px, 1.4vw, 10px);
+  justify-self: center;
+  width: max-content;
   min-height: clamp(76px, 9.4vh, 86px);
   line-height: 1;
+  transform: translateX(-1ch);
 }
 
 .remote-total-scoreline strong {
