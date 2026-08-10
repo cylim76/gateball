@@ -97,6 +97,7 @@ let countdownOverlayTimer = null;
 const guardedActions = new Set(["toggle_timer", "undo", "advance", "swap_team_names", "ten-second-countdown", "ten_second_countdown"]);
 const guardedActionTimes = new Map();
 const ACTION_GUARD_MS = 800;
+const TIMEOUT_AUDIO_OFFSET_MS = 5500;
 const isKioskMode = new URLSearchParams(window.location.search).get("kiosk") === "1";
 
 function two(num) {
@@ -641,7 +642,7 @@ function startTenSecondCountdown() {
       if (runId !== tenSecondCountdownRunId) return;
       tenSecondCountdownTimer = null;
       playTenSecondCountdownAudio();
-    }, 6000);
+    }, TIMEOUT_AUDIO_OFFSET_MS);
     window.setTimeout(() => {
       if (runId === tenSecondCountdownRunId) {
         tenSecondCountdownActive = false;
