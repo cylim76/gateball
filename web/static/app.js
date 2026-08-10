@@ -92,6 +92,8 @@ let resultsYear = new Date().getFullYear();
 let resultsMonth = new Date().getMonth() + 1;
 let selectedResultsDate = "";
 let resultDays = new Map();
+let currentStateReceivedAt = 0;
+let countdownOverlayTimer = null;
 const guardedActions = new Set(["toggle_timer", "undo", "advance", "swap_team_names", "ten-second-countdown", "ten_second_countdown"]);
 const guardedActionTimes = new Map();
 const ACTION_GUARD_MS = 800;
@@ -588,6 +590,11 @@ function stopTenSecondCountdown(shouldNotify = true) {
   tenSecondCountdownRunId += 1;
   tenSecondCountdownActive = false;
   clearTenSecondCountdownTimers();
+  stopCountdownOverlayTicker();
+  if (currentState) {
+    currentState.tenSecondCountdownId = null;
+    currentState.tenSecondCountdownStartedAt = null;
+  }
   getTenSecondCountdownIntroAudio().pause();
   getTenSecondCountdownAudio().pause();
   getTenSecondCountdownIntroAudio().currentTime = 0;
@@ -638,6 +645,7 @@ function startTenSecondCountdown() {
     window.setTimeout(() => {
       if (runId === tenSecondCountdownRunId) {
         tenSecondCountdownActive = false;
+        renderRemote();
       }
     }, 10000);
     sendAction({ action: "ten_second_countdown" }, false).catch((error) => {
@@ -773,6 +781,7 @@ function renderRemote() {
     if (badge && ball) badge.textContent = String(ball.score);
   });
   renderRecentLog("[data-remote-recent-log]", 6);
+  renderCountdownOverlay();
 }
 
 function historyKey(entry) {
@@ -820,13 +829,47 @@ function clearCountdownOverlay() {
   lastRenderedCountdownDigit = null;
 }
 
+function estimatedServerTime() {
+  const serverTime = Number(currentState?.serverTime);
+  if (!Number.isFinite(serverTime)) return NaN;
+  if (!currentStateReceivedAt) return serverTime;
+  return serverTime + ((Date.now() - currentStateReceivedAt) / 1000);
+}
+
+function hasActiveCountdownOverlay() {
+  const countdownId = currentState?.tenSecondCountdownId || "";
+  const startedAt = Number(currentState?.tenSecondCountdownStartedAt);
+  const serverTime = estimatedServerTime();
+  if (!countdownId || !Number.isFinite(startedAt) || !Number.isFinite(serverTime)) return false;
+  const elapsed = serverTime - startedAt;
+  return elapsed >= 0 && elapsed < 10;
+}
+
+function stopCountdownOverlayTicker() {
+  if (!countdownOverlayTimer) return;
+  window.clearInterval(countdownOverlayTimer);
+  countdownOverlayTimer = null;
+}
+
+function syncCountdownOverlayTicker() {
+  if (!hasActiveCountdownOverlay()) {
+    stopCountdownOverlayTicker();
+    return;
+  }
+  if (countdownOverlayTimer) return;
+  countdownOverlayTimer = window.setInterval(() => {
+    renderCountdownOverlay();
+    if (!hasActiveCountdownOverlay()) stopCountdownOverlayTicker();
+  }, 100);
+}
+
 function renderCountdownOverlay() {
   const overlay = document.querySelector("[data-countdown-overlay]");
   const number = document.querySelector("[data-countdown-number]");
   if (!overlay || !number) return;
   const countdownId = currentState?.tenSecondCountdownId || "";
   const startedAt = Number(currentState?.tenSecondCountdownStartedAt);
-  const serverTime = Number(currentState?.serverTime);
+  const serverTime = estimatedServerTime();
   if (!countdownId || !Number.isFinite(startedAt) || !Number.isFinite(serverTime)) {
     clearCountdownOverlay();
     return;
@@ -1148,10 +1191,12 @@ function closeResultDetail() {
 
 function applyState(state, options = {}) {
   currentState = state;
+  currentStateReceivedAt = Date.now();
   if (document.querySelector("[data-scoreboard]")) renderScoreboard();
   if (document.querySelector("[data-remote]")) renderRemote();
   if (document.querySelector("[data-settings-form]")) renderSettings();
   renderKeyBindings();
+  syncCountdownOverlayTicker();
   if (options.speakEvents !== false) autoSpeakServerEvents();
 }
 
