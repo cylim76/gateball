@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-GATEBALL_URL="${GATEBALL_URL:-http://127.0.0.1:8000/scoreboard}"
+GATEBALL_URL="${GATEBALL_URL:-http://127.0.0.1:8000/scoreboard?kiosk=1}"
 WAIT_URL="${WAIT_URL:-http://127.0.0.1:8000/api/state}"
 
 for _ in $(seq 1 90); do
@@ -37,5 +37,6 @@ exec "$CHROMIUM_BIN" \
   --noerrdialogs \
   --disable-infobars \
   --disable-session-crashed-bubble \
+  --autoplay-policy=no-user-gesture-required \
   --check-for-update-interval=31536000 \
   "$GATEBALL_URL"

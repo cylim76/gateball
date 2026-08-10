@@ -12,7 +12,7 @@ the scoreboard in Chromium kiosk mode after desktop login.
 The backend service and browser are started separately:
 
 - Backend service keeps scoring, settings, history, and phone remote APIs running.
-- Browser only displays `http://127.0.0.1:8000/scoreboard` on the TV.
+- Browser only displays `http://127.0.0.1:8000/scoreboard?kiosk=1` on the TV.
 
 This separation is more stable. If the browser crashes, the backend keeps
 running. If the backend crashes, systemd restarts it automatically.
@@ -56,6 +56,7 @@ journalctl -u gateball -f
 Open pages:
 
 - Scoreboard: `http://127.0.0.1:8000/scoreboard`
+- Kiosk scoreboard: `http://127.0.0.1:8000/scoreboard?kiosk=1`
 - Phone remote: `http://<raspberry-pi-ip>:8000/remote`
 - Settings: `http://<raspberry-pi-ip>:8000/set`
 - Results: `http://<raspberry-pi-ip>:8000/results`
@@ -65,7 +66,7 @@ Open pages:
 The kiosk browser starts when the desktop session logs in. It opens:
 
 ```text
-http://127.0.0.1:8000/scoreboard
+http://127.0.0.1:8000/scoreboard?kiosk=1
 ```
 
 To close kiosk manually, press `Alt+F4` or switch terminal and run:
@@ -75,9 +76,10 @@ pkill chromium
 pkill chromium-browser
 ```
 
-The scoreboard page may show an `Enable Sound` button because browsers block
-autoplay until a user interacts with the page. Click it once after opening the
-scoreboard if sound does not play.
+The kiosk browser starts Chromium with autoplay enabled and opens the scoreboard
+with `kiosk=1`, so the `Enable Sound` button is hidden on the TV. The normal
+`/scoreboard` page still shows the button when a desktop or tablet browser
+blocks audio during testing.
 
 ## Uninstall
 

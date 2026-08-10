@@ -95,6 +95,7 @@ let resultDays = new Map();
 const guardedActions = new Set(["toggle_timer", "undo", "advance", "swap_team_names", "ten-second-countdown", "ten_second_countdown"]);
 const guardedActionTimes = new Map();
 const ACTION_GUARD_MS = 800;
+const isKioskMode = new URLSearchParams(window.location.search).get("kiosk") === "1";
 
 function two(num) {
   return String(num).padStart(2, "0");
@@ -521,6 +522,7 @@ function playAudio(audio, warningLabel) {
 }
 
 function showScoreboardSoundPrompt() {
+  if (isKioskMode) return;
   const button = document.querySelector("[data-sound-enable]");
   if (button && !scoreboardAudioEnabled) button.hidden = false;
 }
@@ -761,6 +763,7 @@ function renderRemote() {
   setTeamName("[data-remote-status-white-team]", currentState.whiteTeam);
   document.querySelector("[data-remote-red-total]").textContent = currentState.redTotal;
   document.querySelector("[data-remote-white-total]").textContent = currentState.whiteTotal;
+  document.querySelector(".remote-total-scoreline")?.classList.toggle("red-double-digit", Number(currentState.redTotal) >= 10);
   const showSelection = shouldShowBallSelection();
   document.querySelectorAll("[data-ball]").forEach((button) => {
     const number = Number(button.dataset.ball);
