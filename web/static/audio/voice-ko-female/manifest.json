@@ -45,6 +45,10 @@
       "text": "설정 저장되었습니다",
       "file": "/audio/voice-ko-female/settings_saved.mp3"
     },
+    "title_saved": {
+      "text": "경기 제목이 저장되었습니다",
+      "file": "/audio/voice-ko-female/title_saved.mp3"
+    },
     "key_binding_saved": {
       "text": "키 설정 저장되었습니다",
       "file": "/audio/voice-ko-female/key_binding_saved.mp3"

@@ -45,6 +45,10 @@
       "text": "设置已保存",
       "file": "/audio/voice-cn-male/settings_saved.mp3"
     },
+    "title_saved": {
+      "text": "比赛标题已保存",
+      "file": "/audio/voice-cn-male/title_saved.mp3"
+    },
     "key_binding_saved": {
       "text": "按键映射已保存",
       "file": "/audio/voice-cn-male/key_binding_saved.mp3"

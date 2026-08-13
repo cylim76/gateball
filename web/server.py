@@ -74,6 +74,10 @@ DEFAULT_STATE = {
     "keyBindings": {},
     "voiceProfile": "female",
     "voicePlaybackRate": 1.2,
+    "titleColor": "#ffe23a",
+    "titleFontScale": 1.0,
+    "tableMarkerAutoSize": True,
+    "tableMarkerScale": 1.0,
     "weatherLocation": "西安区, 牡丹江市, 黑龙江省, 157000, 中国",
     "weatherLatitude": 44.488144,
     "weatherLongitude": 129.5093059,
@@ -164,6 +168,7 @@ class Store:
     def __init__(self) -> None:
         self.lock = RLock()
         self.state = DEFAULT_STATE.copy()
+        self.preview_state: dict = {}
         self.balls = new_balls()
         self.history: list[dict] = []
         self.load()
@@ -265,6 +270,7 @@ class Store:
             white_total = sum(ball.score for ball in self.balls.values() if team_for_ball(ball.number) == "white")
             return {
                 **self.state,
+                **self.preview_state,
                 "balls": balls,
                 "redTotal": red_total,
                 "whiteTotal": white_total,
@@ -467,6 +473,9 @@ class Store:
                         self.state[key] = str(payload[key]).strip() if key != "allowScoringWhenPaused" else payload[key]
                         if key == "weatherLocation":
                             WEATHER_CACHE["timestamp"] = 0.0
+                if "titleColor" in payload:
+                    color = str(payload["titleColor"]).strip()
+                    self.state["titleColor"] = color if re.fullmatch(r"#[0-9a-fA-F]{6}", color) else DEFAULT_STATE["titleColor"]
                 if "courtName" in payload and "hotspotSsid" not in payload:
                     self.state["hotspotSsid"] = str(payload["courtName"]).strip()
                 if "hotspotPassword" in payload:
@@ -489,6 +498,21 @@ class Store:
                         self.state["voicePlaybackRate"] = min(2.0, max(0.8, rate))
                     except (TypeError, ValueError):
                         pass
+                if "titleFontScale" in payload:
+                    try:
+                        scale = round(float(payload["titleFontScale"]), 2)
+                        self.state["titleFontScale"] = min(1.4, max(0.7, scale))
+                    except (TypeError, ValueError):
+                        pass
+                if "tableMarkerAutoSize" in payload:
+                    self.state["tableMarkerAutoSize"] = bool(payload["tableMarkerAutoSize"])
+                if "tableMarkerScale" in payload:
+                    try:
+                        scale = round(float(payload["tableMarkerScale"]), 2)
+                        self.state["tableMarkerScale"] = min(1.8, max(0.5, scale))
+                    except (TypeError, ValueError):
+                        pass
+                self.preview_state.clear()
                 if "durationMinutes" in payload:
                     minutes = max(1, int(payload["durationMinutes"]))
                     self.state["durationSeconds"] = minutes * 60
@@ -507,6 +531,28 @@ class Store:
                 message = "设置已保存"
                 self.state["lastMessage"] = message
                 self.record("settings", None, message)
+
+        elif action == "preview_title_style":
+            if "titleColor" in payload:
+                color = str(payload["titleColor"]).strip()
+                self.preview_state["titleColor"] = color if re.fullmatch(r"#[0-9a-fA-F]{6}", color) else DEFAULT_STATE["titleColor"]
+            if "titleFontScale" in payload:
+                try:
+                    scale = round(float(payload["titleFontScale"]), 2)
+                    self.preview_state["titleFontScale"] = min(1.4, max(0.7, scale))
+                except (TypeError, ValueError):
+                    pass
+            if "tableMarkerAutoSize" in payload:
+                self.preview_state["tableMarkerAutoSize"] = bool(payload["tableMarkerAutoSize"])
+            if "tableMarkerScale" in payload:
+                try:
+                    scale = round(float(payload["tableMarkerScale"]), 2)
+                    self.preview_state["tableMarkerScale"] = min(1.8, max(0.5, scale))
+                except (TypeError, ValueError):
+                    pass
+            self.state["lastUpdated"] = time.time()
+            message = self.state.get("lastMessage", "")
+            return {"ok": True, "message": message, "state": self.snapshot()}
 
         elif action == "update_key_binding":
             binding_action = str(payload.get("bindingAction", "")).strip()
@@ -567,7 +613,9 @@ def open_meteo_weather_icon(code: int) -> str:
 
 def fetch_weather() -> dict:
     now = time.time()
-    if now - float(WEATHER_CACHE.get("timestamp", 0)) < 1800:
+    cached_payload = WEATHER_CACHE.get("payload", {"ok": False})
+    cache_seconds = 1800 if cached_payload.get("ok") else 30
+    if now - float(WEATHER_CACHE.get("timestamp", 0)) < cache_seconds:
         return WEATHER_CACHE["payload"]
 
     try:
@@ -602,8 +650,8 @@ def fetch_weather() -> dict:
                 "minTempC": int(float(today["mintempC"])),
                 "maxTempC": int(float(today["maxtempC"])),
             }
-    except Exception:
-        payload = {"ok": False}
+    except Exception as exc:
+        payload = {"ok": False, "message": str(exc)}
 
     WEATHER_CACHE["timestamp"] = now
     WEATHER_CACHE["payload"] = payload
@@ -797,6 +845,10 @@ class Handler(BaseHTTPRequestHandler):
                 snapshot.get("redTotal"),
                 snapshot.get("whiteTotal"),
                 snapshot.get("tenSecondCountdownId"),
+                snapshot.get("titleColor"),
+                snapshot.get("titleFontScale"),
+                snapshot.get("tableMarkerAutoSize"),
+                snapshot.get("tableMarkerScale"),
             )
             now = time.time()
             should_send = event_key != last_key

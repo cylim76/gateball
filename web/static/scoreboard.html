@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8">
@@ -11,10 +11,13 @@
       <div class="board-header">
         <div class="header-info header-left">
           <span data-clock-date></span>
-          <span class="weather-chip" data-weather hidden></span>
+          <span data-clock-time></span>
         </div>
         <h1 class="title" data-title>红星村老年会门球比赛</h1>
-        <div class="header-info header-right" data-clock-time></div>
+        <div class="header-info header-right">
+          <span class="court-name" data-court-name>红星门球场1</span>
+          <span class="weather-chip" data-weather>天气 --/--℃</span>
+        </div>
       </div>
       <section class="top">
         <div class="team-total red">
@@ -70,7 +73,6 @@
         <div class="recent-log" data-recent-log>
           <div class="log-line"><span class="log-main"><span class="log-time">[30:00]</span> 等待开始</span></div>
         </div>
-        <div class="court-name" data-court-name>红星门球场1</div>
       </footer>
     </main>
 
@@ -100,6 +102,8 @@
       <div class="countdown-number" data-countdown-number></div>
     </div>
 
+    <canvas class="celebration-canvas" data-celebration-canvas aria-hidden="true"></canvas>
+
     <button class="sound-enable" data-action="enable-scoreboard-sound" data-sound-enable type="button" hidden>启用声音</button>
 
     <div class="match-transition" data-match-transition aria-hidden="true">
@@ -125,20 +129,31 @@
           const response = await fetch("/api/weather", { cache: "no-store" });
           const weather = await response.json();
           if (!weather.ok) {
-            weatherEl.hidden = true;
-            return;
+            weatherEl.textContent = "天气 --/--℃";
+            weatherEl.hidden = false;
+            return false;
           }
           weatherEl.textContent = `${weather.icon} ${weather.minTempC}/${weather.maxTempC}℃`;
           weatherEl.hidden = false;
+          return true;
         } catch (error) {
-          weatherEl.hidden = true;
+          weatherEl.textContent = "天气 --/--℃";
+          weatherEl.hidden = false;
+          return false;
         }
       }
 
+      function scheduleWeatherUpdate(success) {
+        setTimeout(refreshWeatherLoop, success ? 30 * 60 * 1000 : 30 * 1000);
+      }
+
+      async function refreshWeatherLoop() {
+        scheduleWeatherUpdate(await updateWeather());
+      }
+
       updateHeaderClock();
-      updateWeather();
+      refreshWeatherLoop();
       setInterval(updateHeaderClock, 1000);
-      setInterval(updateWeather, 30 * 60 * 1000);
     </script>
   </body>
 </html>

@@ -94,6 +94,9 @@ const keyBindingSpecs = [
 ];
 
 const keyBindingSpecById = Object.fromEntries(keyBindingSpecs.map((spec) => [spec.id, spec]));
+const DEFAULT_TITLE_COLOR = "#ffe23a";
+const DEFAULT_TITLE_FONT_SCALE = 1;
+const DEFAULT_TABLE_MARKER_SCALE = 1;
 
 let currentState = null;
 let finishDialogOpen = false;
@@ -132,6 +135,7 @@ let wakeLockSentinel = null;
 let wakeLockWanted = false;
 let stateEventSource = null;
 let refreshTimer = null;
+let stylePreviewTimer = null;
 let resultsYear = new Date().getFullYear();
 let resultsMonth = new Date().getMonth() + 1;
 let selectedResultsDate = "";
@@ -146,6 +150,10 @@ let readySpeechTimer = null;
 let matchTransitionInFlight = false;
 let finishAdvanceInFlight = false;
 let remoteFinishPlaybackLocked = false;
+let celebrationAnimationFrame = null;
+let celebrationParticles = [];
+let celebrationLastBurstAt = 0;
+let celebrationLastFrameAt = 0;
 const teamNameAudioCache = new Map();
 const guardedActions = new Set(["toggle_timer", "undo", "advance", "swap_team_names", "ten-second-countdown", "ten_second_countdown"]);
 const guardedActionTimes = new Map();
@@ -332,6 +340,10 @@ function defaultTeamName(selector) {
   return selector.includes("white") ? ["白队", "White Team"] : ["红队", "Red Team"];
 }
 
+function hasHangul(text) {
+  return /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/.test(String(text || ""));
+}
+
 function teamNameLines(name) {
   const text = String(name || "").trim();
   const parts = text.split(/\s+/).filter(Boolean);
@@ -364,6 +376,7 @@ function setTeamName(selector, name) {
   element.replaceChildren();
   element.classList.remove("scrolling");
   element.classList.remove("multi-line-team-name");
+  element.classList.toggle("has-hangul", hasHangul(text));
   element.classList.toggle("default-team-name", !text);
   element.style.removeProperty("--team-scroll-distance");
 
@@ -452,6 +465,7 @@ function voiceKeyForText(text) {
     "请输入密码结束比赛": "finish_password_prompt",
     "密码错误": "password_wrong",
     "设置已保存": "settings_saved",
+    "比赛标题已保存": "title_saved",
     "按键映射已保存": "key_binding_saved",
     "按键映射失败": "key_binding_failed",
     "请先选择球号": "selection_required",
@@ -1117,6 +1131,102 @@ function matchStatusText() {
   return "\u7b49\u5f85\u5f00\u59cb";
 }
 
+function resizeCelebrationCanvas(canvas) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const width = Math.max(1, Math.floor(window.innerWidth * dpr));
+  const height = Math.max(1, Math.floor(window.innerHeight * dpr));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  canvas.style.width = `${window.innerWidth}px`;
+  canvas.style.height = `${window.innerHeight}px`;
+  return dpr;
+}
+
+function addCelebrationBurst(canvas, dpr) {
+  const winner = document.body.classList.contains("finish-white-winner") ? "white" : (document.body.classList.contains("finish-red-winner") ? "red" : "draw");
+  const sideBias = winner === "red" ? 0.24 : (winner === "white" ? 0.76 : (Math.random() > 0.5 ? 0.24 : 0.76));
+  const x = (sideBias + (Math.random() - 0.5) * 0.2) * canvas.width;
+  const y = (0.14 + Math.random() * 0.26) * canvas.height;
+  const colors = winner === "white"
+    ? ["#ffffff", "#f4f4f4", "#ffd43b", "#9ee7ff"]
+    : ["#ffd43b", "#fff2a6", "#ff3b3b", "#ffffff"];
+  const particleCount = winner === "draw" ? 32 : 48;
+  for (let index = 0; index < particleCount; index += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = (1.2 + Math.random() * 3.8) * dpr;
+    celebrationParticles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - (0.6 * dpr),
+      life: 58 + Math.random() * 22,
+      age: 0,
+      size: (2 + Math.random() * 2.6) * dpr,
+      color: colors[Math.floor(Math.random() * colors.length)],
+    });
+  }
+}
+
+function drawCelebrationFrame(timestamp) {
+  const canvas = document.querySelector("[data-celebration-canvas]");
+  if (!canvas || !document.body.classList.contains("finish-summary-active")) {
+    stopCelebrationEffect();
+    return;
+  }
+  const dpr = resizeCelebrationCanvas(canvas);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  if (!celebrationLastFrameAt) celebrationLastFrameAt = timestamp;
+  const delta = Math.min(2, Math.max(0.6, (timestamp - celebrationLastFrameAt) / 16.7));
+  celebrationLastFrameAt = timestamp;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!celebrationLastBurstAt || timestamp - celebrationLastBurstAt > 620) {
+    addCelebrationBurst(canvas, dpr);
+    celebrationLastBurstAt = timestamp;
+  }
+  ctx.globalCompositeOperation = "lighter";
+  celebrationParticles = celebrationParticles.filter((particle) => {
+    particle.age += delta;
+    particle.x += particle.vx * delta;
+    particle.y += particle.vy * delta;
+    particle.vy += 0.045 * dpr * delta;
+    const opacity = Math.max(0, 1 - particle.age / particle.life);
+    if (opacity <= 0) return false;
+    ctx.globalAlpha = opacity;
+    ctx.fillStyle = particle.color;
+    ctx.beginPath();
+    ctx.arc(particle.x, particle.y, particle.size * opacity, 0, Math.PI * 2);
+    ctx.fill();
+    return true;
+  });
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
+  celebrationAnimationFrame = requestAnimationFrame(drawCelebrationFrame);
+}
+
+function startCelebrationEffect() {
+  if (!document.querySelector("[data-scoreboard]") || celebrationAnimationFrame) return;
+  celebrationParticles = [];
+  celebrationLastBurstAt = 0;
+  celebrationLastFrameAt = 0;
+  celebrationAnimationFrame = requestAnimationFrame(drawCelebrationFrame);
+}
+
+function stopCelebrationEffect() {
+  if (celebrationAnimationFrame) {
+    cancelAnimationFrame(celebrationAnimationFrame);
+    celebrationAnimationFrame = null;
+  }
+  celebrationParticles = [];
+  celebrationLastBurstAt = 0;
+  celebrationLastFrameAt = 0;
+  const canvas = document.querySelector("[data-celebration-canvas]");
+  const ctx = canvas?.getContext("2d");
+  if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
 function renderRows(team) {
   const numbers = team === "red" ? [1, 3, 5, 7, 9] : [2, 4, 6, 8, 10];
   const showSelection = shouldShowBallSelection();
@@ -1147,7 +1257,17 @@ function renderScoreboard() {
   boardBody.classList.toggle("finish-red-winner", Boolean(currentState.matchFinished && redScore > whiteScore));
   boardBody.classList.toggle("finish-white-winner", Boolean(currentState.matchFinished && whiteScore > redScore));
   boardBody.classList.toggle("finish-draw", Boolean(currentState.matchFinished && redScore === whiteScore));
-  document.querySelector("[data-title]").textContent = currentState.title;
+  if (currentState.matchFinished) {
+    startCelebrationEffect();
+  } else {
+    stopCelebrationEffect();
+  }
+  const title = document.querySelector("[data-title]");
+  title.textContent = currentState.title;
+  title.classList.toggle("has-hangul", hasHangul(currentState.title));
+  applyTitleColor(currentState.titleColor);
+  applyTitleFontScale(currentState.titleFontScale);
+  applyTableMarkerScale(currentState.tableMarkerAutoSize, currentState.tableMarkerScale);
   setTeamName("[data-red-team]", currentState.redTeam);
   setTeamName("[data-white-team]", currentState.whiteTeam);
   document.querySelector("[data-red-total]").textContent = currentState.redTotal;
@@ -1167,6 +1287,7 @@ function renderScoreboard() {
   renderRecentLog();
   document.querySelector("[data-red-rows]").innerHTML = renderRows("red");
   document.querySelector("[data-white-rows]").innerHTML = renderRows("white");
+  requestAnimationFrame(() => syncTableMarkerAutoSize(currentState.tableMarkerAutoSize, currentState.tableMarkerScale));
   renderCountdownOverlay();
 }
 
@@ -1189,7 +1310,9 @@ function renderRecentLog(selector = "[data-recent-log]", limit = 3) {
 function renderRemote() {
   if (!currentState) return;
   const remoteLocked = remoteFinishPlaybackLocked;
-  document.querySelector("[data-remote-title]").textContent = currentState.title;
+  const remoteTitle = document.querySelector("[data-remote-title]");
+  remoteTitle.textContent = currentState.title;
+  remoteTitle.classList.toggle("has-hangul", hasHangul(currentState.title));
   const remoteTime = document.querySelector("[data-remote-time]");
   const remoteState = document.querySelector("[data-remote-state]");
   const remoteStatusTime = document.querySelector(".remote-status-time");
@@ -1422,12 +1545,22 @@ function renderSettings() {
     form.durationMinutes.value = Math.round(currentState.durationSeconds / 60);
     if (form.voiceProfile) form.voiceProfile.value = currentState.voiceProfile || "female";
     if (form.voicePlaybackRate) form.voicePlaybackRate.value = Number(currentState.voicePlaybackRate || DEFAULT_GAMEPLAY_PLAYBACK_RATE).toFixed(1);
+    if (form.titleColor) form.titleColor.value = normalizeHexColor(currentState.titleColor);
+    if (form.titleFontScale) form.titleFontScale.value = normalizeTitleFontScale(currentState.titleFontScale).toFixed(2);
+    if (form.tableMarkerAutoSize) form.tableMarkerAutoSize.checked = currentState.tableMarkerAutoSize !== false;
+    if (form.tableMarkerScale) form.tableMarkerScale.value = normalizeTableMarkerScale(currentState.tableMarkerScale).toFixed(2);
     updateVoicePlaybackRateOutput(form);
+    updateTitleFontScaleOutput(form);
+    updateTableMarkerScaleOutput(form);
+    updateTableMarkerControls(form);
     if (form.weatherLocation) form.weatherLocation.value = currentState.weatherLocation || "";
     if (form.weatherLatitude) form.weatherLatitude.value = currentState.weatherLatitude ?? "";
     if (form.weatherLongitude) form.weatherLongitude.value = currentState.weatherLongitude ?? "";
     form.allowScoringWhenPaused.checked = currentState.allowScoringWhenPaused;
   }
+  applyTitleColor(currentState.titleColor);
+  applyTitleFontScale(currentState.titleFontScale);
+  applyTableMarkerScale(currentState.tableMarkerAutoSize, currentState.tableMarkerScale);
   renderNetworkSettings();
   settingsHydrated = true;
 }
@@ -1526,6 +1659,162 @@ function updateVoicePlaybackRateOutput(form) {
   if (!input || !output) return;
   const rate = Number(input.value || DEFAULT_GAMEPLAY_PLAYBACK_RATE);
   output.textContent = `${(Number.isFinite(rate) ? rate : DEFAULT_GAMEPLAY_PLAYBACK_RATE).toFixed(1)}x`;
+}
+
+function normalizeTitleFontScale(value) {
+  const scale = Number(value);
+  if (!Number.isFinite(scale)) return DEFAULT_TITLE_FONT_SCALE;
+  return Math.min(1.4, Math.max(0.7, scale));
+}
+
+function updateTitleFontScaleOutput(form) {
+  const input = form?.titleFontScale;
+  const output = form?.querySelector?.("[data-title-font-scale-output]");
+  if (!input || !output) return;
+  const scale = normalizeTitleFontScale(input.value);
+  output.textContent = `${Math.round(scale * 100)}%`;
+}
+
+function applyTitleFontScale(value) {
+  const scale = normalizeTitleFontScale(value);
+  document.documentElement.style.setProperty("--title-font-scale", scale.toFixed(2));
+  document.querySelectorAll("[data-title]").forEach((title) => {
+    title.style.removeProperty("font-size");
+    const baseSize = parseFloat(window.getComputedStyle(title).fontSize);
+    if (Number.isFinite(baseSize)) title.style.fontSize = `${Math.round(baseSize * scale)}px`;
+  });
+}
+
+function previewScoreboardStyle(form) {
+  if (!form) return;
+  applyTitleColor(form.titleColor?.value);
+  applyTitleFontScale(form.titleFontScale?.value);
+  const autoSize = form.tableMarkerAutoSize?.checked !== false;
+  const markerScale = normalizeTableMarkerScale(form.tableMarkerScale?.value);
+  applyTableMarkerScale(autoSize, markerScale);
+  updateTableMarkerControls(form);
+  sendAction({
+    action: "preview_title_style",
+    titleColor: normalizeHexColor(form.titleColor?.value),
+    titleFontScale: normalizeTitleFontScale(form.titleFontScale?.value),
+    tableMarkerAutoSize: autoSize,
+    tableMarkerScale: markerScale,
+  }, false).catch(() => {});
+}
+
+function previewTitleStyle(form) {
+  previewScoreboardStyle(form);
+}
+
+function stepTitleFontScale(form, delta) {
+  const input = form?.titleFontScale;
+  if (!input) return;
+  const next = normalizeTitleFontScale(normalizeTitleFontScale(input.value) + delta);
+  input.value = next.toFixed(2);
+  updateTitleFontScaleOutput(form);
+  previewTitleStyle(form);
+}
+
+function normalizeTableMarkerScale(value) {
+  const scale = Number(value);
+  if (!Number.isFinite(scale)) return DEFAULT_TABLE_MARKER_SCALE;
+  return Math.min(1.8, Math.max(0.5, scale));
+}
+
+function updateTableMarkerScaleOutput(form) {
+  const input = form?.tableMarkerScale;
+  const output = form?.querySelector?.("[data-table-marker-scale-output]");
+  if (!input || !output) return;
+  const scale = normalizeTableMarkerScale(input.value);
+  output.textContent = `${Math.round(scale * 100)}%`;
+}
+
+function updateTableMarkerControls(form) {
+  const auto = form?.tableMarkerAutoSize?.checked !== false;
+  form?.querySelectorAll?.("[data-action='table-marker-size-down'], [data-action='table-marker-size-up']").forEach((button) => {
+    button.classList.toggle("auto-will-disable", auto);
+    button.setAttribute("aria-pressed", auto ? "false" : "true");
+  });
+}
+
+function applyTableMarkerScale(autoSize, value) {
+  const scale = autoSize === false ? normalizeTableMarkerScale(value) : DEFAULT_TABLE_MARKER_SCALE;
+  document.documentElement.style.setProperty("--table-marker-scale", scale.toFixed(2));
+  syncTableMarkerAutoSize(autoSize, value);
+  requestAnimationFrame(() => syncTableMarkerAutoSize(autoSize, value));
+}
+
+function setPxVariable(name, value) {
+  if (Number.isFinite(value)) document.documentElement.style.setProperty(name, `${Math.round(value)}px`);
+}
+
+function setPxStyle(selector, property, value) {
+  if (!Number.isFinite(value)) return;
+  const text = `${Math.round(value)}px`;
+  document.querySelectorAll(selector).forEach((element) => {
+    element.style[property] = text;
+  });
+}
+
+function syncTableMarkerAutoSize(autoSize = currentState?.tableMarkerAutoSize, value = currentState?.tableMarkerScale) {
+  const body = document.querySelector(".tables tbody");
+  if (!body) return;
+  const rowHeight = body.getBoundingClientRect().height / 5;
+  if (!Number.isFinite(rowHeight) || rowHeight <= 0) return;
+  const scale = autoSize === false ? normalizeTableMarkerScale(value) : DEFAULT_TABLE_MARKER_SCALE;
+  const slotSize = rowHeight * .92 * scale;
+  const ballFontSize = Math.max(10, Math.min(92, rowHeight * .7 * scale));
+  const scoreFontSize = Math.max(10, Math.min(92, rowHeight * .7 * scale));
+  const pillarSize = Math.max(5, Math.min(42, rowHeight * .26 * scale));
+  const pillarXSize = Math.max(9, Math.min(58, rowHeight * .44 * scale));
+  setPxVariable("--table-slot-size", Math.max(8, Math.min(112, slotSize)));
+  setPxVariable("--table-ball-font-size", ballFontSize);
+  setPxVariable("--table-score-font-size", scoreFontSize);
+  setPxVariable("--table-pillar-size", pillarSize);
+  setPxVariable("--table-pillar-x-size", pillarXSize);
+  setPxStyle(".tables .slot", "width", Math.max(8, Math.min(112, slotSize)));
+  setPxStyle(".tables tbody th", "fontSize", ballFontSize);
+  setPxStyle(".tables .score", "fontSize", scoreFontSize);
+  setPxStyle(".tables .pillar", "width", pillarSize);
+  setPxStyle(".tables .pillar-x", "fontSize", pillarXSize);
+}
+
+function previewTableMarkerStyle(form) {
+  previewScoreboardStyle(form);
+}
+
+function stepTableMarkerScale(form, delta) {
+  const input = form?.tableMarkerScale;
+  if (!input) return;
+  if (form.tableMarkerAutoSize) form.tableMarkerAutoSize.checked = false;
+  const next = normalizeTableMarkerScale(normalizeTableMarkerScale(input.value) + delta);
+  input.value = next.toFixed(2);
+  updateTableMarkerScaleOutput(form);
+  previewTableMarkerStyle(form);
+}
+
+function normalizeHexColor(value) {
+  const color = String(value || "").trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : DEFAULT_TITLE_COLOR;
+}
+
+function hexToRgb(color) {
+  const normalized = normalizeHexColor(color).slice(1);
+  return {
+    r: parseInt(normalized.slice(0, 2), 16),
+    g: parseInt(normalized.slice(2, 4), 16),
+    b: parseInt(normalized.slice(4, 6), 16),
+  };
+}
+
+function applyTitleColor(color) {
+  const normalized = normalizeHexColor(color);
+  const { r, g, b } = hexToRgb(normalized);
+  document.documentElement.style.setProperty("--title-color", normalized);
+  document.documentElement.style.setProperty("--title-stroke-color", `rgba(${Math.min(255, r + 35)}, ${Math.min(255, g + 35)}, ${Math.min(255, b + 35)}, .9)`);
+  document.documentElement.style.setProperty("--title-glow-tight", `rgba(${Math.min(255, r + 55)}, ${Math.min(255, g + 55)}, ${Math.min(255, b + 55)}, 1)`);
+  document.documentElement.style.setProperty("--title-glow-mid", `rgba(${r}, ${g}, ${b}, .86)`);
+  document.documentElement.style.setProperty("--title-glow-wide", `rgba(${r}, ${g}, ${b}, .42)`);
 }
 
 async function scanWifiNetworks() {
@@ -1906,6 +2195,26 @@ function startPolling() {
   refreshTimer = window.setInterval(refresh, 1000);
 }
 
+function startStylePreviewPolling() {
+  if (!document.querySelector("[data-scoreboard]") || stylePreviewTimer) return;
+  stylePreviewTimer = window.setInterval(async () => {
+    try {
+      const state = await api.state();
+      if (!currentState) {
+        applyState(state, { speakEvents: false });
+        return;
+      }
+      const changed = state.titleColor !== currentState.titleColor
+        || state.titleFontScale !== currentState.titleFontScale
+        || state.tableMarkerAutoSize !== currentState.tableMarkerAutoSize
+        || state.tableMarkerScale !== currentState.tableMarkerScale;
+      if (changed) applyState(state, { speakEvents: false, skipTransition: true });
+    } catch (error) {
+      return;
+    }
+  }, 300);
+}
+
 function stopPolling() {
   if (!refreshTimer) return;
   window.clearInterval(refreshTimer);
@@ -1935,7 +2244,9 @@ function startStateEvents() {
 
 async function sendAction(payload, shouldSpeak = true, applyOptions = {}) {
   const result = await api.action(payload);
-  applyState(result.state, { speakEvents: false, ...applyOptions });
+  if (!applyOptions.noApply) {
+    applyState(result.state, { speakEvents: false, ...applyOptions });
+  }
   if (shouldSpeak) {
     if (payload.action === "toggle_timer") {
       if (result.message === "比赛开始") {
@@ -2024,6 +2335,10 @@ function collectSettingsPayload(form) {
     durationMinutes: form.durationMinutes.value,
     voiceProfile: form.voiceProfile?.value || "female",
     voicePlaybackRate: form.voicePlaybackRate?.value || DEFAULT_GAMEPLAY_PLAYBACK_RATE,
+    titleColor: normalizeHexColor(form.titleColor?.value),
+    titleFontScale: normalizeTitleFontScale(form.titleFontScale?.value),
+    tableMarkerAutoSize: form.tableMarkerAutoSize?.checked !== false,
+    tableMarkerScale: normalizeTableMarkerScale(form.tableMarkerScale?.value),
     weatherLocation: form.weatherLocation?.value || "",
     weatherLatitude: form.weatherLatitude?.value || "",
     weatherLongitude: form.weatherLongitude?.value || "",
@@ -2375,6 +2690,30 @@ document.addEventListener("click", (event) => {
     renderKeyBindings();
     return;
   }
+  if (action === "reset-title-color") {
+    const form = target.closest("[data-settings-form]");
+    if (form?.titleColor) {
+      form.titleColor.value = DEFAULT_TITLE_COLOR;
+      previewTitleStyle(form);
+    }
+    return;
+  }
+  if (action === "title-size-down") {
+    stepTitleFontScale(target.closest("[data-settings-form]"), -0.05);
+    return;
+  }
+  if (action === "title-size-up") {
+    stepTitleFontScale(target.closest("[data-settings-form]"), 0.05);
+    return;
+  }
+  if (action === "table-marker-size-down") {
+    stepTableMarkerScale(target.closest("[data-settings-form]"), -0.05);
+    return;
+  }
+  if (action === "table-marker-size-up") {
+    stepTableMarkerScale(target.closest("[data-settings-form]"), 0.05);
+    return;
+  }
   if (action === "confirm-swap-team") return confirmSwapTeam();
   if (action === "toggle_timer" && (currentState?.matchFinished || (currentState?.timeExpired && !currentState?.running))) return;
   const payload = { action };
@@ -2385,6 +2724,15 @@ document.addEventListener("click", (event) => {
 document.addEventListener("input", (event) => {
   const rateInput = event.target.closest("input[name='voicePlaybackRate']");
   if (rateInput) updateVoicePlaybackRateOutput(rateInput.form);
+
+  const titleColorInput = event.target.closest("input[name='titleColor']");
+  if (titleColorInput) previewTitleStyle(titleColorInput.form);
+
+  const tableMarkerAutoInput = event.target.closest("input[name='tableMarkerAutoSize']");
+  if (tableMarkerAutoInput) {
+    updateTableMarkerControls(tableMarkerAutoInput.form);
+    previewTableMarkerStyle(tableMarkerAutoInput.form);
+  }
 
   const weatherInput = event.target.closest("[data-weather-location-input]");
   if (weatherInput) {
@@ -2468,6 +2816,12 @@ document.addEventListener("submit", async (event) => {
   openSettingsSavePasswordDialog(collectSettingsPayload(form));
 });
 
+window.addEventListener("resize", () => {
+  if (currentState?.titleFontScale) applyTitleFontScale(currentState.titleFontScale);
+  syncTableMarkerAutoSize(currentState?.tableMarkerAutoSize, currentState?.tableMarkerScale);
+});
+
 initScreenWakeLock();
 initResultsPage();
 startStateEvents();
+startStylePreviewPolling();

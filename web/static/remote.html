@@ -141,6 +141,37 @@
                 <output data-voice-playback-rate-output>1.2x</output>
               </div>
             </label>
+            <div class="title-style-control">
+              <label>
+                比赛标题颜色
+                <div class="color-control">
+                  <input name="titleColor" type="color" value="#ffe23a">
+                  <button class="secondary" type="button" data-action="reset-title-color">恢复默认</button>
+                </div>
+              </label>
+              <label>
+                比赛标题大小
+                <div class="stepper-control">
+                  <button class="secondary" type="button" data-action="title-size-down">减小</button>
+                  <output data-title-font-scale-output>100%</output>
+                  <button class="secondary" type="button" data-action="title-size-up">放大</button>
+                </div>
+                <input name="titleFontScale" type="hidden" value="1.00">
+              </label>
+            </div>
+            <label class="check">
+              <input name="tableMarkerAutoSize" type="checkbox">
+              球号/球标大小自动
+            </label>
+            <label>
+              球号/球标大小
+              <div class="stepper-control">
+                <button class="secondary" type="button" data-action="table-marker-size-down">减小</button>
+                <output data-table-marker-scale-output>100%</output>
+                <button class="secondary" type="button" data-action="table-marker-size-up">放大</button>
+              </div>
+              <input name="tableMarkerScale" type="hidden" value="1.00">
+            </label>
             <label>
               天气位置
               <input name="weatherLocation" data-weather-location-input autocomplete="off" placeholder="输入城市搜索，留空自动定位">
