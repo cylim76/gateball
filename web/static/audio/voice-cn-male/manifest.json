@@ -1,0 +1,1029 @@
+{
+  "profile": "male",
+  "voice": "zh-CN-YunyangNeural",
+  "language": "zh",
+  "rate": "-4%",
+  "volume": "+0%",
+  "items": {
+    "match_start": {
+      "text": "比赛开始",
+      "file": "/audio/voice-cn-male/match_start.mp3"
+    },
+    "match_pause": {
+      "text": "比赛暂停",
+      "file": "/audio/voice-cn-male/match_pause.mp3"
+    },
+    "match_resume": {
+      "text": "比赛继续",
+      "file": "/audio/voice-cn-male/match_resume.mp3"
+    },
+    "match_waiting": {
+      "text": "等待开始",
+      "file": "/audio/voice-cn-male/match_waiting.mp3"
+    },
+    "next_match_waiting": {
+      "text": "下一场比赛，等待开始",
+      "file": "/audio/voice-cn-male/next_match_waiting.mp3"
+    },
+    "time_up": {
+      "text": "时间到",
+      "file": "/audio/voice-cn-male/time_up.mp3"
+    },
+    "match_finished": {
+      "text": "比赛结束",
+      "file": "/audio/voice-cn-male/match_finished.mp3"
+    },
+    "finish_password_prompt": {
+      "text": "请输入密码结束比赛",
+      "file": "/audio/voice-cn-male/finish_password_prompt.mp3"
+    },
+    "password_wrong": {
+      "text": "密码错误",
+      "file": "/audio/voice-cn-male/password_wrong.mp3"
+    },
+    "settings_saved": {
+      "text": "设置已保存",
+      "file": "/audio/voice-cn-male/settings_saved.mp3"
+    },
+    "key_binding_saved": {
+      "text": "按键映射已保存",
+      "file": "/audio/voice-cn-male/key_binding_saved.mp3"
+    },
+    "key_binding_failed": {
+      "text": "按键映射失败",
+      "file": "/audio/voice-cn-male/key_binding_failed.mp3"
+    },
+    "selection_required": {
+      "text": "请先选择球号",
+      "file": "/audio/voice-cn-male/selection_required.mp3"
+    },
+    "scoring_paused_denied": {
+      "text": "暂停期间不能计分",
+      "file": "/audio/voice-cn-male/scoring_paused_denied.mp3"
+    },
+    "team_swap_saved": {
+      "text": "红白队名已更换",
+      "file": "/audio/voice-cn-male/team_swap_saved.mp3"
+    },
+    "team_name_empty": {
+      "text": "队名为空",
+      "file": "/audio/voice-cn-male/team_name_empty.mp3"
+    },
+    "red_team_saved": {
+      "text": "红队队名已保存",
+      "file": "/audio/voice-cn-male/red_team_saved.mp3"
+    },
+    "white_team_saved": {
+      "text": "白队队名已保存",
+      "file": "/audio/voice-cn-male/white_team_saved.mp3"
+    },
+    "unknown_team": {
+      "text": "未知队伍",
+      "file": "/audio/voice-cn-male/unknown_team.mp3"
+    },
+    "unknown_action": {
+      "text": "未知操作",
+      "file": "/audio/voice-cn-male/unknown_action.mp3"
+    },
+    "countdown_10": {
+      "text": "倒计时10秒",
+      "file": "/audio/voice-cn-male/countdown_10.mp3"
+    },
+    "countdown_10_stopped": {
+      "text": "10秒倒计时已停止",
+      "file": "/audio/voice-cn-male/countdown_10_stopped.mp3"
+    },
+    "time_remaining_15min": {
+      "text": "比赛时间剩余 15 分钟",
+      "file": "/audio/voice-cn-male/time_remaining_15min.mp3"
+    },
+    "time_remaining_10min": {
+      "text": "比赛时间剩余 10 分钟",
+      "file": "/audio/voice-cn-male/time_remaining_10min.mp3"
+    },
+    "time_remaining_5min": {
+      "text": "比赛时间剩余 5 分钟",
+      "file": "/audio/voice-cn-male/time_remaining_5min.mp3"
+    },
+    "time_remaining_1min": {
+      "text": "比赛时间剩余 1 分钟",
+      "file": "/audio/voice-cn-male/time_remaining_1min.mp3"
+    },
+    "ball_1": {
+      "text": "1号球",
+      "file": "/audio/voice-cn-male/ball_1.mp3"
+    },
+    "ball_1_gate1": {
+      "text": "1号球，一门得分",
+      "file": "/audio/voice-cn-male/ball_1_gate1.mp3"
+    },
+    "ball_1_gate2": {
+      "text": "1号球，二门得分",
+      "file": "/audio/voice-cn-male/ball_1_gate2.mp3"
+    },
+    "ball_1_gate3": {
+      "text": "1号球，三门得分",
+      "file": "/audio/voice-cn-male/ball_1_gate3.mp3"
+    },
+    "ball_1_pillar": {
+      "text": "1号球，中柱得分",
+      "file": "/audio/voice-cn-male/ball_1_pillar.mp3"
+    },
+    "ball_1_limit": {
+      "text": "1号球已到上限",
+      "file": "/audio/voice-cn-male/ball_1_limit.mp3"
+    },
+    "ball_1_no_undo": {
+      "text": "1号球没有可撤销记录",
+      "file": "/audio/voice-cn-male/ball_1_no_undo.mp3"
+    },
+    "undo_ball_1_gate1": {
+      "text": "撤销，1号球，一门得分",
+      "file": "/audio/voice-cn-male/undo_ball_1_gate1.mp3"
+    },
+    "undo_ball_1_gate2": {
+      "text": "撤销，1号球，二门得分",
+      "file": "/audio/voice-cn-male/undo_ball_1_gate2.mp3"
+    },
+    "undo_ball_1_gate3": {
+      "text": "撤销，1号球，三门得分",
+      "file": "/audio/voice-cn-male/undo_ball_1_gate3.mp3"
+    },
+    "undo_ball_1_pillar": {
+      "text": "撤销，1号球，中柱得分",
+      "file": "/audio/voice-cn-male/undo_ball_1_pillar.mp3"
+    },
+    "undo_ball_1_zero": {
+      "text": "撤销，1号球，回到0分",
+      "file": "/audio/voice-cn-male/undo_ball_1_zero.mp3"
+    },
+    "ball_2": {
+      "text": "2号球",
+      "file": "/audio/voice-cn-male/ball_2.mp3"
+    },
+    "ball_2_gate1": {
+      "text": "2号球，一门得分",
+      "file": "/audio/voice-cn-male/ball_2_gate1.mp3"
+    },
+    "ball_2_gate2": {
+      "text": "2号球，二门得分",
+      "file": "/audio/voice-cn-male/ball_2_gate2.mp3"
+    },
+    "ball_2_gate3": {
+      "text": "2号球，三门得分",
+      "file": "/audio/voice-cn-male/ball_2_gate3.mp3"
+    },
+    "ball_2_pillar": {
+      "text": "2号球，中柱得分",
+      "file": "/audio/voice-cn-male/ball_2_pillar.mp3"
+    },
+    "ball_2_limit": {
+      "text": "2号球已到上限",
+      "file": "/audio/voice-cn-male/ball_2_limit.mp3"
+    },
+    "ball_2_no_undo": {
+      "text": "2号球没有可撤销记录",
+      "file": "/audio/voice-cn-male/ball_2_no_undo.mp3"
+    },
+    "undo_ball_2_gate1": {
+      "text": "撤销，2号球，一门得分",
+      "file": "/audio/voice-cn-male/undo_ball_2_gate1.mp3"
+    },
+    "undo_ball_2_gate2": {
+      "text": "撤销，2号球，二门得分",
+      "file": "/audio/voice-cn-male/undo_ball_2_gate2.mp3"
+    },
+    "undo_ball_2_gate3": {
+      "text": "撤销，2号球，三门得分",
+      "file": "/audio/voice-cn-male/undo_ball_2_gate3.mp3"
+    },
+    "undo_ball_2_pillar": {
+      "text": "撤销，2号球，中柱得分",
+      "file": "/audio/voice-cn-male/undo_ball_2_pillar.mp3"
+    },
+    "undo_ball_2_zero": {
+      "text": "撤销，2号球，回到0分",
+      "file": "/audio/voice-cn-male/undo_ball_2_zero.mp3"
+    },
+    "ball_3": {
+      "text": "3号球",
+      "file": "/audio/voice-cn-male/ball_3.mp3"
+    },
+    "ball_3_gate1": {
+      "text": "3号球，一门得分",
+      "file": "/audio/voice-cn-male/ball_3_gate1.mp3"
+    },
+    "ball_3_gate2": {
+      "text": "3号球，二门得分",
+      "file": "/audio/voice-cn-male/ball_3_gate2.mp3"
+    },
+    "ball_3_gate3": {
+      "text": "3号球，三门得分",
+      "file": "/audio/voice-cn-male/ball_3_gate3.mp3"
+    },
+    "ball_3_pillar": {
+      "text": "3号球，中柱得分",
+      "file": "/audio/voice-cn-male/ball_3_pillar.mp3"
+    },
+    "ball_3_limit": {
+      "text": "3号球已到上限",
+      "file": "/audio/voice-cn-male/ball_3_limit.mp3"
+    },
+    "ball_3_no_undo": {
+      "text": "3号球没有可撤销记录",
+      "file": "/audio/voice-cn-male/ball_3_no_undo.mp3"
+    },
+    "undo_ball_3_gate1": {
+      "text": "撤销，3号球，一门得分",
+      "file": "/audio/voice-cn-male/undo_ball_3_gate1.mp3"
+    },
+    "undo_ball_3_gate2": {
+      "text": "撤销，3号球，二门得分",
+      "file": "/audio/voice-cn-male/undo_ball_3_gate2.mp3"
+    },
+    "undo_ball_3_gate3": {
+      "text": "撤销，3号球，三门得分",
+      "file": "/audio/voice-cn-male/undo_ball_3_gate3.mp3"
+    },
+    "undo_ball_3_pillar": {
+      "text": "撤销，3号球，中柱得分",
+      "file": "/audio/voice-cn-male/undo_ball_3_pillar.mp3"
+    },
+    "undo_ball_3_zero": {
+      "text": "撤销，3号球，回到0分",
+      "file": "/audio/voice-cn-male/undo_ball_3_zero.mp3"
+    },
+    "ball_4": {
+      "text": "4号球",
+      "file": "/audio/voice-cn-male/ball_4.mp3"
+    },
+    "ball_4_gate1": {
+      "text": "4号球，一门得分",
+      "file": "/audio/voice-cn-male/ball_4_gate1.mp3"
+    },
+    "ball_4_gate2": {
+      "text": "4号球，二门得分",
+      "file": "/audio/voice-cn-male/ball_4_gate2.mp3"
+    },
+    "ball_4_gate3": {
+      "text": "4号球，三门得分",
+      "file": "/audio/voice-cn-male/ball_4_gate3.mp3"
+    },
+    "ball_4_pillar": {
+      "text": "4号球，中柱得分",
+      "file": "/audio/voice-cn-male/ball_4_pillar.mp3"
+    },
+    "ball_4_limit": {
+      "text": "4号球已到上限",
+      "file": "/audio/voice-cn-male/ball_4_limit.mp3"
+    },
+    "ball_4_no_undo": {
+      "text": "4号球没有可撤销记录",
+      "file": "/audio/voice-cn-male/ball_4_no_undo.mp3"
+    },
+    "undo_ball_4_gate1": {
+      "text": "撤销，4号球，一门得分",
+      "file": "/audio/voice-cn-male/undo_ball_4_gate1.mp3"
+    },
+    "undo_ball_4_gate2": {
+      "text": "撤销，4号球，二门得分",
+      "file": "/audio/voice-cn-male/undo_ball_4_gate2.mp3"
+    },
+    "undo_ball_4_gate3": {
+      "text": "撤销，4号球，三门得分",
+      "file": "/audio/voice-cn-male/undo_ball_4_gate3.mp3"
+    },
+    "undo_ball_4_pillar": {
+      "text": "撤销，4号球，中柱得分",
+      "file": "/audio/voice-cn-male/undo_ball_4_pillar.mp3"
+    },
+    "undo_ball_4_zero": {
+      "text": "撤销，4号球，回到0分",
+      "file": "/audio/voice-cn-male/undo_ball_4_zero.mp3"
+    },
+    "ball_5": {
+      "text": "5号球",
+      "file": "/audio/voice-cn-male/ball_5.mp3"
+    },
+    "ball_5_gate1": {
+      "text": "5号球，一门得分",
+      "file": "/audio/voice-cn-male/ball_5_gate1.mp3"
+    },
+    "ball_5_gate2": {
+      "text": "5号球，二门得分",
+      "file": "/audio/voice-cn-male/ball_5_gate2.mp3"
+    },
+    "ball_5_gate3": {
+      "text": "5号球，三门得分",
+      "file": "/audio/voice-cn-male/ball_5_gate3.mp3"
+    },
+    "ball_5_pillar": {
+      "text": "5号球，中柱得分",
+      "file": "/audio/voice-cn-male/ball_5_pillar.mp3"
+    },
+    "ball_5_limit": {
+      "text": "5号球已到上限",
+      "file": "/audio/voice-cn-male/ball_5_limit.mp3"
+    },
+    "ball_5_no_undo": {
+      "text": "5号球没有可撤销记录",
+      "file": "/audio/voice-cn-male/ball_5_no_undo.mp3"
+    },
+    "undo_ball_5_gate1": {
+      "text": "撤销，5号球，一门得分",
+      "file": "/audio/voice-cn-male/undo_ball_5_gate1.mp3"
+    },
+    "undo_ball_5_gate2": {
+      "text": "撤销，5号球，二门得分",
+      "file": "/audio/voice-cn-male/undo_ball_5_gate2.mp3"
+    },
+    "undo_ball_5_gate3": {
+      "text": "撤销，5号球，三门得分",
+      "file": "/audio/voice-cn-male/undo_ball_5_gate3.mp3"
+    },
+    "undo_ball_5_pillar": {
+      "text": "撤销，5号球，中柱得分",
+      "file": "/audio/voice-cn-male/undo_ball_5_pillar.mp3"
+    },
+    "undo_ball_5_zero": {
+      "text": "撤销，5号球，回到0分",
+      "file": "/audio/voice-cn-male/undo_ball_5_zero.mp3"
+    },
+    "ball_6": {
+      "text": "6号球",
+      "file": "/audio/voice-cn-male/ball_6.mp3"
+    },
+    "ball_6_gate1": {
+      "text": "6号球，一门得分",
+      "file": "/audio/voice-cn-male/ball_6_gate1.mp3"
+    },
+    "ball_6_gate2": {
+      "text": "6号球，二门得分",
+      "file": "/audio/voice-cn-male/ball_6_gate2.mp3"
+    },
+    "ball_6_gate3": {
+      "text": "6号球，三门得分",
+      "file": "/audio/voice-cn-male/ball_6_gate3.mp3"
+    },
+    "ball_6_pillar": {
+      "text": "6号球，中柱得分",
+      "file": "/audio/voice-cn-male/ball_6_pillar.mp3"
+    },
+    "ball_6_limit": {
+      "text": "6号球已到上限",
+      "file": "/audio/voice-cn-male/ball_6_limit.mp3"
+    },
+    "ball_6_no_undo": {
+      "text": "6号球没有可撤销记录",
+      "file": "/audio/voice-cn-male/ball_6_no_undo.mp3"
+    },
+    "undo_ball_6_gate1": {
+      "text": "撤销，6号球，一门得分",
+      "file": "/audio/voice-cn-male/undo_ball_6_gate1.mp3"
+    },
+    "undo_ball_6_gate2": {
+      "text": "撤销，6号球，二门得分",
+      "file": "/audio/voice-cn-male/undo_ball_6_gate2.mp3"
+    },
+    "undo_ball_6_gate3": {
+      "text": "撤销，6号球，三门得分",
+      "file": "/audio/voice-cn-male/undo_ball_6_gate3.mp3"
+    },
+    "undo_ball_6_pillar": {
+      "text": "撤销，6号球，中柱得分",
+      "file": "/audio/voice-cn-male/undo_ball_6_pillar.mp3"
+    },
+    "undo_ball_6_zero": {
+      "text": "撤销，6号球，回到0分",
+      "file": "/audio/voice-cn-male/undo_ball_6_zero.mp3"
+    },
+    "ball_7": {
+      "text": "7号球",
+      "file": "/audio/voice-cn-male/ball_7.mp3"
+    },
+    "ball_7_gate1": {
+      "text": "7号球，一门得分",
+      "file": "/audio/voice-cn-male/ball_7_gate1.mp3"
+    },
+    "ball_7_gate2": {
+      "text": "7号球，二门得分",
+      "file": "/audio/voice-cn-male/ball_7_gate2.mp3"
+    },
+    "ball_7_gate3": {
+      "text": "7号球，三门得分",
+      "file": "/audio/voice-cn-male/ball_7_gate3.mp3"
+    },
+    "ball_7_pillar": {
+      "text": "7号球，中柱得分",
+      "file": "/audio/voice-cn-male/ball_7_pillar.mp3"
+    },
+    "ball_7_limit": {
+      "text": "7号球已到上限",
+      "file": "/audio/voice-cn-male/ball_7_limit.mp3"
+    },
+    "ball_7_no_undo": {
+      "text": "7号球没有可撤销记录",
+      "file": "/audio/voice-cn-male/ball_7_no_undo.mp3"
+    },
+    "undo_ball_7_gate1": {
+      "text": "撤销，7号球，一门得分",
+      "file": "/audio/voice-cn-male/undo_ball_7_gate1.mp3"
+    },
+    "undo_ball_7_gate2": {
+      "text": "撤销，7号球，二门得分",
+      "file": "/audio/voice-cn-male/undo_ball_7_gate2.mp3"
+    },
+    "undo_ball_7_gate3": {
+      "text": "撤销，7号球，三门得分",
+      "file": "/audio/voice-cn-male/undo_ball_7_gate3.mp3"
+    },
+    "undo_ball_7_pillar": {
+      "text": "撤销，7号球，中柱得分",
+      "file": "/audio/voice-cn-male/undo_ball_7_pillar.mp3"
+    },
+    "undo_ball_7_zero": {
+      "text": "撤销，7号球，回到0分",
+      "file": "/audio/voice-cn-male/undo_ball_7_zero.mp3"
+    },
+    "ball_8": {
+      "text": "8号球",
+      "file": "/audio/voice-cn-male/ball_8.mp3"
+    },
+    "ball_8_gate1": {
+      "text": "8号球，一门得分",
+      "file": "/audio/voice-cn-male/ball_8_gate1.mp3"
+    },
+    "ball_8_gate2": {
+      "text": "8号球，二门得分",
+      "file": "/audio/voice-cn-male/ball_8_gate2.mp3"
+    },
+    "ball_8_gate3": {
+      "text": "8号球，三门得分",
+      "file": "/audio/voice-cn-male/ball_8_gate3.mp3"
+    },
+    "ball_8_pillar": {
+      "text": "8号球，中柱得分",
+      "file": "/audio/voice-cn-male/ball_8_pillar.mp3"
+    },
+    "ball_8_limit": {
+      "text": "8号球已到上限",
+      "file": "/audio/voice-cn-male/ball_8_limit.mp3"
+    },
+    "ball_8_no_undo": {
+      "text": "8号球没有可撤销记录",
+      "file": "/audio/voice-cn-male/ball_8_no_undo.mp3"
+    },
+    "undo_ball_8_gate1": {
+      "text": "撤销，8号球，一门得分",
+      "file": "/audio/voice-cn-male/undo_ball_8_gate1.mp3"
+    },
+    "undo_ball_8_gate2": {
+      "text": "撤销，8号球，二门得分",
+      "file": "/audio/voice-cn-male/undo_ball_8_gate2.mp3"
+    },
+    "undo_ball_8_gate3": {
+      "text": "撤销，8号球，三门得分",
+      "file": "/audio/voice-cn-male/undo_ball_8_gate3.mp3"
+    },
+    "undo_ball_8_pillar": {
+      "text": "撤销，8号球，中柱得分",
+      "file": "/audio/voice-cn-male/undo_ball_8_pillar.mp3"
+    },
+    "undo_ball_8_zero": {
+      "text": "撤销，8号球，回到0分",
+      "file": "/audio/voice-cn-male/undo_ball_8_zero.mp3"
+    },
+    "ball_9": {
+      "text": "9号球",
+      "file": "/audio/voice-cn-male/ball_9.mp3"
+    },
+    "ball_9_gate1": {
+      "text": "9号球，一门得分",
+      "file": "/audio/voice-cn-male/ball_9_gate1.mp3"
+    },
+    "ball_9_gate2": {
+      "text": "9号球，二门得分",
+      "file": "/audio/voice-cn-male/ball_9_gate2.mp3"
+    },
+    "ball_9_gate3": {
+      "text": "9号球，三门得分",
+      "file": "/audio/voice-cn-male/ball_9_gate3.mp3"
+    },
+    "ball_9_pillar": {
+      "text": "9号球，中柱得分",
+      "file": "/audio/voice-cn-male/ball_9_pillar.mp3"
+    },
+    "ball_9_limit": {
+      "text": "9号球已到上限",
+      "file": "/audio/voice-cn-male/ball_9_limit.mp3"
+    },
+    "ball_9_no_undo": {
+      "text": "9号球没有可撤销记录",
+      "file": "/audio/voice-cn-male/ball_9_no_undo.mp3"
+    },
+    "undo_ball_9_gate1": {
+      "text": "撤销，9号球，一门得分",
+      "file": "/audio/voice-cn-male/undo_ball_9_gate1.mp3"
+    },
+    "undo_ball_9_gate2": {
+      "text": "撤销，9号球，二门得分",
+      "file": "/audio/voice-cn-male/undo_ball_9_gate2.mp3"
+    },
+    "undo_ball_9_gate3": {
+      "text": "撤销，9号球，三门得分",
+      "file": "/audio/voice-cn-male/undo_ball_9_gate3.mp3"
+    },
+    "undo_ball_9_pillar": {
+      "text": "撤销，9号球，中柱得分",
+      "file": "/audio/voice-cn-male/undo_ball_9_pillar.mp3"
+    },
+    "undo_ball_9_zero": {
+      "text": "撤销，9号球，回到0分",
+      "file": "/audio/voice-cn-male/undo_ball_9_zero.mp3"
+    },
+    "ball_10": {
+      "text": "10号球",
+      "file": "/audio/voice-cn-male/ball_10.mp3"
+    },
+    "ball_10_gate1": {
+      "text": "10号球，一门得分",
+      "file": "/audio/voice-cn-male/ball_10_gate1.mp3"
+    },
+    "ball_10_gate2": {
+      "text": "10号球，二门得分",
+      "file": "/audio/voice-cn-male/ball_10_gate2.mp3"
+    },
+    "ball_10_gate3": {
+      "text": "10号球，三门得分",
+      "file": "/audio/voice-cn-male/ball_10_gate3.mp3"
+    },
+    "ball_10_pillar": {
+      "text": "10号球，中柱得分",
+      "file": "/audio/voice-cn-male/ball_10_pillar.mp3"
+    },
+    "ball_10_limit": {
+      "text": "10号球已到上限",
+      "file": "/audio/voice-cn-male/ball_10_limit.mp3"
+    },
+    "ball_10_no_undo": {
+      "text": "10号球没有可撤销记录",
+      "file": "/audio/voice-cn-male/ball_10_no_undo.mp3"
+    },
+    "undo_ball_10_gate1": {
+      "text": "撤销，10号球，一门得分",
+      "file": "/audio/voice-cn-male/undo_ball_10_gate1.mp3"
+    },
+    "undo_ball_10_gate2": {
+      "text": "撤销，10号球，二门得分",
+      "file": "/audio/voice-cn-male/undo_ball_10_gate2.mp3"
+    },
+    "undo_ball_10_gate3": {
+      "text": "撤销，10号球，三门得分",
+      "file": "/audio/voice-cn-male/undo_ball_10_gate3.mp3"
+    },
+    "undo_ball_10_pillar": {
+      "text": "撤销，10号球，中柱得分",
+      "file": "/audio/voice-cn-male/undo_ball_10_pillar.mp3"
+    },
+    "undo_ball_10_zero": {
+      "text": "撤销，10号球，回到0分",
+      "file": "/audio/voice-cn-male/undo_ball_10_zero.mp3"
+    },
+    "score_0": {
+      "text": "0分",
+      "file": "/audio/voice-cn-male/score_0.mp3"
+    },
+    "score_1": {
+      "text": "1分",
+      "file": "/audio/voice-cn-male/score_1.mp3"
+    },
+    "score_2": {
+      "text": "2分",
+      "file": "/audio/voice-cn-male/score_2.mp3"
+    },
+    "score_3": {
+      "text": "3分",
+      "file": "/audio/voice-cn-male/score_3.mp3"
+    },
+    "score_4": {
+      "text": "4分",
+      "file": "/audio/voice-cn-male/score_4.mp3"
+    },
+    "score_5": {
+      "text": "5分",
+      "file": "/audio/voice-cn-male/score_5.mp3"
+    },
+    "score_6": {
+      "text": "6分",
+      "file": "/audio/voice-cn-male/score_6.mp3"
+    },
+    "score_7": {
+      "text": "7分",
+      "file": "/audio/voice-cn-male/score_7.mp3"
+    },
+    "score_8": {
+      "text": "8分",
+      "file": "/audio/voice-cn-male/score_8.mp3"
+    },
+    "score_9": {
+      "text": "9分",
+      "file": "/audio/voice-cn-male/score_9.mp3"
+    },
+    "score_10": {
+      "text": "10分",
+      "file": "/audio/voice-cn-male/score_10.mp3"
+    },
+    "score_11": {
+      "text": "11分",
+      "file": "/audio/voice-cn-male/score_11.mp3"
+    },
+    "score_12": {
+      "text": "12分",
+      "file": "/audio/voice-cn-male/score_12.mp3"
+    },
+    "score_13": {
+      "text": "13分",
+      "file": "/audio/voice-cn-male/score_13.mp3"
+    },
+    "score_14": {
+      "text": "14分",
+      "file": "/audio/voice-cn-male/score_14.mp3"
+    },
+    "score_15": {
+      "text": "15分",
+      "file": "/audio/voice-cn-male/score_15.mp3"
+    },
+    "score_16": {
+      "text": "16分",
+      "file": "/audio/voice-cn-male/score_16.mp3"
+    },
+    "score_17": {
+      "text": "17分",
+      "file": "/audio/voice-cn-male/score_17.mp3"
+    },
+    "score_18": {
+      "text": "18分",
+      "file": "/audio/voice-cn-male/score_18.mp3"
+    },
+    "score_19": {
+      "text": "19分",
+      "file": "/audio/voice-cn-male/score_19.mp3"
+    },
+    "score_20": {
+      "text": "20分",
+      "file": "/audio/voice-cn-male/score_20.mp3"
+    },
+    "score_21": {
+      "text": "21分",
+      "file": "/audio/voice-cn-male/score_21.mp3"
+    },
+    "score_22": {
+      "text": "22分",
+      "file": "/audio/voice-cn-male/score_22.mp3"
+    },
+    "score_23": {
+      "text": "23分",
+      "file": "/audio/voice-cn-male/score_23.mp3"
+    },
+    "score_24": {
+      "text": "24分",
+      "file": "/audio/voice-cn-male/score_24.mp3"
+    },
+    "score_25": {
+      "text": "25分",
+      "file": "/audio/voice-cn-male/score_25.mp3"
+    },
+    "score_26": {
+      "text": "26分",
+      "file": "/audio/voice-cn-male/score_26.mp3"
+    },
+    "score_27": {
+      "text": "27分",
+      "file": "/audio/voice-cn-male/score_27.mp3"
+    },
+    "score_28": {
+      "text": "28分",
+      "file": "/audio/voice-cn-male/score_28.mp3"
+    },
+    "score_29": {
+      "text": "29分",
+      "file": "/audio/voice-cn-male/score_29.mp3"
+    },
+    "score_30": {
+      "text": "30分",
+      "file": "/audio/voice-cn-male/score_30.mp3"
+    },
+    "score_31": {
+      "text": "31分",
+      "file": "/audio/voice-cn-male/score_31.mp3"
+    },
+    "score_32": {
+      "text": "32分",
+      "file": "/audio/voice-cn-male/score_32.mp3"
+    },
+    "score_33": {
+      "text": "33分",
+      "file": "/audio/voice-cn-male/score_33.mp3"
+    },
+    "score_34": {
+      "text": "34分",
+      "file": "/audio/voice-cn-male/score_34.mp3"
+    },
+    "score_35": {
+      "text": "35分",
+      "file": "/audio/voice-cn-male/score_35.mp3"
+    },
+    "score_36": {
+      "text": "36分",
+      "file": "/audio/voice-cn-male/score_36.mp3"
+    },
+    "score_37": {
+      "text": "37分",
+      "file": "/audio/voice-cn-male/score_37.mp3"
+    },
+    "score_38": {
+      "text": "38分",
+      "file": "/audio/voice-cn-male/score_38.mp3"
+    },
+    "score_39": {
+      "text": "39分",
+      "file": "/audio/voice-cn-male/score_39.mp3"
+    },
+    "score_40": {
+      "text": "40分",
+      "file": "/audio/voice-cn-male/score_40.mp3"
+    },
+    "score_41": {
+      "text": "41分",
+      "file": "/audio/voice-cn-male/score_41.mp3"
+    },
+    "score_42": {
+      "text": "42分",
+      "file": "/audio/voice-cn-male/score_42.mp3"
+    },
+    "score_43": {
+      "text": "43分",
+      "file": "/audio/voice-cn-male/score_43.mp3"
+    },
+    "score_44": {
+      "text": "44分",
+      "file": "/audio/voice-cn-male/score_44.mp3"
+    },
+    "score_45": {
+      "text": "45分",
+      "file": "/audio/voice-cn-male/score_45.mp3"
+    },
+    "score_46": {
+      "text": "46分",
+      "file": "/audio/voice-cn-male/score_46.mp3"
+    },
+    "score_47": {
+      "text": "47分",
+      "file": "/audio/voice-cn-male/score_47.mp3"
+    },
+    "score_48": {
+      "text": "48分",
+      "file": "/audio/voice-cn-male/score_48.mp3"
+    },
+    "score_49": {
+      "text": "49分",
+      "file": "/audio/voice-cn-male/score_49.mp3"
+    },
+    "score_50": {
+      "text": "50分",
+      "file": "/audio/voice-cn-male/score_50.mp3"
+    },
+    "score_51": {
+      "text": "51分",
+      "file": "/audio/voice-cn-male/score_51.mp3"
+    },
+    "score_52": {
+      "text": "52分",
+      "file": "/audio/voice-cn-male/score_52.mp3"
+    },
+    "score_53": {
+      "text": "53分",
+      "file": "/audio/voice-cn-male/score_53.mp3"
+    },
+    "score_54": {
+      "text": "54分",
+      "file": "/audio/voice-cn-male/score_54.mp3"
+    },
+    "score_55": {
+      "text": "55分",
+      "file": "/audio/voice-cn-male/score_55.mp3"
+    },
+    "score_56": {
+      "text": "56分",
+      "file": "/audio/voice-cn-male/score_56.mp3"
+    },
+    "score_57": {
+      "text": "57分",
+      "file": "/audio/voice-cn-male/score_57.mp3"
+    },
+    "score_58": {
+      "text": "58分",
+      "file": "/audio/voice-cn-male/score_58.mp3"
+    },
+    "score_59": {
+      "text": "59分",
+      "file": "/audio/voice-cn-male/score_59.mp3"
+    },
+    "score_60": {
+      "text": "60分",
+      "file": "/audio/voice-cn-male/score_60.mp3"
+    },
+    "score_61": {
+      "text": "61分",
+      "file": "/audio/voice-cn-male/score_61.mp3"
+    },
+    "score_62": {
+      "text": "62分",
+      "file": "/audio/voice-cn-male/score_62.mp3"
+    },
+    "score_63": {
+      "text": "63分",
+      "file": "/audio/voice-cn-male/score_63.mp3"
+    },
+    "score_64": {
+      "text": "64分",
+      "file": "/audio/voice-cn-male/score_64.mp3"
+    },
+    "score_65": {
+      "text": "65分",
+      "file": "/audio/voice-cn-male/score_65.mp3"
+    },
+    "score_66": {
+      "text": "66分",
+      "file": "/audio/voice-cn-male/score_66.mp3"
+    },
+    "score_67": {
+      "text": "67分",
+      "file": "/audio/voice-cn-male/score_67.mp3"
+    },
+    "score_68": {
+      "text": "68分",
+      "file": "/audio/voice-cn-male/score_68.mp3"
+    },
+    "score_69": {
+      "text": "69分",
+      "file": "/audio/voice-cn-male/score_69.mp3"
+    },
+    "score_70": {
+      "text": "70分",
+      "file": "/audio/voice-cn-male/score_70.mp3"
+    },
+    "score_71": {
+      "text": "71分",
+      "file": "/audio/voice-cn-male/score_71.mp3"
+    },
+    "score_72": {
+      "text": "72分",
+      "file": "/audio/voice-cn-male/score_72.mp3"
+    },
+    "score_73": {
+      "text": "73分",
+      "file": "/audio/voice-cn-male/score_73.mp3"
+    },
+    "score_74": {
+      "text": "74分",
+      "file": "/audio/voice-cn-male/score_74.mp3"
+    },
+    "score_75": {
+      "text": "75分",
+      "file": "/audio/voice-cn-male/score_75.mp3"
+    },
+    "score_76": {
+      "text": "76分",
+      "file": "/audio/voice-cn-male/score_76.mp3"
+    },
+    "score_77": {
+      "text": "77分",
+      "file": "/audio/voice-cn-male/score_77.mp3"
+    },
+    "score_78": {
+      "text": "78分",
+      "file": "/audio/voice-cn-male/score_78.mp3"
+    },
+    "score_79": {
+      "text": "79分",
+      "file": "/audio/voice-cn-male/score_79.mp3"
+    },
+    "score_80": {
+      "text": "80分",
+      "file": "/audio/voice-cn-male/score_80.mp3"
+    },
+    "score_81": {
+      "text": "81分",
+      "file": "/audio/voice-cn-male/score_81.mp3"
+    },
+    "score_82": {
+      "text": "82分",
+      "file": "/audio/voice-cn-male/score_82.mp3"
+    },
+    "score_83": {
+      "text": "83分",
+      "file": "/audio/voice-cn-male/score_83.mp3"
+    },
+    "score_84": {
+      "text": "84分",
+      "file": "/audio/voice-cn-male/score_84.mp3"
+    },
+    "score_85": {
+      "text": "85分",
+      "file": "/audio/voice-cn-male/score_85.mp3"
+    },
+    "score_86": {
+      "text": "86分",
+      "file": "/audio/voice-cn-male/score_86.mp3"
+    },
+    "score_87": {
+      "text": "87分",
+      "file": "/audio/voice-cn-male/score_87.mp3"
+    },
+    "score_88": {
+      "text": "88分",
+      "file": "/audio/voice-cn-male/score_88.mp3"
+    },
+    "score_89": {
+      "text": "89分",
+      "file": "/audio/voice-cn-male/score_89.mp3"
+    },
+    "score_90": {
+      "text": "90分",
+      "file": "/audio/voice-cn-male/score_90.mp3"
+    },
+    "score_91": {
+      "text": "91分",
+      "file": "/audio/voice-cn-male/score_91.mp3"
+    },
+    "score_92": {
+      "text": "92分",
+      "file": "/audio/voice-cn-male/score_92.mp3"
+    },
+    "score_93": {
+      "text": "93分",
+      "file": "/audio/voice-cn-male/score_93.mp3"
+    },
+    "score_94": {
+      "text": "94分",
+      "file": "/audio/voice-cn-male/score_94.mp3"
+    },
+    "score_95": {
+      "text": "95分",
+      "file": "/audio/voice-cn-male/score_95.mp3"
+    },
+    "score_96": {
+      "text": "96分",
+      "file": "/audio/voice-cn-male/score_96.mp3"
+    },
+    "score_97": {
+      "text": "97分",
+      "file": "/audio/voice-cn-male/score_97.mp3"
+    },
+    "score_98": {
+      "text": "98分",
+      "file": "/audio/voice-cn-male/score_98.mp3"
+    },
+    "score_99": {
+      "text": "99分",
+      "file": "/audio/voice-cn-male/score_99.mp3"
+    },
+    "score_100": {
+      "text": "100分",
+      "file": "/audio/voice-cn-male/score_100.mp3"
+    },
+    "score_total": {
+      "text": "总分",
+      "file": "/audio/voice-cn-male/score_total.mp3"
+    },
+    "red_team": {
+      "text": "红队",
+      "file": "/audio/voice-cn-male/red_team.mp3"
+    },
+    "white_team": {
+      "text": "白队",
+      "file": "/audio/voice-cn-male/white_team.mp3"
+    },
+    "winner_red_prefix": {
+      "text": "祝贺红队",
+      "file": "/audio/voice-cn-male/winner_red_prefix.mp3"
+    },
+    "winner_white_prefix": {
+      "text": "祝贺白队",
+      "file": "/audio/voice-cn-male/winner_white_prefix.mp3"
+    },
+    "winner_suffix": {
+      "text": "取得胜利",
+      "file": "/audio/voice-cn-male/winner_suffix.mp3"
+    },
+    "draw_game": {
+      "text": "双方平局",
+      "file": "/audio/voice-cn-male/draw_game.mp3"
+    },
+    "versus": {
+      "text": "对阵",
+      "file": "/audio/voice-cn-male/versus.mp3"
+    }
+  }
+}

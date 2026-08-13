@@ -202,7 +202,7 @@ class ResultsStore:
                 SELECT id, match_number, title, ended_at, red_team, red_score, white_score, white_team
                 FROM matches
                 WHERE match_date = ?
-                ORDER BY ended_at DESC, id DESC
+                ORDER BY ended_at ASC, id ASC
                 """,
                 (date,),
             ).fetchall()

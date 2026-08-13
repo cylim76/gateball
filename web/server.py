@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import errno
 import json
 import mimetypes
 import os
-from threading import RLock
+import re
+import subprocess
+from threading import RLock, Thread
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -16,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from common.gateball_rules import BallState, new_balls, team_for_ball
+from common.network_manager import connect_wifi, network_status, scan_wifi_networks
 from common.results_store import ResultsStore
 
 
@@ -24,8 +28,23 @@ PORT = 8000
 DATA_FILE = ROOT / "data" / "web_state.json"
 RESULTS_DB_FILE = ROOT / "data" / "gateball.sqlite3"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+TEAM_NAME_AUDIO_DIR = STATIC_DIR / "audio" / "team-names"
 WEATHER_CACHE: dict = {"timestamp": 0.0, "payload": {"ok": False}}
 SELECTION_TIMEOUT_SECONDS = 30
+CLIENT_DISCONNECT_ERRNOS = {
+    errno.EPIPE,
+    errno.ECONNABORTED,
+    errno.ECONNRESET,
+    10053,
+    10054,
+}
+VOICE_PROFILES = {"female", "male", "ko-female", "ko-male"}
+VOICE_PROFILE_DIRS = {
+    "female": "voice-cn-female",
+    "male": "voice-cn-male",
+    "ko-female": "voice-ko-female",
+    "ko-male": "voice-ko-male",
+}
 
 
 DEFAULT_STATE = {
@@ -36,6 +55,7 @@ DEFAULT_STATE = {
     "remainingSeconds": 30 * 60,
     "running": False,
     "timeExpired": False,
+    "matchFinished": False,
     "selectedBall": 1,
     "selectedBallAt": None,
     "finishPassword": "0000",
@@ -53,9 +73,13 @@ DEFAULT_STATE = {
     "tenSecondCountdownStartedAt": None,
     "keyBindings": {},
     "voiceProfile": "female",
+    "voicePlaybackRate": 1.2,
     "weatherLocation": "西安区, 牡丹江市, 黑龙江省, 157000, 中国",
     "weatherLatitude": 44.488144,
     "weatherLongitude": 129.5093059,
+    "courtName": "红星门球场1",
+    "hotspotSsid": "红星门球场1",
+    "hotspotPassword": "12345678",
 }
 
 
@@ -68,6 +92,72 @@ def atomic_write_json(path: Path, payload: dict) -> None:
         handle.flush()
         os.fsync(handle.fileno())
     temp_path.replace(path)
+
+
+def is_client_disconnect(error: OSError) -> bool:
+    return getattr(error, "errno", None) in CLIENT_DISCONNECT_ERRNOS or getattr(error, "winerror", None) in CLIENT_DISCONNECT_ERRNOS
+
+
+def normalize_team_name(name: str) -> str:
+    return re.sub(r"\s+", " ", str(name or "").strip())[:40]
+
+
+def is_default_team_name(team: str, name: str) -> bool:
+    normalized = normalize_team_name(name)
+    defaults = {"red": {"红队", "홍팀", "Red Team"}, "white": {"白队", "백팀", "White Team"}}
+    return not normalized or normalized in defaults.get(team, set())
+
+
+def team_name_voice_profile(profile: str, name: str) -> str:
+    profile = profile if profile in VOICE_PROFILES else "female"
+    is_male = profile in {"male", "ko-male"}
+    text = str(name or "")
+    if re.search(r"[\uac00-\ud7af]", text):
+        return "ko-male" if is_male else "ko-female"
+    if re.search(r"[\u3400-\u9fff]", text):
+        return "male" if is_male else "female"
+    return profile
+
+
+def generate_team_name_audio(profile: str, team: str, name: str) -> dict:
+    team = team if team in {"red", "white"} else "team"
+    name = normalize_team_name(name)
+    profile = team_name_voice_profile(profile, name)
+    if not name:
+        return {"ok": False, "message": "队名为空"}
+    script = ROOT / "tools" / "generate_voice_assets.py"
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script), "team-name", profile, team, name],
+            capture_output=True,
+            check=False,
+            text=True,
+            encoding="utf-8",
+            env=env,
+            timeout=60,
+        )
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
+    if result.returncode != 0:
+        return {"ok": False, "message": result.stderr.strip() or result.stdout.strip() or "队名语音生成失败"}
+    try:
+        payload = json.loads(result.stdout.strip().splitlines()[-1])
+    except (IndexError, json.JSONDecodeError):
+        return {"ok": False, "message": "队名语音生成结果无效"}
+    return {"ok": True, **payload}
+
+
+def warm_team_name_audio_cache(team: str, name: str) -> None:
+    if is_default_team_name(team, name):
+        return
+
+    def worker() -> None:
+        for profile in {team_name_voice_profile(profile, name) for profile in VOICE_PROFILES}:
+            generate_team_name_audio(profile, team, name)
+
+    Thread(target=worker, daemon=True).start()
 
 
 class Store:
@@ -94,6 +184,8 @@ class Store:
             self.state["announcedMinuteWarnings"] = []
         if not isinstance(self.state.get("timerStarted"), bool):
             self.state["timerStarted"] = False
+        if not isinstance(self.state.get("matchFinished"), bool):
+            self.state["matchFinished"] = False
         if "matchStartedAt" not in self.state:
             self.state["matchStartedAt"] = None
         if not isinstance(self.state.get("keyBindings"), dict):
@@ -199,6 +291,7 @@ class Store:
         self.state["remainingSeconds"] = self.state["durationSeconds"]
         self.state["running"] = False
         self.state["timeExpired"] = False
+        self.state["matchFinished"] = False
         self.state["deadline"] = None
         self.state["announcedMinuteWarnings"] = []
         self.state["timerStarted"] = False
@@ -244,12 +337,12 @@ class Store:
                 self.record("select", number, message)
 
         elif action == "advance":
-            if not self.require_selected_ball():
+            if self.state.get("matchFinished"):
+                message = self.state.get("lastMessage", "")
+            elif not self.require_selected_ball():
                 message = self.state["lastMessage"]
             elif not self.state["running"] and not self.state["allowScoringWhenPaused"] and not self.state["timeExpired"]:
                 message = "暂停期间不能计分"
-            elif self.state.get("timeExpired"):
-                message = "时间到"
             else:
                 number = int(self.state["selectedBall"])
                 message = self.balls[number].advance()
@@ -257,7 +350,9 @@ class Store:
                 self.record("advance", number, message)
 
         elif action == "undo":
-            if not self.require_selected_ball():
+            if self.state.get("matchFinished"):
+                message = self.state.get("lastMessage", "")
+            elif not self.require_selected_ball():
                 message = self.state["lastMessage"]
             else:
                 number = int(self.state["selectedBall"])
@@ -320,9 +415,11 @@ class Store:
             if team == "red":
                 self.state["redTeam"] = name
                 message = "红队队名已保存"
+                warm_team_name_audio_cache("red", name)
             elif team == "white":
                 self.state["whiteTeam"] = name
                 message = "白队队名已保存"
+                warm_team_name_audio_cache("white", name)
             else:
                 message = "未知队伍"
             self.state["lastMessage"] = message
@@ -337,22 +434,45 @@ class Store:
 
         elif action == "finish":
             if payload.get("password") == self.state["finishPassword"]:
-                results_store.save_match(self.snapshot())
-                message = self.reset_match()
+                finished_snapshot = self.snapshot()
+                if not self.state.get("matchFinished"):
+                    results_store.save_match(finished_snapshot)
+                    self.state["running"] = False
+                    self.state["deadline"] = None
+                    self.state["matchFinished"] = True
+                    message = "match finished"
+                    self.state["lastMessage"] = message
+                    self.record("finish", None, message)
+                    self.save()
+                else:
+                    message = self.state.get("lastMessage") or "match finished"
+                return {"ok": True, "message": message, "finishedMatch": finished_snapshot, "state": self.snapshot()}
             else:
                 message = "密码错误"
                 self.state["lastMessage"] = message
                 self.record("finish_denied", None, message)
 
+        elif action == "advance_to_next_match":
+            if self.state.get("matchFinished"):
+                message = self.reset_match()
+                return {"ok": True, "message": message, "state": self.snapshot()}
+            message = self.state.get("lastMessage", "")
+
         elif action == "update_settings":
             if payload.get("password") != self.state["settingsPassword"]:
                 message = "密码错误"
             else:
-                for key in ["title", "allowScoringWhenPaused", "weatherLocation"]:
+                for key in ["allowScoringWhenPaused", "weatherLocation", "courtName", "hotspotSsid"]:
                     if key in payload:
-                        self.state[key] = str(payload[key]).strip() if key == "weatherLocation" else payload[key]
+                        self.state[key] = str(payload[key]).strip() if key != "allowScoringWhenPaused" else payload[key]
                         if key == "weatherLocation":
                             WEATHER_CACHE["timestamp"] = 0.0
+                if "courtName" in payload and "hotspotSsid" not in payload:
+                    self.state["hotspotSsid"] = str(payload["courtName"]).strip()
+                if "hotspotPassword" in payload:
+                    password = str(payload["hotspotPassword"]).strip()
+                    if len(password) >= 8:
+                        self.state["hotspotPassword"] = password[:63]
                 if "weatherLatitude" in payload and "weatherLongitude" in payload:
                     try:
                         self.state["weatherLatitude"] = float(payload["weatherLatitude"]) if str(payload["weatherLatitude"]).strip() else None
@@ -361,8 +481,14 @@ class Store:
                     except ValueError:
                         self.state["weatherLatitude"] = None
                         self.state["weatherLongitude"] = None
-                if payload.get("voiceProfile") in {"female", "male"}:
+                if payload.get("voiceProfile") in VOICE_PROFILES:
                     self.state["voiceProfile"] = payload["voiceProfile"]
+                if "voicePlaybackRate" in payload:
+                    try:
+                        rate = round(float(payload["voicePlaybackRate"]), 1)
+                        self.state["voicePlaybackRate"] = min(2.0, max(0.8, rate))
+                    except (TypeError, ValueError):
+                        pass
                 if "durationMinutes" in payload:
                     minutes = max(1, int(payload["durationMinutes"]))
                     self.state["durationSeconds"] = minutes * 60
@@ -546,9 +672,19 @@ def search_backup_weather_locations(query: str) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
+    def handle(self) -> None:
+        try:
+            super().handle()
+        except OSError as exc:
+            if is_client_disconnect(exc):
+                return
+            raise
+
     def do_GET(self) -> None:
         path = urlparse(self.path).path
-        if path in {"/", "/scoreboard"}:
+        if path == "/":
+            self.serve_file(STATIC_DIR / "remote.html")
+        elif path == "/scoreboard":
             self.serve_file(STATIC_DIR / "scoreboard.html")
         elif path == "/remote":
             self.serve_file(STATIC_DIR / "remote.html")
@@ -560,6 +696,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_events()
         elif path == "/api/state":
             self.send_json(store.snapshot())
+        elif path == "/api/network/status":
+            self.send_json(network_status(store.state))
+        elif path == "/api/network/scan":
+            self.send_json(scan_wifi_networks())
         elif path == "/api/results/month":
             params = parse_qs(urlparse(self.path).query)
             now = time.localtime()
@@ -586,12 +726,24 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
-        if path != "/api/action":
+        if path not in {"/api/action", "/api/network/connect", "/api/voice/team-name"}:
             self.send_error(404)
             return
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length).decode("utf-8") if length else "{}"
         payload = json.loads(body)
+        if path == "/api/network/connect":
+            self.send_json(connect_wifi(str(payload.get("ssid", "")), str(payload.get("password", ""))))
+            return
+        if path == "/api/voice/team-name":
+            self.send_json(
+                generate_team_name_audio(
+                    str(payload.get("profile", "")),
+                    str(payload.get("team", "")),
+                    str(payload.get("name", "")),
+                )
+            )
+            return
         with store.lock:
             self.send_json(store.action(payload))
 
@@ -617,7 +769,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.wfile.write(data)
+        except OSError as exc:
+            if is_client_disconnect(exc):
+                return
+            raise
 
     def send_events(self) -> None:
         self.send_response(200)

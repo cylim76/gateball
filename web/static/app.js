@@ -1,3 +1,22 @@
+﻿async function readJsonResponse(res, fallbackMessage = "服务返回格式不正确") {
+  const contentType = res.headers.get("content-type") || "";
+  const text = await res.text();
+  if (!res.ok) {
+    if (text.trim().startsWith("<")) {
+      return { ok: false, message: "服务接口未更新，请重启门球服务后再试" };
+    }
+    return { ok: false, message: text || fallbackMessage };
+  }
+  if (!contentType.includes("application/json")) {
+    return { ok: false, message: text.trim().startsWith("<") ? "服务接口未更新，请重启门球服务后再试" : fallbackMessage };
+  }
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return { ok: false, message: fallbackMessage };
+  }
+}
+
 const api = {
   async state() {
     const res = await fetch("/api/state", { cache: "no-store" });
@@ -26,6 +45,30 @@ const api = {
   async resultMatch(id) {
     const res = await fetch(`/api/results/match?id=${encodeURIComponent(id)}`, { cache: "no-store" });
     return res.json();
+  },
+  async networkStatus() {
+    const res = await fetch("/api/network/status", { cache: "no-store" });
+    return readJsonResponse(res, "网络状态读取失败");
+  },
+  async networkScan() {
+    const res = await fetch("/api/network/scan", { cache: "no-store" });
+    return readJsonResponse(res, "WiFi 扫描失败");
+  },
+  async networkConnect(payload) {
+    const res = await fetch("/api/network/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return readJsonResponse(res, "WiFi 连接失败，热点会继续保留");
+  },
+  async teamNameAudio(payload) {
+    const res = await fetch("/api/voice/team-name", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return readJsonResponse(res, "队名语音生成失败");
   },
 };
 
@@ -69,6 +112,7 @@ let pendingSettingsPayload = null;
 let settingsSaveInFlight = false;
 let keyCaptureAction = "";
 let alertPromptAudio = null;
+let errorPromptAudio = null;
 let finishPromptAudio = null;
 let voiceManifestCache = {};
 let voiceAudio = null;
@@ -94,14 +138,41 @@ let selectedResultsDate = "";
 let resultDays = new Map();
 let currentStateReceivedAt = 0;
 let countdownOverlayTimer = null;
+let networkStatusLoaded = false;
+let lastNetworkStatus = null;
+let wifiScanInFlight = false;
+let wifiConnectInFlight = false;
+let readySpeechTimer = null;
+let matchTransitionInFlight = false;
+let finishAdvanceInFlight = false;
+let remoteFinishPlaybackLocked = false;
+const teamNameAudioCache = new Map();
 const guardedActions = new Set(["toggle_timer", "undo", "advance", "swap_team_names", "ten-second-countdown", "ten_second_countdown"]);
 const guardedActionTimes = new Map();
 const ACTION_GUARD_MS = 800;
 const TIMEOUT_AUDIO_OFFSET_MS = 5500;
+const READY_SPEECH_DELAY_MS = 30000;
+const FINISH_SUMMARY_TAIL_CUT_MS = 450;
+const MATCH_TRANSITION_HOLD_MS = 320;
+const MATCH_TRANSITION_FALLBACK_MS = 45000;
+const ERROR_PROMPT_LEAD_MS = 400;
+const ERROR_PROMPT_FALLBACK_START_MS = 800;
+const DEFAULT_GAMEPLAY_PLAYBACK_RATE = 1.2;
+const VOICE_PROFILES = ["female", "male", "ko-female", "ko-male"];
 const isKioskMode = new URLSearchParams(window.location.search).get("kiosk") === "1";
 
 function two(num) {
   return String(num).padStart(2, "0");
+}
+
+function withTimeout(promise, ms, message) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) window.clearTimeout(timer);
+  });
 }
 
 function formatTime(seconds) {
@@ -228,8 +299,9 @@ function vibrateRemoteTap(event) {
 
 function runKeyboardAction(spec) {
   if (!spec) return;
+  if (remoteFinishPlaybackLocked && document.querySelector("[data-remote]")) return;
   if (shouldIgnoreGuardedAction(spec.id)) return;
-  if (spec.id === "toggle_timer" && currentState?.timeExpired && !currentState?.running) return;
+  if (spec.id === "toggle_timer" && (currentState?.matchFinished || (currentState?.timeExpired && !currentState?.running))) return;
   if (spec.special === "ten-second-countdown") return startTenSecondCountdown();
   if (spec.special === "finish-dialog") return openFinishDialog();
   if (spec.special === "finish-cancel") return closeFinishDialog();
@@ -333,7 +405,34 @@ function setTeamName(selector, name) {
 }
 
 function voiceProfilePath() {
-  return currentState?.voiceProfile === "male" ? "voice-male" : "voice";
+  const paths = {
+    female: "voice-cn-female",
+    male: "voice-cn-male",
+    "ko-female": "voice-ko-female",
+    "ko-male": "voice-ko-male",
+  };
+  return paths[currentState?.voiceProfile] || "voice-cn-female";
+}
+
+function voiceProfileName() {
+  return currentState?.voiceProfile || "female";
+}
+
+function isDefaultTeamName(team, name) {
+  const normalized = normalizeSpeechText(name);
+  const defaults = {
+    red: new Set(["", "红队", "홍팀", "Red Team"]),
+    white: new Set(["", "白队", "백팀", "White Team"]),
+  };
+  return defaults[team]?.has(normalized) ?? !normalized;
+}
+
+function teamNameVoiceProfile(profile, name) {
+  const isMale = profile === "male" || profile === "ko-male";
+  const text = String(name || "");
+  if (/[\uac00-\ud7af]/.test(text)) return isMale ? "ko-male" : "ko-female";
+  if (/[\u3400-\u9fff]/.test(text)) return isMale ? "male" : "female";
+  return profile || "female";
 }
 
 function normalizeSpeechText(text) {
@@ -349,6 +448,7 @@ function voiceKeyForText(text) {
     "等待开始": "match_waiting",
     "下一场比赛，等待开始": "next_match_waiting",
     "时间到": "time_up",
+    "比赛结束": "match_finished",
     "请输入密码结束比赛": "finish_password_prompt",
     "密码错误": "password_wrong",
     "设置已保存": "settings_saved",
@@ -395,6 +495,28 @@ function voiceKeyForText(text) {
   return "";
 }
 
+function playbackRateForVoiceKey(key) {
+  if (/^(ball|undo_ball)_/.test(key)) {
+    const rate = Number(currentState?.voicePlaybackRate);
+    return Number.isFinite(rate) ? Math.min(2, Math.max(0.8, rate)) : DEFAULT_GAMEPLAY_PLAYBACK_RATE;
+  }
+  return 1;
+}
+
+function isErrorVoiceKey(key) {
+  return key === "password_wrong"
+    || key === "key_binding_failed"
+    || key === "selection_required"
+    || key === "scoring_paused_denied"
+    || key === "unknown_team"
+    || key === "unknown_action"
+    || /^ball_\d+_(limit|no_undo)$/.test(key || "");
+}
+
+function isErrorSpeechText(text) {
+  return isErrorVoiceKey(voiceKeyForText(text));
+}
+
 async function getVoiceManifest(profilePath) {
   if (!voiceManifestCache[profilePath]) {
     const response = await fetch(`/audio/${profilePath}/manifest.json`, { cache: "force-cache" });
@@ -402,6 +524,272 @@ async function getVoiceManifest(profilePath) {
     voiceManifestCache[profilePath] = await response.json();
   }
   return voiceManifestCache[profilePath];
+}
+
+function playVoiceFile(file, playbackRate = 1, tailCutMs = 0) {
+  return new Promise((resolve) => {
+    if (!file) {
+      resolve();
+      return;
+    }
+    let completed = false;
+    let tailTimer = null;
+    const complete = () => {
+      if (completed) return;
+      completed = true;
+      if (tailTimer) window.clearTimeout(tailTimer);
+      resolve();
+    };
+    if (!voiceAudio) voiceAudio = new Audio();
+    voiceAudio.pause();
+    voiceAudio.currentTime = 0;
+    voiceAudio.src = file;
+    voiceAudio.defaultPlaybackRate = playbackRate;
+    voiceAudio.playbackRate = playbackRate;
+    voiceAudio.onloadedmetadata = () => {
+      if (!tailCutMs || !Number.isFinite(voiceAudio.duration)) return;
+      const durationMs = (voiceAudio.duration * 1000) / playbackRate;
+      const waitMs = Math.max(60, durationMs - tailCutMs);
+      tailTimer = window.setTimeout(complete, waitMs);
+    };
+    voiceAudio.onended = complete;
+    voiceAudio.onerror = complete;
+    const playResult = voiceAudio.play();
+    if (playResult?.catch) {
+      playResult.catch((error) => {
+        console.warn("Voice audio failed", error);
+        showScoreboardSoundPrompt();
+        complete();
+      });
+    }
+  });
+}
+
+async function playVoiceKey(key, playbackRate = 1, tailCutMs = 0) {
+  const manifest = await getVoiceManifest(voiceProfilePath());
+  await playVoiceFile(manifest.items?.[key]?.file, playbackRate, tailCutMs);
+}
+
+async function playVoiceItems(items, playbackRate = 1, tailCutMs = 0) {
+  for (const item of items.filter(Boolean)) {
+    if (item.key) {
+      await playVoiceKey(item.key, playbackRate, tailCutMs);
+    } else if (item.file) {
+      await playVoiceFile(item.file, playbackRate, tailCutMs);
+    }
+  }
+}
+
+function playVoiceItemsWithCallback(items, onComplete, playbackRate = 1, tailCutMs = 0) {
+  playVoiceItems(items, playbackRate, tailCutMs).then(() => onComplete?.()).catch((error) => {
+    console.warn("Voice queue failed", error);
+    onComplete?.();
+  });
+}
+
+function scoreKey(score) {
+  const value = Math.max(0, Math.min(100, Number(score) || 0));
+  return `score_${value}`;
+}
+
+function scoreForTeam(snapshot, team) {
+  return Number(team === "red" ? snapshot?.redTotal : snapshot?.whiteTotal) || 0;
+}
+
+async function teamNameVoiceItem(team, name) {
+  if (isDefaultTeamName(team, name)) return null;
+  const profile = teamNameVoiceProfile(voiceProfileName(), name);
+  const cacheKey = `${profile}:${team}:${normalizeSpeechText(name)}`;
+  if (!teamNameAudioCache.has(cacheKey)) {
+    teamNameAudioCache.set(cacheKey, api.teamNameAudio({ profile, team, name }).catch((error) => ({ ok: false, message: error.message })));
+  }
+  const result = await teamNameAudioCache.get(cacheKey);
+  return result?.ok && result.file ? { file: result.file } : null;
+}
+
+function precacheTeamNameAudio(team, name) {
+  if (isDefaultTeamName(team, name)) return;
+  const profiles = new Set(VOICE_PROFILES.map((profile) => teamNameVoiceProfile(profile, name)));
+  profiles.forEach((profile) => {
+    const cacheKey = `${profile}:${team}:${normalizeSpeechText(name)}`;
+    if (!teamNameAudioCache.has(cacheKey)) {
+      teamNameAudioCache.set(cacheKey, api.teamNameAudio({ profile, team, name }).catch((error) => ({ ok: false, message: error.message })));
+    }
+  });
+}
+
+async function teamScoreItems(team, name, score) {
+  const items = [{ key: team === "red" ? "red_team" : "white_team" }];
+  const nameItem = await teamNameVoiceItem(team, name);
+  if (nameItem) items.push(nameItem);
+  items.push({ key: "score_total" }, { key: scoreKey(score) });
+  return items;
+}
+
+async function winnerItems(snapshot) {
+  const redScore = scoreForTeam(snapshot, "red");
+  const whiteScore = scoreForTeam(snapshot, "white");
+  if (redScore === whiteScore) return [{ key: "draw_game" }];
+  const team = redScore > whiteScore ? "red" : "white";
+  const name = team === "red" ? snapshot?.redTeam : snapshot?.whiteTeam;
+  const items = [{ key: team === "red" ? "winner_red_prefix" : "winner_white_prefix" }];
+  const nameItem = await teamNameVoiceItem(team, name);
+  if (nameItem) items.push(nameItem);
+  items.push({ key: "winner_suffix" });
+  return items;
+}
+
+async function finishSummaryItems(snapshot) {
+  const items = [];
+  items.push(...await teamScoreItems("red", snapshot?.redTeam, scoreForTeam(snapshot, "red")));
+  items.push(...await teamScoreItems("white", snapshot?.whiteTeam, scoreForTeam(snapshot, "white")));
+  items.push(...await winnerItems(snapshot));
+  return items;
+}
+
+async function playFinishSummary(snapshot, options = {}) {
+  const { openingKey = "time_up" } = options;
+  const playbackRate = playbackRateForVoiceKey(openingKey);
+  cancelReadySpeech();
+  await playPromptAudio(getFinishPromptAudio(), "Finish prompt");
+  if (openingKey) {
+    await playVoiceKey(openingKey, playbackRate, FINISH_SUMMARY_TAIL_CUT_MS);
+  }
+  const items = await finishSummaryItems(snapshot);
+  await playVoiceItems(items, playbackRate, FINISH_SUMMARY_TAIL_CUT_MS);
+}
+
+function waitMs(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function waitForAnimation(element, fallbackMs = 800) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      element.removeEventListener("animationend", finish);
+      resolve();
+    };
+    element.addEventListener("animationend", finish, { once: true });
+    window.setTimeout(finish, fallbackMs);
+  });
+}
+
+function elementCenter(element) {
+  if (!element) return null;
+  const rect = element.getBoundingClientRect();
+  if (!rect.width && !rect.height) return null;
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  };
+}
+
+function matchTransitionOrigin() {
+  const remoteButton = document.querySelector("[data-remote] .timer-action");
+  const remoteCenter = elementCenter(remoteButton);
+  if (remoteCenter) return remoteCenter;
+
+  const redTotal = document.querySelector("[data-scoreboard] [data-red-total]");
+  const whiteTotal = document.querySelector("[data-scoreboard] [data-white-total]");
+  if (redTotal && whiteTotal) {
+    const redRect = redTotal.getBoundingClientRect();
+    const whiteRect = whiteTotal.getBoundingClientRect();
+    if ((redRect.width || redRect.height) && (whiteRect.width || whiteRect.height)) {
+      return {
+        x: (redRect.right + whiteRect.left) / 2,
+        y: Math.max(redRect.bottom, whiteRect.bottom) + 18,
+      };
+    }
+  }
+
+  return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+}
+
+async function runMatchTransition(updateState) {
+  const overlay = document.querySelector("[data-match-transition]");
+  const shape = document.querySelector("[data-match-transition-shape]");
+  if (!overlay || !shape || matchTransitionInFlight) {
+    await updateState?.();
+    return;
+  }
+  matchTransitionInFlight = true;
+  const shapes = ["circle", "diamond", "square", "ellipse-wide", "ellipse-tall"];
+  const shapeName = shapes[Math.floor(Math.random() * shapes.length)];
+  const origin = matchTransitionOrigin();
+  overlay.style.setProperty("--transition-origin-x", `${origin.x}px`);
+  overlay.style.setProperty("--transition-origin-y", `${origin.y}px`);
+  overlay.classList.add("active");
+  shape.className = `match-transition-shape ${shapeName}`;
+  void shape.offsetWidth;
+  try {
+    shape.classList.add("cover");
+    await waitForAnimation(shape);
+    await waitMs(MATCH_TRANSITION_HOLD_MS);
+    await updateState?.();
+    shape.classList.remove("cover");
+    void shape.offsetWidth;
+    shape.classList.add("reveal");
+    await waitForAnimation(shape);
+  } finally {
+    shape.className = "match-transition-shape";
+    overlay.classList.remove("active");
+    matchTransitionInFlight = false;
+  }
+}
+
+async function advanceToNextMatchWithTransition() {
+  if (finishAdvanceInFlight) return;
+  finishAdvanceInFlight = true;
+  try {
+    await runMatchTransition(async () => {
+      await sendAction({ action: "advance_to_next_match" }, false, { skipTransition: true });
+    });
+    scheduleReadySpeech();
+  } catch (error) {
+    console.warn("Advance to next match failed", error);
+  } finally {
+    finishAdvanceInFlight = false;
+  }
+}
+
+async function playFinishThenAdvance(snapshot, options = {}) {
+  let advanced = false;
+  remoteFinishPlaybackLocked = Boolean(document.querySelector("[data-remote]"));
+  if (remoteFinishPlaybackLocked) renderRemote();
+  const advanceOnce = async () => {
+    if (advanced) return;
+    advanced = true;
+    await advanceToNextMatchWithTransition();
+  };
+  const fallback = window.setTimeout(() => {
+    advanceOnce();
+  }, MATCH_TRANSITION_FALLBACK_MS);
+  try {
+    await playFinishSummary(snapshot, options);
+  } finally {
+    window.clearTimeout(fallback);
+    await advanceOnce();
+    if (remoteFinishPlaybackLocked) {
+      remoteFinishPlaybackLocked = false;
+      renderRemote();
+    }
+  }
+}
+
+async function matchStartItems(snapshot = currentState) {
+  const items = [{ key: "match_start" }];
+  const redName = await teamNameVoiceItem("red", snapshot?.redTeam);
+  const whiteName = await teamNameVoiceItem("white", snapshot?.whiteTeam);
+  if (redName || whiteName) {
+    items.push({ key: "red_team" });
+    if (redName) items.push(redName);
+    items.push({ key: "white_team" });
+    if (whiteName) items.push(whiteName);
+  }
+  return items;
 }
 
 function speakWithBrowser(text, onComplete) {
@@ -432,65 +820,10 @@ function speak(text, onComplete) {
   }
   const key = voiceKeyForText(text);
   if (!key) return speakWithBrowser(text, onComplete);
-  getVoiceManifest(voiceProfilePath()).then((manifest) => {
-    const file = manifest.items?.[key]?.file;
-    if (!file) {
-      speakWithBrowser(text, onComplete);
-      return;
-    }
-    if (!voiceAudio) voiceAudio = new Audio();
-    voiceAudio.pause();
-    voiceAudio.currentTime = 0;
-    voiceAudio.src = file;
-    voiceAudio.onended = () => onComplete?.();
-    voiceAudio.onerror = () => speakWithBrowser(text, onComplete);
-    const playResult = voiceAudio.play();
-    if (playResult?.catch) {
-      playResult.catch(() => {
-        showScoreboardSoundPrompt();
-        speakWithBrowser(text, onComplete);
-      });
-    }
-  }).catch(() => {
+  playVoiceKey(key, playbackRateForVoiceKey(key)).then(() => onComplete?.()).catch(() => {
     showScoreboardSoundPrompt();
-    speakWithBrowser(text, onComplete);
+    onComplete?.();
   });
-}
-
-function getFinishPromptAudio() {
-  if (!finishPromptAudio) {
-    finishPromptAudio = new Audio("/audio/finished.mp3");
-    finishPromptAudio.preload = "auto";
-    finishPromptAudio.volume = 0.45;
-  }
-  return finishPromptAudio;
-}
-
-function getAlertPromptAudio() {
-  if (!alertPromptAudio) {
-    alertPromptAudio = new Audio("/audio/alert.mp3");
-    alertPromptAudio.preload = "auto";
-    alertPromptAudio.volume = 0.45;
-  }
-  return alertPromptAudio;
-}
-
-function getTenSecondCountdownAudio() {
-  if (!tenSecondCountdownAudio) {
-    tenSecondCountdownAudio = new Audio("/audio/timeout.mp3");
-    tenSecondCountdownAudio.preload = "auto";
-    tenSecondCountdownAudio.volume = 0.6;
-  }
-  return tenSecondCountdownAudio;
-}
-
-function getTenSecondCountdownIntroAudio() {
-  if (!tenSecondCountdownIntroAudio) {
-    tenSecondCountdownIntroAudio = new Audio("/audio/countdown.mp3");
-    tenSecondCountdownIntroAudio.preload = "auto";
-    tenSecondCountdownIntroAudio.volume = 0.5;
-  }
-  return tenSecondCountdownIntroAudio;
 }
 
 function prepareAudio(audio) {
@@ -515,6 +848,51 @@ function prepareAudio(audio) {
 function prepareTenSecondCountdownAudio() {
   prepareAudio(getTenSecondCountdownIntroAudio());
   prepareAudio(getTenSecondCountdownAudio());
+}
+
+function getFinishPromptAudio() {
+  if (!finishPromptAudio) {
+    finishPromptAudio = new Audio("/audio/finished.mp3");
+    finishPromptAudio.preload = "auto";
+    finishPromptAudio.volume = 0.45;
+  }
+  return finishPromptAudio;
+}
+
+function getAlertPromptAudio() {
+  if (!alertPromptAudio) {
+    alertPromptAudio = new Audio("/audio/alert.mp3");
+    alertPromptAudio.preload = "auto";
+    alertPromptAudio.volume = 0.45;
+  }
+  return alertPromptAudio;
+}
+
+function getErrorPromptAudio() {
+  if (!errorPromptAudio) {
+    errorPromptAudio = new Audio("/audio/error.mp3");
+    errorPromptAudio.preload = "auto";
+    errorPromptAudio.volume = 0.55;
+  }
+  return errorPromptAudio;
+}
+
+function getTenSecondCountdownAudio() {
+  if (!tenSecondCountdownAudio) {
+    tenSecondCountdownAudio = new Audio("/audio/timeout.mp3");
+    tenSecondCountdownAudio.preload = "auto";
+    tenSecondCountdownAudio.volume = 0.6;
+  }
+  return tenSecondCountdownAudio;
+}
+
+function getTenSecondCountdownIntroAudio() {
+  if (!tenSecondCountdownIntroAudio) {
+    tenSecondCountdownIntroAudio = new Audio("/audio/countdown.mp3");
+    tenSecondCountdownIntroAudio.preload = "auto";
+    tenSecondCountdownIntroAudio.volume = 0.5;
+  }
+  return tenSecondCountdownIntroAudio;
 }
 
 function playAudio(audio, warningLabel) {
@@ -544,6 +922,7 @@ function enableScoreboardSound() {
   scoreboardAudioEnabled = true;
   hideScoreboardSoundPrompt();
   prepareAudio(getAlertPromptAudio());
+  prepareAudio(getErrorPromptAudio());
   prepareAudio(getFinishPromptAudio());
   prepareTenSecondCountdownAudio();
   speak("声音已启用");
@@ -557,30 +936,87 @@ function playTenSecondCountdownAudio() {
   playAudio(getTenSecondCountdownAudio(), "10 second countdown");
 }
 
-function playAlertPromptSound(onComplete) {
-  const audio = getAlertPromptAudio();
-  let completed = false;
-  const complete = () => {
-    if (completed) return;
-    completed = true;
-    onComplete?.();
-  };
+function playPromptAudio(audio, warningLabel) {
+  return new Promise((resolve) => {
+    let completed = false;
+    const complete = () => {
+      if (completed) return;
+      completed = true;
+      resolve();
+    };
+    audio.pause();
+    audio.currentTime = 0;
+    audio.onended = complete;
+    audio.onerror = complete;
+    const playResult = audio.play();
+    if (playResult?.catch) {
+      playResult.catch((error) => {
+        console.warn(`${warningLabel} audio failed`, error);
+        complete();
+      });
+    }
+  });
+}
 
-  audio.pause();
-  audio.currentTime = 0;
-  audio.onended = complete;
-  audio.onerror = complete;
-  const playResult = audio.play();
-  if (playResult?.catch) {
-    playResult.catch((error) => {
-      console.warn("Alert prompt audio failed", error);
-      complete();
-    });
-  }
+function playPromptLeadAudio(audio, warningLabel, leadMs, fallbackStartMs, onLead) {
+  return new Promise((resolve) => {
+    let completed = false;
+    let leadTimer = null;
+    const clearLeadTimer = () => {
+      if (leadTimer) {
+        window.clearTimeout(leadTimer);
+        leadTimer = null;
+      }
+    };
+    const startLead = () => {
+      if (completed) return;
+      clearLeadTimer();
+      onLead?.();
+    };
+    const complete = () => {
+      if (completed) return;
+      completed = true;
+      clearLeadTimer();
+      resolve();
+    };
+    audio.pause();
+    audio.currentTime = 0;
+    audio.onended = complete;
+    audio.onerror = complete;
+    const durationMs = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration * 1000 : 0;
+    const delayMs = durationMs ? Math.max(0, durationMs - leadMs) : fallbackStartMs;
+    leadTimer = window.setTimeout(startLead, delayMs);
+    const playResult = audio.play();
+    if (playResult?.catch) {
+      playResult.catch((error) => {
+        console.warn(`${warningLabel} audio failed`, error);
+        startLead();
+        complete();
+      });
+    }
+  });
 }
 
 function speakWithAlert(text) {
-  playAlertPromptSound(() => speak(text));
+  playPromptAudio(getAlertPromptAudio(), "Alert prompt").then(() => speak(text));
+}
+
+function speakWithError(text) {
+  playPromptLeadAudio(
+    getErrorPromptAudio(),
+    "Error prompt",
+    ERROR_PROMPT_LEAD_MS,
+    ERROR_PROMPT_FALLBACK_START_MS,
+    () => speak(text)
+  );
+}
+
+function speakWithPromptForText(text) {
+  if (isErrorSpeechText(text)) {
+    speakWithError(text);
+  } else {
+    speakWithAlert(text);
+  }
 }
 
 function clearTenSecondCountdownTimers() {
@@ -600,6 +1036,10 @@ function stopTenSecondCountdown(shouldNotify = true) {
   if (currentState) {
     currentState.tenSecondCountdownId = null;
     currentState.tenSecondCountdownStartedAt = null;
+  }
+  if (voiceAudio) {
+    voiceAudio.pause();
+    voiceAudio.currentTime = 0;
   }
   getTenSecondCountdownIntroAudio().pause();
   getTenSecondCountdownAudio().pause();
@@ -636,8 +1076,6 @@ function startTenSecondCountdown() {
   const runId = tenSecondCountdownRunId;
   tenSecondCountdownActive = true;
   clearTenSecondCountdownTimers();
-  getTenSecondCountdownIntroAudio().pause();
-  getTenSecondCountdownAudio().pause();
   prepareTenSecondCountdownAudio();
   speak("倒计时10秒", () => {
     if (runId !== tenSecondCountdownRunId) return;
@@ -661,25 +1099,7 @@ function startTenSecondCountdown() {
 }
 
 function playFinishPromptSound(onComplete) {
-  const audio = getFinishPromptAudio();
-  let completed = false;
-  const complete = () => {
-    if (completed) return;
-    completed = true;
-    onComplete?.();
-  };
-
-  audio.pause();
-  audio.currentTime = 0;
-  audio.onended = complete;
-  audio.onerror = complete;
-  const playResult = audio.play();
-  if (playResult?.catch) {
-    playResult.catch((error) => {
-      console.warn("Finish prompt audio failed", error);
-      complete();
-    });
-  }
+  playPromptAudio(getFinishPromptAudio(), "Finish prompt").then(() => speak("请输入密码结束比赛", onComplete));
 }
 
 function renderPillars(count) {
@@ -687,6 +1107,14 @@ function renderPillars(count) {
   if (count === 1) return `<span class="pillar yellow"></span>`;
   if (count === 2) return `<span class="pillar green"></span><span class="pillar green"></span>`;
   return `<span class="pillar green"></span><span class="pillar-x">x${count}</span>`;
+}
+
+function matchStatusText() {
+  if (currentState?.matchFinished) return "\u6bd4\u8d5b\u7ed3\u675f";
+  if (currentState?.running) return "\u6bd4\u8d5b\u4e2d";
+  if (currentState?.timeExpired) return "\u65f6\u95f4\u5230";
+  if (currentState?.timerStarted) return "\u6bd4\u8d5b\u6682\u505c";
+  return "\u7b49\u5f85\u5f00\u59cb";
 }
 
 function renderRows(team) {
@@ -712,6 +1140,13 @@ function renderRows(team) {
 
 function renderScoreboard() {
   if (!currentState) return;
+  const boardBody = document.body;
+  const redScore = Number(currentState.redTotal) || 0;
+  const whiteScore = Number(currentState.whiteTotal) || 0;
+  boardBody.classList.toggle("finish-summary-active", Boolean(currentState.matchFinished));
+  boardBody.classList.toggle("finish-red-winner", Boolean(currentState.matchFinished && redScore > whiteScore));
+  boardBody.classList.toggle("finish-white-winner", Boolean(currentState.matchFinished && whiteScore > redScore));
+  boardBody.classList.toggle("finish-draw", Boolean(currentState.matchFinished && redScore === whiteScore));
   document.querySelector("[data-title]").textContent = currentState.title;
   setTeamName("[data-red-team]", currentState.redTeam);
   setTeamName("[data-white-team]", currentState.whiteTeam);
@@ -726,7 +1161,9 @@ function renderScoreboard() {
     timer.classList.toggle("is-expired", currentState.timeExpired);
   }
   document.querySelector("[data-match]").textContent = `第 ${currentState.matchNumber} 场`;
-  document.querySelector("[data-status]").textContent = currentState.running ? "比赛中" : (currentState.timeExpired ? "时间到" : (currentState.timerStarted ? "比赛暂停" : "等待开始"));
+  document.querySelector("[data-status]").textContent = matchStatusText();
+  const courtName = document.querySelector("[data-court-name]");
+  if (courtName) courtName.textContent = currentState.courtName || "红星门球场1";
   renderRecentLog();
   document.querySelector("[data-red-rows]").innerHTML = renderRows("red");
   document.querySelector("[data-white-rows]").innerHTML = renderRows("white");
@@ -751,12 +1188,13 @@ function renderRecentLog(selector = "[data-recent-log]", limit = 3) {
 
 function renderRemote() {
   if (!currentState) return;
+  const remoteLocked = remoteFinishPlaybackLocked;
   document.querySelector("[data-remote-title]").textContent = currentState.title;
   const remoteTime = document.querySelector("[data-remote-time]");
   const remoteState = document.querySelector("[data-remote-state]");
   const remoteStatusTime = document.querySelector(".remote-status-time");
   if (remoteTime) remoteTime.textContent = formatTime(currentState.remainingSeconds);
-  if (remoteState) remoteState.textContent = currentState.running ? "比赛中" : (currentState.timeExpired ? "时间到" : (currentState.timerStarted ? "比赛暂停" : "等待开始"));
+  if (remoteState) remoteState.textContent = matchStatusText();
   if (remoteStatusTime) {
     remoteStatusTime.classList.toggle("is-running", currentState.running);
     remoteStatusTime.classList.toggle("is-waiting", !currentState.running && !currentState.timeExpired && !currentState.timerStarted);
@@ -766,8 +1204,8 @@ function renderRemote() {
   const timerAction = document.querySelector("[data-action='toggle_timer']");
   if (timerAction) {
     timerAction.textContent = currentState.running ? "暂停" : (currentState.timerStarted && !currentState.timeExpired ? "继续" : "开始");
-    timerAction.disabled = currentState.timeExpired && !currentState.running;
-    timerAction.classList.toggle("disabled", currentState.timeExpired && !currentState.running);
+    timerAction.disabled = remoteLocked || currentState.matchFinished || (currentState.timeExpired && !currentState.running);
+    timerAction.classList.toggle("disabled", remoteLocked || currentState.matchFinished || (currentState.timeExpired && !currentState.running));
   }
   const countdownAction = document.querySelector("[data-action='ten-second-countdown']");
   if (countdownAction) {
@@ -782,9 +1220,18 @@ function renderRemote() {
   document.querySelectorAll("[data-ball]").forEach((button) => {
     const number = Number(button.dataset.ball);
     const ball = currentState.balls.find((item) => item.number === number);
+    button.disabled = remoteLocked;
     button.classList.toggle("active", showSelection && number === currentState.selectedBall);
     const badge = button.querySelector(".ball-score-badge");
     if (badge && ball) badge.textContent = String(ball.score);
+  });
+  document.querySelectorAll("[data-remote] .remote-actions button").forEach((button) => {
+    button.disabled = remoteLocked;
+    button.classList.toggle("remote-finish-locked", remoteLocked);
+  });
+  document.querySelectorAll("[data-remote] .results-link").forEach((link) => {
+    link.classList.toggle("remote-finish-locked", remoteLocked);
+    link.setAttribute("aria-disabled", remoteLocked ? "true" : "false");
   });
   renderRecentLog("[data-remote-recent-log]", 6);
   renderCountdownOverlay();
@@ -929,32 +1376,67 @@ function autoSpeakServerEvents() {
   if (latest && key && key !== lastSpokenHistoryKey) {
     lastSpokenHistoryKey = key;
     if (latest.action === "time_expired") {
-      playFinishPromptSound(() => speak(latest.message));
+      playFinishSummary(currentState);
     } else if (latest.action === "timer_warning") {
       if (isFreshTimerWarning(latest)) {
         speakWithAlert(latest.message);
       }
     } else if (latest.action === "toggle_timer") {
-      speakWithAlert(latest.message);
-    } else {
+      if (latest.message === "比赛开始") {
+        cancelReadySpeech();
+        playPromptAudio(getAlertPromptAudio(), "Alert prompt")
+          .then(() => matchStartItems(currentState))
+          .then((items) => playVoiceItems(items));
+      } else {
+        speakWithPromptForText(latest.message);
+      }
+    } else if (latest.action === "next_match") {
+      scheduleReadySpeech();
+    } else if (latest.action === "select") {
       speak(latest.message);
+    } else {
+      speakWithPromptForText(latest.message);
     }
   }
+}
+
+function cancelReadySpeech() {
+  if (!readySpeechTimer) return;
+  window.clearTimeout(readySpeechTimer);
+  readySpeechTimer = null;
+}
+
+function scheduleReadySpeech() {
+  cancelReadySpeech();
+  readySpeechTimer = window.setTimeout(() => {
+    readySpeechTimer = null;
+    if (currentState?.running || currentState?.timerStarted) return;
+    speak("等待开始");
+  }, READY_SPEECH_DELAY_MS);
 }
 
 function renderSettings() {
   if (!currentState) return;
   const form = document.querySelector("[data-settings-form]");
-  if (!form) return;
-  if (settingsHydrated) return;
-  form.title.value = currentState.title;
-  form.durationMinutes.value = Math.round(currentState.durationSeconds / 60);
-  if (form.voiceProfile) form.voiceProfile.value = currentState.voiceProfile || "female";
-  if (form.weatherLocation) form.weatherLocation.value = currentState.weatherLocation || "";
-  if (form.weatherLatitude) form.weatherLatitude.value = currentState.weatherLatitude ?? "";
-  if (form.weatherLongitude) form.weatherLongitude.value = currentState.weatherLongitude ?? "";
-  form.allowScoringWhenPaused.checked = currentState.allowScoringWhenPaused;
+  if (form && !settingsHydrated) {
+    form.durationMinutes.value = Math.round(currentState.durationSeconds / 60);
+    if (form.voiceProfile) form.voiceProfile.value = currentState.voiceProfile || "female";
+    if (form.voicePlaybackRate) form.voicePlaybackRate.value = Number(currentState.voicePlaybackRate || DEFAULT_GAMEPLAY_PLAYBACK_RATE).toFixed(1);
+    updateVoicePlaybackRateOutput(form);
+    if (form.weatherLocation) form.weatherLocation.value = currentState.weatherLocation || "";
+    if (form.weatherLatitude) form.weatherLatitude.value = currentState.weatherLatitude ?? "";
+    if (form.weatherLongitude) form.weatherLongitude.value = currentState.weatherLongitude ?? "";
+    form.allowScoringWhenPaused.checked = currentState.allowScoringWhenPaused;
+  }
+  renderNetworkSettings();
   settingsHydrated = true;
+}
+
+function renderNetworkSettings() {
+  const form = document.querySelector("[data-network-settings-form]");
+  if (!form || !currentState || settingsHydrated) return;
+  form.courtName.value = currentState.courtName || "红星门球场1";
+  form.hotspotPassword.value = currentState.hotspotPassword || "12345678";
 }
 
 function renderKeyBindings() {
@@ -980,6 +1462,186 @@ function renderKeyBindings() {
     row.append(name, button);
     list.appendChild(row);
   });
+}
+
+function switchSettingsTab(tabName) {
+  document.querySelectorAll("[data-settings-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.settingsTab === tabName);
+  });
+  document.querySelectorAll("[data-settings-panel]").forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.settingsPanel === tabName);
+  });
+  if (tabName === "network") loadNetworkStatus();
+}
+
+function setNetworkResult(text, isError = false, selector = "[data-network-result]") {
+  const element = document.querySelector(selector);
+  if (!element) return;
+  element.textContent = text;
+  element.classList.toggle("error", isError);
+}
+
+function renderNetworkStatus(status) {
+  const box = document.querySelector("[data-network-status]");
+  if (!box) return;
+  const local = (status.localAddresses || []).map((address) => `http://${address}:8000`).join(" / ") || "未检测到";
+  box.innerHTML = `
+    <div><strong>球场：</strong>${escapeHtml(status.courtName || "红星门球场1")}</div>
+    <div><strong>热点：</strong>${escapeHtml(status.hotspotSsid || status.courtName || "红星门球场1")}</div>
+    <div><strong>固定入口：</strong>${escapeHtml(status.hotspotAddress || "http://menqiu.hongxing")}</div>
+    <div><strong>备用地址：</strong>${escapeHtml(status.fallbackAddress || "http://192.168.50.1:8000")}</div>
+    <div><strong>本机地址：</strong>${escapeHtml(local)}</div>
+    <div><strong>外部 WiFi：</strong>${escapeHtml(status.activeWifi || "未连接")}</div>
+    <div><strong>互联网：</strong>${status.internetOk ? "可用" : "不可用"}</div>
+    <div><strong>系统网络配置：</strong>${status.supported ? "可用" : "仅树莓派/Linux nmcli 可用"}</div>
+  `;
+}
+
+async function loadNetworkStatus() {
+  if (!document.querySelector("[data-network-status]")) return;
+  try {
+    const status = await withTimeout(api.networkStatus(), 8000, "网络状态读取超时");
+    lastNetworkStatus = status;
+    if (status.ok === false) {
+      setNetworkResult(status.message || "网络状态读取失败", true);
+    } else {
+      renderNetworkStatus(status);
+    }
+    networkStatusLoaded = true;
+  } catch (error) {
+    setNetworkResult("网络状态读取失败", true);
+  }
+}
+
+function signalLabel(signal) {
+  const value = Number(signal) || 0;
+  if (value >= 75) return "强";
+  if (value >= 45) return "中";
+  return "弱";
+}
+
+function updateVoicePlaybackRateOutput(form) {
+  const input = form?.voicePlaybackRate;
+  const output = form?.querySelector?.("[data-voice-playback-rate-output]");
+  if (!input || !output) return;
+  const rate = Number(input.value || DEFAULT_GAMEPLAY_PLAYBACK_RATE);
+  output.textContent = `${(Number.isFinite(rate) ? rate : DEFAULT_GAMEPLAY_PLAYBACK_RATE).toFixed(1)}x`;
+}
+
+async function scanWifiNetworks() {
+  const list = document.querySelector("[data-wifi-list]");
+  if (!list) return;
+  if (wifiScanInFlight) return;
+  const button = document.querySelector("[data-action='scan-wifi']");
+  const originalText = button?.textContent || "查找 WiFi 网络";
+  wifiScanInFlight = true;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "正在查找...";
+  }
+  list.innerHTML = `<div class="weather-search-empty">正在查找 WiFi 网络...</div>`;
+  setNetworkResult("");
+  try {
+    if (!networkStatusLoaded || !lastNetworkStatus) await loadNetworkStatus();
+    if (lastNetworkStatus?.ok === false) {
+      list.innerHTML = `<div class="weather-search-empty">${escapeHtml(lastNetworkStatus.message || "网络接口不可用，请重启服务")}</div>`;
+      return;
+    }
+    if (lastNetworkStatus && !lastNetworkStatus.supported) {
+      list.innerHTML = `<div class="weather-search-empty">当前系统不支持 WiFi 扫描。树莓派/Linux 安装 nmcli 后可用。</div>`;
+      return;
+    }
+    const data = await withTimeout(api.networkScan(), 22000, "WiFi 扫描超时，请稍后重试");
+    if (!data.ok) {
+      list.innerHTML = `<div class="weather-search-empty">${escapeHtml(data.message || "WiFi 扫描失败")}</div>`;
+      return;
+    }
+    if (!data.networks?.length) {
+      list.innerHTML = `<div class="weather-search-empty">没有找到 WiFi 信号</div>`;
+      return;
+    }
+    list.innerHTML = data.networks.map((network) => `
+      <button class="wifi-option" type="button" data-action="select-wifi" data-ssid="${escapeHtml(network.ssid)}">
+        <span>${escapeHtml(network.ssid)}</span>
+        <span class="wifi-signal">${signalLabel(network.signal)} ${Number(network.signal) || 0}%</span>
+      </button>
+    `).join("");
+  } catch (error) {
+    list.innerHTML = `<div class="weather-search-empty">${escapeHtml(error.message || "WiFi 扫描失败")}</div>`;
+  } finally {
+    wifiScanInFlight = false;
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+}
+
+function selectWifiNetwork(target) {
+  document.querySelectorAll(".wifi-option").forEach((button) => button.classList.remove("active"));
+  target.classList.add("active");
+  const input = document.querySelector("[data-wifi-ssid]");
+  if (input) input.value = target.dataset.ssid || "";
+  document.querySelector("[data-wifi-password]")?.focus();
+}
+
+function collectNetworkSettingsPayload(form) {
+  const courtName = form.courtName?.value.trim() || "红星门球场1";
+  return {
+    action: "update_settings",
+    courtName,
+    hotspotSsid: courtName,
+    hotspotPassword: form.hotspotPassword?.value || "",
+  };
+}
+
+function validateNetworkSettings(form) {
+  const result = document.querySelector("[data-network-save-result]");
+  if (result) {
+    result.textContent = "";
+    result.classList.remove("error");
+  }
+  const password = form.hotspotPassword?.value.trim() || "";
+  if (password.length < 8) {
+    if (result) {
+      result.textContent = "热点密码至少 8 位";
+      result.classList.add("error");
+    }
+    form.hotspotPassword?.focus();
+    return false;
+  }
+  return true;
+}
+
+async function connectSelectedWifi() {
+  const ssid = document.querySelector("[data-wifi-ssid]")?.value.trim() || "";
+  const password = document.querySelector("[data-wifi-password]")?.value || "";
+  if (wifiConnectInFlight) return;
+  if (!ssid) {
+    setNetworkResult("请先选择 WiFi", true);
+    return;
+  }
+  const button = document.querySelector("[data-action='connect-wifi']");
+  const originalText = button?.textContent || "连接 WiFi";
+  wifiConnectInFlight = true;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "正在连接...";
+  }
+  setNetworkResult("正在连接 WiFi...");
+  try {
+    const result = await withTimeout(api.networkConnect({ ssid, password }), 45000, "WiFi 连接超时，热点会继续保留");
+    setNetworkResult(result.message || (result.ok ? "WiFi 连接成功" : "WiFi 连接失败"), !result.ok);
+    loadNetworkStatus();
+  } catch (error) {
+    setNetworkResult(error.message || "WiFi 连接失败，热点会继续保留", true);
+  } finally {
+    wifiConnectInFlight = false;
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
 }
 
 function clearWeatherResults(form) {
@@ -1197,8 +1859,17 @@ function closeResultDetail() {
   document.querySelector("[data-result-detail-dialog]")?.classList.remove("open");
 }
 
-function applyState(state, options = {}) {
-  currentState = state;
+function shouldTransitionBetweenStates(previousState, nextState, options = {}) {
+  if (options.skipTransition || matchTransitionInFlight) return false;
+  if (!previousState || !nextState) return false;
+  return previousState.matchFinished
+    && !nextState.matchFinished
+    && !nextState.running
+    && !nextState.timerStarted
+    && Number(nextState.matchNumber || 0) > Number(previousState.matchNumber || 0);
+}
+
+function renderState(options = {}) {
   currentStateReceivedAt = Date.now();
   if (document.querySelector("[data-scoreboard]")) renderScoreboard();
   if (document.querySelector("[data-remote]")) renderRemote();
@@ -1206,6 +1877,19 @@ function applyState(state, options = {}) {
   renderKeyBindings();
   syncCountdownOverlayTicker();
   if (options.speakEvents !== false) autoSpeakServerEvents();
+}
+
+function applyState(state, options = {}) {
+  const previousState = currentState;
+  if (shouldTransitionBetweenStates(previousState, state, options)) {
+    runMatchTransition(() => {
+      currentState = state;
+      renderState(options);
+    });
+    return;
+  }
+  currentState = state;
+  renderState(options);
 }
 
 async function refresh() {
@@ -1249,14 +1933,23 @@ function startStateEvents() {
   };
 }
 
-async function sendAction(payload, shouldSpeak = true) {
+async function sendAction(payload, shouldSpeak = true, applyOptions = {}) {
   const result = await api.action(payload);
-  applyState(result.state, { speakEvents: false });
+  applyState(result.state, { speakEvents: false, ...applyOptions });
   if (shouldSpeak) {
     if (payload.action === "toggle_timer") {
-      speakWithAlert(result.message);
-    } else {
+      if (result.message === "比赛开始") {
+        cancelReadySpeech();
+        playPromptAudio(getAlertPromptAudio(), "Alert prompt")
+          .then(() => matchStartItems(result.state || currentState))
+          .then((items) => playVoiceItems(items));
+      } else {
+        speakWithPromptForText(result.message);
+      }
+    } else if (payload.action === "select") {
       speak(result.message);
+    } else {
+      speakWithPromptForText(result.message);
     }
     const latest = latestSpeakableHistoryEntry();
     if (latest) {
@@ -1284,7 +1977,7 @@ function openFinishDialog() {
     result.classList.remove("error");
   }
   window.setTimeout(() => input?.focus(), 0);
-  playFinishPromptSound(() => speak("请输入密码结束比赛"));
+  playFinishPromptSound();
 }
 
 function closeFinishDialog() {
@@ -1328,9 +2021,9 @@ function closeRemoteSettingsDialog() {
 function collectSettingsPayload(form) {
   return {
     action: "update_settings",
-    title: form.title.value,
     durationMinutes: form.durationMinutes.value,
     voiceProfile: form.voiceProfile?.value || "female",
+    voicePlaybackRate: form.voicePlaybackRate?.value || DEFAULT_GAMEPLAY_PLAYBACK_RATE,
     weatherLocation: form.weatherLocation?.value || "",
     weatherLatitude: form.weatherLatitude?.value || "",
     weatherLongitude: form.weatherLongitude?.value || "",
@@ -1457,6 +2150,7 @@ function saveEditedTeamName() {
   const input = document.querySelector("[data-edit-team-input]");
   const name = input ? input.value.trim() : "";
   sendAction({ action: "set_team_name", team: editTeamTarget, name });
+  precacheTeamNameAudio(editTeamTarget, name);
   closeEditTeamDialog();
 }
 
@@ -1497,11 +2191,13 @@ async function tryFinishWithPassword() {
   try {
     const result = await sendAction({ action: "finish", password: finishPassword }, false);
     if (result.ok) {
-      speak(result.message);
+      const snapshot = result.finishedMatch || currentState;
       closeFinishDialog();
+      playFinishThenAdvance(snapshot, { openingKey: "match_finished" });
     } else {
       finishVerifyInFlight = false;
       finishPassword = "";
+      speakWithError("密码错误");
       const input = document.querySelector("[data-finish-password]");
       if (input) input.value = "";
       if (resultEl) {
@@ -1512,6 +2208,7 @@ async function tryFinishWithPassword() {
   } catch (error) {
     finishVerifyInFlight = false;
     finishPassword = "";
+    playPromptAudio(getErrorPromptAudio(), "Error prompt");
     const input = document.querySelector("[data-finish-password]");
     if (input) input.value = "";
     if (resultEl) {
@@ -1636,9 +2333,17 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  if (remoteFinishPlaybackLocked && document.querySelector("[data-remote]") && event.target.closest(".results-link")) {
+    event.preventDefault();
+    return;
+  }
   const target = event.target.closest("[data-action]");
   if (!target) return;
   const action = target.dataset.action;
+  if (remoteFinishPlaybackLocked && document.querySelector("[data-remote]")) {
+    event.preventDefault();
+    return;
+  }
   if (shouldIgnoreGuardedAction(action)) {
     event.preventDefault();
     return;
@@ -1661,19 +2366,26 @@ document.addEventListener("click", (event) => {
   if (action === "select-result-date") return selectResultDate(target.dataset.date);
   if (action === "open-result-match") return openResultMatch(target.dataset.matchId);
   if (action === "enable-scoreboard-sound") return enableScoreboardSound();
+  if (action === "settings-tab") return switchSettingsTab(target.dataset.settingsTab || "general");
+  if (action === "scan-wifi") return scanWifiNetworks();
+  if (action === "select-wifi") return selectWifiNetwork(target);
+  if (action === "connect-wifi") return connectSelectedWifi();
   if (action === "capture-key-binding") {
     keyCaptureAction = target.dataset.bindingAction || "";
     renderKeyBindings();
     return;
   }
   if (action === "confirm-swap-team") return confirmSwapTeam();
-  if (action === "toggle_timer" && currentState?.timeExpired && !currentState?.running) return;
+  if (action === "toggle_timer" && (currentState?.matchFinished || (currentState?.timeExpired && !currentState?.running))) return;
   const payload = { action };
   if (target.dataset.ball) payload.ball = Number(target.dataset.ball);
   sendAction(payload);
 });
 
 document.addEventListener("input", (event) => {
+  const rateInput = event.target.closest("input[name='voicePlaybackRate']");
+  if (rateInput) updateVoicePlaybackRateOutput(rateInput.form);
+
   const weatherInput = event.target.closest("[data-weather-location-input]");
   if (weatherInput) {
     scheduleWeatherSearch(weatherInput);
@@ -1733,6 +2445,14 @@ document.addEventListener("submit", async (event) => {
   if (editTeamForm) {
     event.preventDefault();
     saveEditedTeamName();
+    return;
+  }
+
+  const networkForm = event.target.closest("[data-network-settings-form]");
+  if (networkForm) {
+    event.preventDefault();
+    if (!validateNetworkSettings(networkForm)) return;
+    openSettingsSavePasswordDialog(collectNetworkSettingsPayload(networkForm));
     return;
   }
 

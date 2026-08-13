@@ -1,0 +1,1029 @@
+{
+  "profile": "ko-female",
+  "voice": "ko-KR-SunHiNeural",
+  "language": "ko",
+  "rate": "-4%",
+  "volume": "+0%",
+  "items": {
+    "match_start": {
+      "text": "경기 시작합니다",
+      "file": "/audio/voice-ko-female/match_start.mp3"
+    },
+    "match_pause": {
+      "text": "경기 중지",
+      "file": "/audio/voice-ko-female/match_pause.mp3"
+    },
+    "match_resume": {
+      "text": "경기 재개합니다",
+      "file": "/audio/voice-ko-female/match_resume.mp3"
+    },
+    "match_waiting": {
+      "text": "경기 대기",
+      "file": "/audio/voice-ko-female/match_waiting.mp3"
+    },
+    "next_match_waiting": {
+      "text": "다음 경기 대기",
+      "file": "/audio/voice-ko-female/next_match_waiting.mp3"
+    },
+    "time_up": {
+      "text": "경기 시간이 종료되었습니다",
+      "file": "/audio/voice-ko-female/time_up.mp3"
+    },
+    "match_finished": {
+      "text": "경기가 종료되었습니다",
+      "file": "/audio/voice-ko-female/match_finished.mp3"
+    },
+    "finish_password_prompt": {
+      "text": "경기를 종료하려면 비밀번호를 입력하세요",
+      "file": "/audio/voice-ko-female/finish_password_prompt.mp3"
+    },
+    "password_wrong": {
+      "text": "비밀번호가 맞지 않습니다",
+      "file": "/audio/voice-ko-female/password_wrong.mp3"
+    },
+    "settings_saved": {
+      "text": "설정 저장되었습니다",
+      "file": "/audio/voice-ko-female/settings_saved.mp3"
+    },
+    "key_binding_saved": {
+      "text": "키 설정 저장되었습니다",
+      "file": "/audio/voice-ko-female/key_binding_saved.mp3"
+    },
+    "key_binding_failed": {
+      "text": "키 설정 실패",
+      "file": "/audio/voice-ko-female/key_binding_failed.mp3"
+    },
+    "selection_required": {
+      "text": "공 번호를 먼저 선택하세요",
+      "file": "/audio/voice-ko-female/selection_required.mp3"
+    },
+    "scoring_paused_denied": {
+      "text": "중지 중에는 득점할 수 없습니다",
+      "file": "/audio/voice-ko-female/scoring_paused_denied.mp3"
+    },
+    "team_swap_saved": {
+      "text": "홍팀과 백팀 이름을 바꿨습니다",
+      "file": "/audio/voice-ko-female/team_swap_saved.mp3"
+    },
+    "team_name_empty": {
+      "text": "팀 이름이 비어 있습니다",
+      "file": "/audio/voice-ko-female/team_name_empty.mp3"
+    },
+    "red_team_saved": {
+      "text": "홍팀 이름 저장되었습니다",
+      "file": "/audio/voice-ko-female/red_team_saved.mp3"
+    },
+    "white_team_saved": {
+      "text": "백팀 이름 저장되었습니다",
+      "file": "/audio/voice-ko-female/white_team_saved.mp3"
+    },
+    "unknown_team": {
+      "text": "알 수 없는 팀입니다",
+      "file": "/audio/voice-ko-female/unknown_team.mp3"
+    },
+    "unknown_action": {
+      "text": "알 수 없는 조작입니다",
+      "file": "/audio/voice-ko-female/unknown_action.mp3"
+    },
+    "countdown_10": {
+      "text": "십 초 카운트",
+      "file": "/audio/voice-ko-female/countdown_10.mp3"
+    },
+    "countdown_10_stopped": {
+      "text": "십 초 카운트를 멈췄습니다",
+      "file": "/audio/voice-ko-female/countdown_10_stopped.mp3"
+    },
+    "time_remaining_15min": {
+      "text": "경기 종료 15분전입니다",
+      "file": "/audio/voice-ko-female/time_remaining_15min.mp3"
+    },
+    "time_remaining_10min": {
+      "text": "경기 종료 10분전입니다",
+      "file": "/audio/voice-ko-female/time_remaining_10min.mp3"
+    },
+    "time_remaining_5min": {
+      "text": "경기 종료 5분전입니다",
+      "file": "/audio/voice-ko-female/time_remaining_5min.mp3"
+    },
+    "time_remaining_1min": {
+      "text": "경기 종료 1분전입니다",
+      "file": "/audio/voice-ko-female/time_remaining_1min.mp3"
+    },
+    "score_0": {
+      "text": "0점",
+      "file": "/audio/voice-ko-female/score_0.mp3"
+    },
+    "score_1": {
+      "text": "1점",
+      "file": "/audio/voice-ko-female/score_1.mp3"
+    },
+    "score_2": {
+      "text": "2점",
+      "file": "/audio/voice-ko-female/score_2.mp3"
+    },
+    "score_3": {
+      "text": "3점",
+      "file": "/audio/voice-ko-female/score_3.mp3"
+    },
+    "score_4": {
+      "text": "4점",
+      "file": "/audio/voice-ko-female/score_4.mp3"
+    },
+    "score_5": {
+      "text": "5점",
+      "file": "/audio/voice-ko-female/score_5.mp3"
+    },
+    "score_6": {
+      "text": "6점",
+      "file": "/audio/voice-ko-female/score_6.mp3"
+    },
+    "score_7": {
+      "text": "7점",
+      "file": "/audio/voice-ko-female/score_7.mp3"
+    },
+    "score_8": {
+      "text": "8점",
+      "file": "/audio/voice-ko-female/score_8.mp3"
+    },
+    "score_9": {
+      "text": "9점",
+      "file": "/audio/voice-ko-female/score_9.mp3"
+    },
+    "score_10": {
+      "text": "10점",
+      "file": "/audio/voice-ko-female/score_10.mp3"
+    },
+    "score_11": {
+      "text": "11점",
+      "file": "/audio/voice-ko-female/score_11.mp3"
+    },
+    "score_12": {
+      "text": "12점",
+      "file": "/audio/voice-ko-female/score_12.mp3"
+    },
+    "score_13": {
+      "text": "13점",
+      "file": "/audio/voice-ko-female/score_13.mp3"
+    },
+    "score_14": {
+      "text": "14점",
+      "file": "/audio/voice-ko-female/score_14.mp3"
+    },
+    "score_15": {
+      "text": "15점",
+      "file": "/audio/voice-ko-female/score_15.mp3"
+    },
+    "score_16": {
+      "text": "16점",
+      "file": "/audio/voice-ko-female/score_16.mp3"
+    },
+    "score_17": {
+      "text": "17점",
+      "file": "/audio/voice-ko-female/score_17.mp3"
+    },
+    "score_18": {
+      "text": "18점",
+      "file": "/audio/voice-ko-female/score_18.mp3"
+    },
+    "score_19": {
+      "text": "19점",
+      "file": "/audio/voice-ko-female/score_19.mp3"
+    },
+    "score_20": {
+      "text": "20점",
+      "file": "/audio/voice-ko-female/score_20.mp3"
+    },
+    "score_21": {
+      "text": "21점",
+      "file": "/audio/voice-ko-female/score_21.mp3"
+    },
+    "score_22": {
+      "text": "22점",
+      "file": "/audio/voice-ko-female/score_22.mp3"
+    },
+    "score_23": {
+      "text": "23점",
+      "file": "/audio/voice-ko-female/score_23.mp3"
+    },
+    "score_24": {
+      "text": "24점",
+      "file": "/audio/voice-ko-female/score_24.mp3"
+    },
+    "score_25": {
+      "text": "25점",
+      "file": "/audio/voice-ko-female/score_25.mp3"
+    },
+    "score_26": {
+      "text": "26점",
+      "file": "/audio/voice-ko-female/score_26.mp3"
+    },
+    "score_27": {
+      "text": "27점",
+      "file": "/audio/voice-ko-female/score_27.mp3"
+    },
+    "score_28": {
+      "text": "28점",
+      "file": "/audio/voice-ko-female/score_28.mp3"
+    },
+    "score_29": {
+      "text": "29점",
+      "file": "/audio/voice-ko-female/score_29.mp3"
+    },
+    "score_30": {
+      "text": "30점",
+      "file": "/audio/voice-ko-female/score_30.mp3"
+    },
+    "score_31": {
+      "text": "31점",
+      "file": "/audio/voice-ko-female/score_31.mp3"
+    },
+    "score_32": {
+      "text": "32점",
+      "file": "/audio/voice-ko-female/score_32.mp3"
+    },
+    "score_33": {
+      "text": "33점",
+      "file": "/audio/voice-ko-female/score_33.mp3"
+    },
+    "score_34": {
+      "text": "34점",
+      "file": "/audio/voice-ko-female/score_34.mp3"
+    },
+    "score_35": {
+      "text": "35점",
+      "file": "/audio/voice-ko-female/score_35.mp3"
+    },
+    "score_36": {
+      "text": "36점",
+      "file": "/audio/voice-ko-female/score_36.mp3"
+    },
+    "score_37": {
+      "text": "37점",
+      "file": "/audio/voice-ko-female/score_37.mp3"
+    },
+    "score_38": {
+      "text": "38점",
+      "file": "/audio/voice-ko-female/score_38.mp3"
+    },
+    "score_39": {
+      "text": "39점",
+      "file": "/audio/voice-ko-female/score_39.mp3"
+    },
+    "score_40": {
+      "text": "40점",
+      "file": "/audio/voice-ko-female/score_40.mp3"
+    },
+    "score_41": {
+      "text": "41점",
+      "file": "/audio/voice-ko-female/score_41.mp3"
+    },
+    "score_42": {
+      "text": "42점",
+      "file": "/audio/voice-ko-female/score_42.mp3"
+    },
+    "score_43": {
+      "text": "43점",
+      "file": "/audio/voice-ko-female/score_43.mp3"
+    },
+    "score_44": {
+      "text": "44점",
+      "file": "/audio/voice-ko-female/score_44.mp3"
+    },
+    "score_45": {
+      "text": "45점",
+      "file": "/audio/voice-ko-female/score_45.mp3"
+    },
+    "score_46": {
+      "text": "46점",
+      "file": "/audio/voice-ko-female/score_46.mp3"
+    },
+    "score_47": {
+      "text": "47점",
+      "file": "/audio/voice-ko-female/score_47.mp3"
+    },
+    "score_48": {
+      "text": "48점",
+      "file": "/audio/voice-ko-female/score_48.mp3"
+    },
+    "score_49": {
+      "text": "49점",
+      "file": "/audio/voice-ko-female/score_49.mp3"
+    },
+    "score_50": {
+      "text": "50점",
+      "file": "/audio/voice-ko-female/score_50.mp3"
+    },
+    "score_51": {
+      "text": "51점",
+      "file": "/audio/voice-ko-female/score_51.mp3"
+    },
+    "score_52": {
+      "text": "52점",
+      "file": "/audio/voice-ko-female/score_52.mp3"
+    },
+    "score_53": {
+      "text": "53점",
+      "file": "/audio/voice-ko-female/score_53.mp3"
+    },
+    "score_54": {
+      "text": "54점",
+      "file": "/audio/voice-ko-female/score_54.mp3"
+    },
+    "score_55": {
+      "text": "55점",
+      "file": "/audio/voice-ko-female/score_55.mp3"
+    },
+    "score_56": {
+      "text": "56점",
+      "file": "/audio/voice-ko-female/score_56.mp3"
+    },
+    "score_57": {
+      "text": "57점",
+      "file": "/audio/voice-ko-female/score_57.mp3"
+    },
+    "score_58": {
+      "text": "58점",
+      "file": "/audio/voice-ko-female/score_58.mp3"
+    },
+    "score_59": {
+      "text": "59점",
+      "file": "/audio/voice-ko-female/score_59.mp3"
+    },
+    "score_60": {
+      "text": "60점",
+      "file": "/audio/voice-ko-female/score_60.mp3"
+    },
+    "score_61": {
+      "text": "61점",
+      "file": "/audio/voice-ko-female/score_61.mp3"
+    },
+    "score_62": {
+      "text": "62점",
+      "file": "/audio/voice-ko-female/score_62.mp3"
+    },
+    "score_63": {
+      "text": "63점",
+      "file": "/audio/voice-ko-female/score_63.mp3"
+    },
+    "score_64": {
+      "text": "64점",
+      "file": "/audio/voice-ko-female/score_64.mp3"
+    },
+    "score_65": {
+      "text": "65점",
+      "file": "/audio/voice-ko-female/score_65.mp3"
+    },
+    "score_66": {
+      "text": "66점",
+      "file": "/audio/voice-ko-female/score_66.mp3"
+    },
+    "score_67": {
+      "text": "67점",
+      "file": "/audio/voice-ko-female/score_67.mp3"
+    },
+    "score_68": {
+      "text": "68점",
+      "file": "/audio/voice-ko-female/score_68.mp3"
+    },
+    "score_69": {
+      "text": "69점",
+      "file": "/audio/voice-ko-female/score_69.mp3"
+    },
+    "score_70": {
+      "text": "70점",
+      "file": "/audio/voice-ko-female/score_70.mp3"
+    },
+    "score_71": {
+      "text": "71점",
+      "file": "/audio/voice-ko-female/score_71.mp3"
+    },
+    "score_72": {
+      "text": "72점",
+      "file": "/audio/voice-ko-female/score_72.mp3"
+    },
+    "score_73": {
+      "text": "73점",
+      "file": "/audio/voice-ko-female/score_73.mp3"
+    },
+    "score_74": {
+      "text": "74점",
+      "file": "/audio/voice-ko-female/score_74.mp3"
+    },
+    "score_75": {
+      "text": "75점",
+      "file": "/audio/voice-ko-female/score_75.mp3"
+    },
+    "score_76": {
+      "text": "76점",
+      "file": "/audio/voice-ko-female/score_76.mp3"
+    },
+    "score_77": {
+      "text": "77점",
+      "file": "/audio/voice-ko-female/score_77.mp3"
+    },
+    "score_78": {
+      "text": "78점",
+      "file": "/audio/voice-ko-female/score_78.mp3"
+    },
+    "score_79": {
+      "text": "79점",
+      "file": "/audio/voice-ko-female/score_79.mp3"
+    },
+    "score_80": {
+      "text": "80점",
+      "file": "/audio/voice-ko-female/score_80.mp3"
+    },
+    "score_81": {
+      "text": "81점",
+      "file": "/audio/voice-ko-female/score_81.mp3"
+    },
+    "score_82": {
+      "text": "82점",
+      "file": "/audio/voice-ko-female/score_82.mp3"
+    },
+    "score_83": {
+      "text": "83점",
+      "file": "/audio/voice-ko-female/score_83.mp3"
+    },
+    "score_84": {
+      "text": "84점",
+      "file": "/audio/voice-ko-female/score_84.mp3"
+    },
+    "score_85": {
+      "text": "85점",
+      "file": "/audio/voice-ko-female/score_85.mp3"
+    },
+    "score_86": {
+      "text": "86점",
+      "file": "/audio/voice-ko-female/score_86.mp3"
+    },
+    "score_87": {
+      "text": "87점",
+      "file": "/audio/voice-ko-female/score_87.mp3"
+    },
+    "score_88": {
+      "text": "88점",
+      "file": "/audio/voice-ko-female/score_88.mp3"
+    },
+    "score_89": {
+      "text": "89점",
+      "file": "/audio/voice-ko-female/score_89.mp3"
+    },
+    "score_90": {
+      "text": "90점",
+      "file": "/audio/voice-ko-female/score_90.mp3"
+    },
+    "score_91": {
+      "text": "91점",
+      "file": "/audio/voice-ko-female/score_91.mp3"
+    },
+    "score_92": {
+      "text": "92점",
+      "file": "/audio/voice-ko-female/score_92.mp3"
+    },
+    "score_93": {
+      "text": "93점",
+      "file": "/audio/voice-ko-female/score_93.mp3"
+    },
+    "score_94": {
+      "text": "94점",
+      "file": "/audio/voice-ko-female/score_94.mp3"
+    },
+    "score_95": {
+      "text": "95점",
+      "file": "/audio/voice-ko-female/score_95.mp3"
+    },
+    "score_96": {
+      "text": "96점",
+      "file": "/audio/voice-ko-female/score_96.mp3"
+    },
+    "score_97": {
+      "text": "97점",
+      "file": "/audio/voice-ko-female/score_97.mp3"
+    },
+    "score_98": {
+      "text": "98점",
+      "file": "/audio/voice-ko-female/score_98.mp3"
+    },
+    "score_99": {
+      "text": "99점",
+      "file": "/audio/voice-ko-female/score_99.mp3"
+    },
+    "score_100": {
+      "text": "100점",
+      "file": "/audio/voice-ko-female/score_100.mp3"
+    },
+    "score_total": {
+      "text": "총점",
+      "file": "/audio/voice-ko-female/score_total.mp3"
+    },
+    "red_team": {
+      "text": "홍팀",
+      "file": "/audio/voice-ko-female/red_team.mp3"
+    },
+    "white_team": {
+      "text": "백팀",
+      "file": "/audio/voice-ko-female/white_team.mp3"
+    },
+    "winner_red_prefix": {
+      "text": "홍팀",
+      "file": "/audio/voice-ko-female/winner_red_prefix.mp3"
+    },
+    "winner_white_prefix": {
+      "text": "백팀",
+      "file": "/audio/voice-ko-female/winner_white_prefix.mp3"
+    },
+    "winner_suffix": {
+      "text": "승리를 축하합니다",
+      "file": "/audio/voice-ko-female/winner_suffix.mp3"
+    },
+    "draw_game": {
+      "text": "무승부입니다",
+      "file": "/audio/voice-ko-female/draw_game.mp3"
+    },
+    "versus": {
+      "text": "대",
+      "file": "/audio/voice-ko-female/versus.mp3"
+    },
+    "ball_1": {
+      "text": "일 번 공",
+      "file": "/audio/voice-ko-female/ball_1.mp3"
+    },
+    "ball_1_gate1": {
+      "text": "홍팀 일 번 공, 제1게이트 통과",
+      "file": "/audio/voice-ko-female/ball_1_gate1.mp3"
+    },
+    "ball_1_gate2": {
+      "text": "홍팀 일 번 공, 제2게이트 통과",
+      "file": "/audio/voice-ko-female/ball_1_gate2.mp3"
+    },
+    "ball_1_gate3": {
+      "text": "홍팀 일 번 공, 제3게이트 통과",
+      "file": "/audio/voice-ko-female/ball_1_gate3.mp3"
+    },
+    "ball_1_pillar": {
+      "text": "홍팀 일 번 공, 골폴 명중",
+      "file": "/audio/voice-ko-female/ball_1_pillar.mp3"
+    },
+    "ball_1_limit": {
+      "text": "일 번 공, 더 이상 득점할 수 없습니다",
+      "file": "/audio/voice-ko-female/ball_1_limit.mp3"
+    },
+    "ball_1_no_undo": {
+      "text": "일 번 공, 취소할 기록이 없습니다",
+      "file": "/audio/voice-ko-female/ball_1_no_undo.mp3"
+    },
+    "undo_ball_1_gate1": {
+      "text": "홍팀 일 번 공, 제1게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_1_gate1.mp3"
+    },
+    "undo_ball_1_gate2": {
+      "text": "홍팀 일 번 공, 제2게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_1_gate2.mp3"
+    },
+    "undo_ball_1_gate3": {
+      "text": "홍팀 일 번 공, 제3게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_1_gate3.mp3"
+    },
+    "undo_ball_1_pillar": {
+      "text": "홍팀 일 번 공, 골폴 명중을 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_1_pillar.mp3"
+    },
+    "undo_ball_1_zero": {
+      "text": "일 번 공, 0점으로 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_1_zero.mp3"
+    },
+    "ball_2": {
+      "text": "이 번 공",
+      "file": "/audio/voice-ko-female/ball_2.mp3"
+    },
+    "ball_2_gate1": {
+      "text": "백팀 이 번 공, 제1게이트 통과",
+      "file": "/audio/voice-ko-female/ball_2_gate1.mp3"
+    },
+    "ball_2_gate2": {
+      "text": "백팀 이 번 공, 제2게이트 통과",
+      "file": "/audio/voice-ko-female/ball_2_gate2.mp3"
+    },
+    "ball_2_gate3": {
+      "text": "백팀 이 번 공, 제3게이트 통과",
+      "file": "/audio/voice-ko-female/ball_2_gate3.mp3"
+    },
+    "ball_2_pillar": {
+      "text": "백팀 이 번 공, 골폴 명중",
+      "file": "/audio/voice-ko-female/ball_2_pillar.mp3"
+    },
+    "ball_2_limit": {
+      "text": "이 번 공, 더 이상 득점할 수 없습니다",
+      "file": "/audio/voice-ko-female/ball_2_limit.mp3"
+    },
+    "ball_2_no_undo": {
+      "text": "이 번 공, 취소할 기록이 없습니다",
+      "file": "/audio/voice-ko-female/ball_2_no_undo.mp3"
+    },
+    "undo_ball_2_gate1": {
+      "text": "백팀 이 번 공, 제1게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_2_gate1.mp3"
+    },
+    "undo_ball_2_gate2": {
+      "text": "백팀 이 번 공, 제2게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_2_gate2.mp3"
+    },
+    "undo_ball_2_gate3": {
+      "text": "백팀 이 번 공, 제3게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_2_gate3.mp3"
+    },
+    "undo_ball_2_pillar": {
+      "text": "백팀 이 번 공, 골폴 명중을 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_2_pillar.mp3"
+    },
+    "undo_ball_2_zero": {
+      "text": "이 번 공, 0점으로 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_2_zero.mp3"
+    },
+    "ball_3": {
+      "text": "삼 번 공",
+      "file": "/audio/voice-ko-female/ball_3.mp3"
+    },
+    "ball_3_gate1": {
+      "text": "홍팀 삼 번 공, 제1게이트 통과",
+      "file": "/audio/voice-ko-female/ball_3_gate1.mp3"
+    },
+    "ball_3_gate2": {
+      "text": "홍팀 삼 번 공, 제2게이트 통과",
+      "file": "/audio/voice-ko-female/ball_3_gate2.mp3"
+    },
+    "ball_3_gate3": {
+      "text": "홍팀 삼 번 공, 제3게이트 통과",
+      "file": "/audio/voice-ko-female/ball_3_gate3.mp3"
+    },
+    "ball_3_pillar": {
+      "text": "홍팀 삼 번 공, 골폴 명중",
+      "file": "/audio/voice-ko-female/ball_3_pillar.mp3"
+    },
+    "ball_3_limit": {
+      "text": "삼 번 공, 더 이상 득점할 수 없습니다",
+      "file": "/audio/voice-ko-female/ball_3_limit.mp3"
+    },
+    "ball_3_no_undo": {
+      "text": "삼 번 공, 취소할 기록이 없습니다",
+      "file": "/audio/voice-ko-female/ball_3_no_undo.mp3"
+    },
+    "undo_ball_3_gate1": {
+      "text": "홍팀 삼 번 공, 제1게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_3_gate1.mp3"
+    },
+    "undo_ball_3_gate2": {
+      "text": "홍팀 삼 번 공, 제2게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_3_gate2.mp3"
+    },
+    "undo_ball_3_gate3": {
+      "text": "홍팀 삼 번 공, 제3게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_3_gate3.mp3"
+    },
+    "undo_ball_3_pillar": {
+      "text": "홍팀 삼 번 공, 골폴 명중을 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_3_pillar.mp3"
+    },
+    "undo_ball_3_zero": {
+      "text": "삼 번 공, 0점으로 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_3_zero.mp3"
+    },
+    "ball_4": {
+      "text": "사 번 공",
+      "file": "/audio/voice-ko-female/ball_4.mp3"
+    },
+    "ball_4_gate1": {
+      "text": "백팀 사 번 공, 제1게이트 통과",
+      "file": "/audio/voice-ko-female/ball_4_gate1.mp3"
+    },
+    "ball_4_gate2": {
+      "text": "백팀 사 번 공, 제2게이트 통과",
+      "file": "/audio/voice-ko-female/ball_4_gate2.mp3"
+    },
+    "ball_4_gate3": {
+      "text": "백팀 사 번 공, 제3게이트 통과",
+      "file": "/audio/voice-ko-female/ball_4_gate3.mp3"
+    },
+    "ball_4_pillar": {
+      "text": "백팀 사 번 공, 골폴 명중",
+      "file": "/audio/voice-ko-female/ball_4_pillar.mp3"
+    },
+    "ball_4_limit": {
+      "text": "사 번 공, 더 이상 득점할 수 없습니다",
+      "file": "/audio/voice-ko-female/ball_4_limit.mp3"
+    },
+    "ball_4_no_undo": {
+      "text": "사 번 공, 취소할 기록이 없습니다",
+      "file": "/audio/voice-ko-female/ball_4_no_undo.mp3"
+    },
+    "undo_ball_4_gate1": {
+      "text": "백팀 사 번 공, 제1게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_4_gate1.mp3"
+    },
+    "undo_ball_4_gate2": {
+      "text": "백팀 사 번 공, 제2게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_4_gate2.mp3"
+    },
+    "undo_ball_4_gate3": {
+      "text": "백팀 사 번 공, 제3게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_4_gate3.mp3"
+    },
+    "undo_ball_4_pillar": {
+      "text": "백팀 사 번 공, 골폴 명중을 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_4_pillar.mp3"
+    },
+    "undo_ball_4_zero": {
+      "text": "사 번 공, 0점으로 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_4_zero.mp3"
+    },
+    "ball_5": {
+      "text": "오 번 공",
+      "file": "/audio/voice-ko-female/ball_5.mp3"
+    },
+    "ball_5_gate1": {
+      "text": "홍팀 오 번 공, 제1게이트 통과",
+      "file": "/audio/voice-ko-female/ball_5_gate1.mp3"
+    },
+    "ball_5_gate2": {
+      "text": "홍팀 오 번 공, 제2게이트 통과",
+      "file": "/audio/voice-ko-female/ball_5_gate2.mp3"
+    },
+    "ball_5_gate3": {
+      "text": "홍팀 오 번 공, 제3게이트 통과",
+      "file": "/audio/voice-ko-female/ball_5_gate3.mp3"
+    },
+    "ball_5_pillar": {
+      "text": "홍팀 오 번 공, 골폴 명중",
+      "file": "/audio/voice-ko-female/ball_5_pillar.mp3"
+    },
+    "ball_5_limit": {
+      "text": "오 번 공, 더 이상 득점할 수 없습니다",
+      "file": "/audio/voice-ko-female/ball_5_limit.mp3"
+    },
+    "ball_5_no_undo": {
+      "text": "오 번 공, 취소할 기록이 없습니다",
+      "file": "/audio/voice-ko-female/ball_5_no_undo.mp3"
+    },
+    "undo_ball_5_gate1": {
+      "text": "홍팀 오 번 공, 제1게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_5_gate1.mp3"
+    },
+    "undo_ball_5_gate2": {
+      "text": "홍팀 오 번 공, 제2게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_5_gate2.mp3"
+    },
+    "undo_ball_5_gate3": {
+      "text": "홍팀 오 번 공, 제3게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_5_gate3.mp3"
+    },
+    "undo_ball_5_pillar": {
+      "text": "홍팀 오 번 공, 골폴 명중을 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_5_pillar.mp3"
+    },
+    "undo_ball_5_zero": {
+      "text": "오 번 공, 0점으로 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_5_zero.mp3"
+    },
+    "ball_6": {
+      "text": "육 번 공",
+      "file": "/audio/voice-ko-female/ball_6.mp3"
+    },
+    "ball_6_gate1": {
+      "text": "백팀 육 번 공, 제1게이트 통과",
+      "file": "/audio/voice-ko-female/ball_6_gate1.mp3"
+    },
+    "ball_6_gate2": {
+      "text": "백팀 육 번 공, 제2게이트 통과",
+      "file": "/audio/voice-ko-female/ball_6_gate2.mp3"
+    },
+    "ball_6_gate3": {
+      "text": "백팀 육 번 공, 제3게이트 통과",
+      "file": "/audio/voice-ko-female/ball_6_gate3.mp3"
+    },
+    "ball_6_pillar": {
+      "text": "백팀 육 번 공, 골폴 명중",
+      "file": "/audio/voice-ko-female/ball_6_pillar.mp3"
+    },
+    "ball_6_limit": {
+      "text": "육 번 공, 더 이상 득점할 수 없습니다",
+      "file": "/audio/voice-ko-female/ball_6_limit.mp3"
+    },
+    "ball_6_no_undo": {
+      "text": "육 번 공, 취소할 기록이 없습니다",
+      "file": "/audio/voice-ko-female/ball_6_no_undo.mp3"
+    },
+    "undo_ball_6_gate1": {
+      "text": "백팀 육 번 공, 제1게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_6_gate1.mp3"
+    },
+    "undo_ball_6_gate2": {
+      "text": "백팀 육 번 공, 제2게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_6_gate2.mp3"
+    },
+    "undo_ball_6_gate3": {
+      "text": "백팀 육 번 공, 제3게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_6_gate3.mp3"
+    },
+    "undo_ball_6_pillar": {
+      "text": "백팀 육 번 공, 골폴 명중을 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_6_pillar.mp3"
+    },
+    "undo_ball_6_zero": {
+      "text": "육 번 공, 0점으로 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_6_zero.mp3"
+    },
+    "ball_7": {
+      "text": "칠 번 공",
+      "file": "/audio/voice-ko-female/ball_7.mp3"
+    },
+    "ball_7_gate1": {
+      "text": "홍팀 칠 번 공, 제1게이트 통과",
+      "file": "/audio/voice-ko-female/ball_7_gate1.mp3"
+    },
+    "ball_7_gate2": {
+      "text": "홍팀 칠 번 공, 제2게이트 통과",
+      "file": "/audio/voice-ko-female/ball_7_gate2.mp3"
+    },
+    "ball_7_gate3": {
+      "text": "홍팀 칠 번 공, 제3게이트 통과",
+      "file": "/audio/voice-ko-female/ball_7_gate3.mp3"
+    },
+    "ball_7_pillar": {
+      "text": "홍팀 칠 번 공, 골폴 명중",
+      "file": "/audio/voice-ko-female/ball_7_pillar.mp3"
+    },
+    "ball_7_limit": {
+      "text": "칠 번 공, 더 이상 득점할 수 없습니다",
+      "file": "/audio/voice-ko-female/ball_7_limit.mp3"
+    },
+    "ball_7_no_undo": {
+      "text": "칠 번 공, 취소할 기록이 없습니다",
+      "file": "/audio/voice-ko-female/ball_7_no_undo.mp3"
+    },
+    "undo_ball_7_gate1": {
+      "text": "홍팀 칠 번 공, 제1게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_7_gate1.mp3"
+    },
+    "undo_ball_7_gate2": {
+      "text": "홍팀 칠 번 공, 제2게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_7_gate2.mp3"
+    },
+    "undo_ball_7_gate3": {
+      "text": "홍팀 칠 번 공, 제3게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_7_gate3.mp3"
+    },
+    "undo_ball_7_pillar": {
+      "text": "홍팀 칠 번 공, 골폴 명중을 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_7_pillar.mp3"
+    },
+    "undo_ball_7_zero": {
+      "text": "칠 번 공, 0점으로 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_7_zero.mp3"
+    },
+    "ball_8": {
+      "text": "팔 번 공",
+      "file": "/audio/voice-ko-female/ball_8.mp3"
+    },
+    "ball_8_gate1": {
+      "text": "백팀 팔 번 공, 제1게이트 통과",
+      "file": "/audio/voice-ko-female/ball_8_gate1.mp3"
+    },
+    "ball_8_gate2": {
+      "text": "백팀 팔 번 공, 제2게이트 통과",
+      "file": "/audio/voice-ko-female/ball_8_gate2.mp3"
+    },
+    "ball_8_gate3": {
+      "text": "백팀 팔 번 공, 제3게이트 통과",
+      "file": "/audio/voice-ko-female/ball_8_gate3.mp3"
+    },
+    "ball_8_pillar": {
+      "text": "백팀 팔 번 공, 골폴 명중",
+      "file": "/audio/voice-ko-female/ball_8_pillar.mp3"
+    },
+    "ball_8_limit": {
+      "text": "팔 번 공, 더 이상 득점할 수 없습니다",
+      "file": "/audio/voice-ko-female/ball_8_limit.mp3"
+    },
+    "ball_8_no_undo": {
+      "text": "팔 번 공, 취소할 기록이 없습니다",
+      "file": "/audio/voice-ko-female/ball_8_no_undo.mp3"
+    },
+    "undo_ball_8_gate1": {
+      "text": "백팀 팔 번 공, 제1게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_8_gate1.mp3"
+    },
+    "undo_ball_8_gate2": {
+      "text": "백팀 팔 번 공, 제2게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_8_gate2.mp3"
+    },
+    "undo_ball_8_gate3": {
+      "text": "백팀 팔 번 공, 제3게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_8_gate3.mp3"
+    },
+    "undo_ball_8_pillar": {
+      "text": "백팀 팔 번 공, 골폴 명중을 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_8_pillar.mp3"
+    },
+    "undo_ball_8_zero": {
+      "text": "팔 번 공, 0점으로 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_8_zero.mp3"
+    },
+    "ball_9": {
+      "text": "구 번 공",
+      "file": "/audio/voice-ko-female/ball_9.mp3"
+    },
+    "ball_9_gate1": {
+      "text": "홍팀 구 번 공, 제1게이트 통과",
+      "file": "/audio/voice-ko-female/ball_9_gate1.mp3"
+    },
+    "ball_9_gate2": {
+      "text": "홍팀 구 번 공, 제2게이트 통과",
+      "file": "/audio/voice-ko-female/ball_9_gate2.mp3"
+    },
+    "ball_9_gate3": {
+      "text": "홍팀 구 번 공, 제3게이트 통과",
+      "file": "/audio/voice-ko-female/ball_9_gate3.mp3"
+    },
+    "ball_9_pillar": {
+      "text": "홍팀 구 번 공, 골폴 명중",
+      "file": "/audio/voice-ko-female/ball_9_pillar.mp3"
+    },
+    "ball_9_limit": {
+      "text": "구 번 공, 더 이상 득점할 수 없습니다",
+      "file": "/audio/voice-ko-female/ball_9_limit.mp3"
+    },
+    "ball_9_no_undo": {
+      "text": "구 번 공, 취소할 기록이 없습니다",
+      "file": "/audio/voice-ko-female/ball_9_no_undo.mp3"
+    },
+    "undo_ball_9_gate1": {
+      "text": "홍팀 구 번 공, 제1게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_9_gate1.mp3"
+    },
+    "undo_ball_9_gate2": {
+      "text": "홍팀 구 번 공, 제2게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_9_gate2.mp3"
+    },
+    "undo_ball_9_gate3": {
+      "text": "홍팀 구 번 공, 제3게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_9_gate3.mp3"
+    },
+    "undo_ball_9_pillar": {
+      "text": "홍팀 구 번 공, 골폴 명중을 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_9_pillar.mp3"
+    },
+    "undo_ball_9_zero": {
+      "text": "구 번 공, 0점으로 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_9_zero.mp3"
+    },
+    "ball_10": {
+      "text": "십 번 공",
+      "file": "/audio/voice-ko-female/ball_10.mp3"
+    },
+    "ball_10_gate1": {
+      "text": "백팀 십 번 공, 제1게이트 통과",
+      "file": "/audio/voice-ko-female/ball_10_gate1.mp3"
+    },
+    "ball_10_gate2": {
+      "text": "백팀 십 번 공, 제2게이트 통과",
+      "file": "/audio/voice-ko-female/ball_10_gate2.mp3"
+    },
+    "ball_10_gate3": {
+      "text": "백팀 십 번 공, 제3게이트 통과",
+      "file": "/audio/voice-ko-female/ball_10_gate3.mp3"
+    },
+    "ball_10_pillar": {
+      "text": "백팀 십 번 공, 골폴 명중",
+      "file": "/audio/voice-ko-female/ball_10_pillar.mp3"
+    },
+    "ball_10_limit": {
+      "text": "십 번 공, 더 이상 득점할 수 없습니다",
+      "file": "/audio/voice-ko-female/ball_10_limit.mp3"
+    },
+    "ball_10_no_undo": {
+      "text": "십 번 공, 취소할 기록이 없습니다",
+      "file": "/audio/voice-ko-female/ball_10_no_undo.mp3"
+    },
+    "undo_ball_10_gate1": {
+      "text": "백팀 십 번 공, 제1게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_10_gate1.mp3"
+    },
+    "undo_ball_10_gate2": {
+      "text": "백팀 십 번 공, 제2게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_10_gate2.mp3"
+    },
+    "undo_ball_10_gate3": {
+      "text": "백팀 십 번 공, 제3게이트 통과를 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_10_gate3.mp3"
+    },
+    "undo_ball_10_pillar": {
+      "text": "백팀 십 번 공, 골폴 명중을 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_10_pillar.mp3"
+    },
+    "undo_ball_10_zero": {
+      "text": "십 번 공, 0점으로 취소하였습니다",
+      "file": "/audio/voice-ko-female/undo_ball_10_zero.mp3"
+    }
+  }
+}

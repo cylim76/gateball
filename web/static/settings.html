@@ -9,51 +9,96 @@
   <body class="settings-page">
     <main class="settings-shell">
       <h1 class="settings-title">门球设置</h1>
-      <form class="settings-form" data-settings-form>
-        <label>
-          比赛标题
-          <input name="title" autocomplete="off">
-        </label>
-        <label>
-          比赛时长（分钟）
-          <input name="durationMinutes" type="number" min="1" max="120">
-        </label>
-        <label>
-          播报声音
-          <select name="voiceProfile">
-            <option value="female">女声</option>
-            <option value="male">男声</option>
-          </select>
-        </label>
-        <label>
-          天气位置
-          <input name="weatherLocation" data-weather-location-input autocomplete="off" placeholder="输入城市搜索，留空自动定位">
-          <input name="weatherLatitude" type="hidden">
-          <input name="weatherLongitude" type="hidden">
-          <div class="weather-search-results" data-weather-search-results></div>
-        </label>
-        <label class="check">
-          <input name="allowScoringWhenPaused" type="checkbox">
-          暂停期间允许计分
-        </label>
-        <label>
-          新结束密码
-          <input name="finishPassword" type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" placeholder="不改请留空">
-        </label>
-        <label>
-          新设置密码
-          <input name="settingsPassword" type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" placeholder="不改请留空">
-        </label>
-        <button class="primary" type="submit">保存设置</button>
-        <strong data-save-result></strong>
-      </form>
-      <section class="key-binding-panel">
-        <h2>按键映射</h2>
-        <div class="key-binding-head">
-          <span>名称</span>
-          <span>按键</span>
+      <div class="settings-tabs">
+        <button class="settings-tab active" type="button" data-action="settings-tab" data-settings-tab="general">常规</button>
+        <button class="settings-tab" type="button" data-action="settings-tab" data-settings-tab="keys">按键映射</button>
+        <button class="settings-tab" type="button" data-action="settings-tab" data-settings-tab="network">网络</button>
+      </div>
+      <section class="settings-tab-panel active" data-settings-panel="general">
+        <form class="settings-form" data-settings-form>
+          <label>
+            比赛时长（分钟）
+            <input name="durationMinutes" type="number" min="1" max="120">
+          </label>
+          <label>
+            播报声音
+            <select name="voiceProfile">
+              <option value="female">中文女声</option>
+              <option value="male">中文男声</option>
+              <option value="ko-female">韩语女声</option>
+              <option value="ko-male">韩语男声</option>
+            </select>
+          </label>
+          <label>
+            播报速度
+            <div class="range-control">
+              <input name="voicePlaybackRate" type="range" min="0.8" max="2.0" step="0.1">
+              <output data-voice-playback-rate-output>1.2x</output>
+            </div>
+          </label>
+          <label>
+            天气位置
+            <input name="weatherLocation" data-weather-location-input autocomplete="off" placeholder="输入城市搜索，留空自动定位">
+            <input name="weatherLatitude" type="hidden">
+            <input name="weatherLongitude" type="hidden">
+            <div class="weather-search-results" data-weather-search-results></div>
+          </label>
+          <label class="check">
+            <input name="allowScoringWhenPaused" type="checkbox">
+            暂停期间允许计分
+          </label>
+          <label>
+            新结束密码
+            <input name="finishPassword" type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" placeholder="不改请留空">
+          </label>
+          <label>
+            新设置密码
+            <input name="settingsPassword" type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" placeholder="不改请留空">
+          </label>
+          <button class="primary" type="submit">保存设置</button>
+          <strong data-save-result></strong>
+        </form>
+      </section>
+      <section class="settings-tab-panel" data-settings-panel="keys">
+        <div class="key-binding-panel">
+          <h2>按键映射</h2>
+          <div class="key-binding-head">
+            <span>名称</span>
+            <span>按键</span>
+          </div>
+          <div class="key-binding-list" data-key-binding-list></div>
         </div>
-        <div class="key-binding-list" data-key-binding-list></div>
+      </section>
+      <section class="settings-tab-panel" data-settings-panel="network">
+        <div class="network-panel">
+          <div class="network-status" data-network-status>正在读取网络状态...</div>
+          <form class="settings-form" data-network-settings-form>
+            <label>
+              球场名称/热点名称
+              <input name="courtName" autocomplete="off" maxlength="24">
+            </label>
+            <label>
+              热点密码
+              <input name="hotspotPassword" autocomplete="off" minlength="8" maxlength="63">
+            </label>
+            <button class="primary" type="submit">保存热点设置</button>
+            <strong data-network-save-result></strong>
+          </form>
+          <div class="wifi-connect-panel">
+            <button class="secondary" type="button" data-action="scan-wifi">查找 WiFi 网络</button>
+            <div class="wifi-list" data-wifi-list></div>
+            <label>
+              选择的 WiFi
+              <input name="wifiSsid" data-wifi-ssid readonly>
+            </label>
+            <label>
+              WiFi 密码
+              <input name="wifiPassword" data-wifi-password autocomplete="off">
+            </label>
+            <button class="primary" type="button" data-action="connect-wifi">连接 WiFi</button>
+            <strong data-network-result></strong>
+          </div>
+        </div>
       </section>
     </main>
     <div class="dialog" data-settings-save-password-dialog>
