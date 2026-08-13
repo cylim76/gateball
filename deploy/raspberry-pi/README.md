@@ -81,6 +81,10 @@ with `kiosk=1`, so the `Enable Sound` button is hidden on the TV. The normal
 `/scoreboard` page still shows the button when a desktop or tablet browser
 blocks audio during testing.
 
+Chromium is started with a temporary profile under `/tmp/gateball-chromium-profile`.
+This keeps the kiosk session disposable, avoids the "restore pages" prompt after
+power loss, and reduces desktop keyring prompts on auto-login systems.
+
 ## Uninstall
 
 ```bash
