@@ -165,6 +165,7 @@ const MATCH_TRANSITION_FALLBACK_MS = 45000;
 const ERROR_PROMPT_LEAD_MS = 400;
 const ERROR_PROMPT_FALLBACK_START_MS = 800;
 const DEFAULT_GAMEPLAY_PLAYBACK_RATE = 1.2;
+const DEFAULT_SYSTEM_VOLUME_PERCENT = 100;
 const rfStatusLabels = {
   executed: "已执行",
   rf_disabled: "总开关关闭",
@@ -542,6 +543,35 @@ function playbackRateForVoiceKey(key) {
   return 1;
 }
 
+function normalizeSystemVolumePercent(value) {
+  const volume = Number(value);
+  if (!Number.isFinite(volume)) return DEFAULT_SYSTEM_VOLUME_PERCENT;
+  return Math.min(100, Math.max(0, Math.round(volume)));
+}
+
+function systemVolumeMultiplier() {
+  return normalizeSystemVolumePercent(currentState?.systemVolumePercent) / 100;
+}
+
+function setManagedAudioBaseVolume(audio, baseVolume) {
+  if (!audio) return audio;
+  audio.dataset.baseVolume = String(Math.min(1, Math.max(0, Number(baseVolume) || 0)));
+  applyManagedAudioVolume(audio);
+  return audio;
+}
+
+function applyManagedAudioVolume(audio) {
+  if (!audio) return;
+  const baseVolume = Number(audio.dataset?.baseVolume ?? 1);
+  audio.volume = Math.min(1, Math.max(0, baseVolume * systemVolumeMultiplier()));
+}
+
+function applyAllManagedAudioVolumes() {
+  [voiceAudio, finishPromptAudio, alertPromptAudio, errorPromptAudio, tenSecondCountdownAudio, tenSecondCountdownIntroAudio]
+    .filter(Boolean)
+    .forEach(applyManagedAudioVolume);
+}
+
 function isErrorVoiceKey(key) {
   return key === "password_wrong"
     || key === "key_binding_failed"
@@ -580,6 +610,7 @@ function playVoiceFile(file, playbackRate = 1, tailCutMs = 0) {
       resolve();
     };
     if (!voiceAudio) voiceAudio = new Audio();
+    setManagedAudioBaseVolume(voiceAudio, 1);
     voiceAudio.pause();
     voiceAudio.currentTime = 0;
     voiceAudio.src = file;
@@ -844,6 +875,7 @@ function speakWithBrowser(text, onComplete) {
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = "zh-CN";
   utter.rate = 1;
+  utter.volume = systemVolumeMultiplier();
   utter.onend = () => onComplete?.();
   utter.onerror = (event) => {
     console.warn("Speech failed", event.error);
@@ -866,6 +898,7 @@ function speak(text, onComplete) {
 }
 
 function prepareAudio(audio) {
+  applyManagedAudioVolume(audio);
   const originalVolume = audio.volume;
   audio.pause();
   audio.currentTime = 0;
@@ -874,12 +907,12 @@ function prepareAudio(audio) {
   const reset = () => {
     audio.pause();
     audio.currentTime = 0;
-    audio.volume = originalVolume || 1;
+    audio.volume = originalVolume;
   };
   window.setTimeout(reset, 80);
   if (playResult?.catch) {
     playResult.catch(() => {
-      audio.volume = originalVolume || 1;
+      audio.volume = originalVolume;
     });
   }
 }
@@ -893,8 +926,9 @@ function getFinishPromptAudio() {
   if (!finishPromptAudio) {
     finishPromptAudio = new Audio("/audio/finished.mp3");
     finishPromptAudio.preload = "auto";
-    finishPromptAudio.volume = 0.45;
+    setManagedAudioBaseVolume(finishPromptAudio, 0.45);
   }
+  applyManagedAudioVolume(finishPromptAudio);
   return finishPromptAudio;
 }
 
@@ -902,8 +936,9 @@ function getAlertPromptAudio() {
   if (!alertPromptAudio) {
     alertPromptAudio = new Audio("/audio/alert.mp3");
     alertPromptAudio.preload = "auto";
-    alertPromptAudio.volume = 0.45;
+    setManagedAudioBaseVolume(alertPromptAudio, 0.45);
   }
+  applyManagedAudioVolume(alertPromptAudio);
   return alertPromptAudio;
 }
 
@@ -911,8 +946,9 @@ function getErrorPromptAudio() {
   if (!errorPromptAudio) {
     errorPromptAudio = new Audio("/audio/error.mp3");
     errorPromptAudio.preload = "auto";
-    errorPromptAudio.volume = 0.55;
+    setManagedAudioBaseVolume(errorPromptAudio, 0.55);
   }
+  applyManagedAudioVolume(errorPromptAudio);
   return errorPromptAudio;
 }
 
@@ -920,8 +956,9 @@ function getTenSecondCountdownAudio() {
   if (!tenSecondCountdownAudio) {
     tenSecondCountdownAudio = new Audio("/audio/timeout.mp3");
     tenSecondCountdownAudio.preload = "auto";
-    tenSecondCountdownAudio.volume = 0.6;
+    setManagedAudioBaseVolume(tenSecondCountdownAudio, 0.6);
   }
+  applyManagedAudioVolume(tenSecondCountdownAudio);
   return tenSecondCountdownAudio;
 }
 
@@ -929,12 +966,14 @@ function getTenSecondCountdownIntroAudio() {
   if (!tenSecondCountdownIntroAudio) {
     tenSecondCountdownIntroAudio = new Audio("/audio/countdown.mp3");
     tenSecondCountdownIntroAudio.preload = "auto";
-    tenSecondCountdownIntroAudio.volume = 0.5;
+    setManagedAudioBaseVolume(tenSecondCountdownIntroAudio, 0.5);
   }
+  applyManagedAudioVolume(tenSecondCountdownIntroAudio);
   return tenSecondCountdownIntroAudio;
 }
 
 function playAudio(audio, warningLabel) {
+  applyManagedAudioVolume(audio);
   audio.pause();
   audio.currentTime = 0;
   const playResult = audio.play();
@@ -985,6 +1024,7 @@ function playPromptAudio(audio, warningLabel) {
     };
     audio.pause();
     audio.currentTime = 0;
+    applyManagedAudioVolume(audio);
     audio.onended = complete;
     audio.onerror = complete;
     const playResult = audio.play();
@@ -1020,6 +1060,7 @@ function playPromptLeadAudio(audio, warningLabel, leadMs, fallbackStartMs, onLea
     };
     audio.pause();
     audio.currentTime = 0;
+    applyManagedAudioVolume(audio);
     audio.onended = complete;
     audio.onerror = complete;
     const durationMs = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration * 1000 : 0;
@@ -1570,11 +1611,13 @@ function renderSettings() {
     form.durationMinutes.value = Math.round(currentState.durationSeconds / 60);
     if (form.voiceProfile) form.voiceProfile.value = currentState.voiceProfile || "female";
     if (form.voicePlaybackRate) form.voicePlaybackRate.value = Number(currentState.voicePlaybackRate || DEFAULT_GAMEPLAY_PLAYBACK_RATE).toFixed(1);
+    if (form.systemVolumePercent) form.systemVolumePercent.value = normalizeSystemVolumePercent(currentState.systemVolumePercent);
     if (form.titleColor) form.titleColor.value = normalizeHexColor(currentState.titleColor);
     if (form.titleFontScale) form.titleFontScale.value = normalizeTitleFontScale(currentState.titleFontScale).toFixed(2);
     if (form.tableMarkerAutoSize) form.tableMarkerAutoSize.checked = currentState.tableMarkerAutoSize !== false;
     if (form.tableMarkerScale) form.tableMarkerScale.value = normalizeTableMarkerScale(currentState.tableMarkerScale).toFixed(2);
     updateVoicePlaybackRateOutput(form);
+    updateSystemVolumeOutput(form);
     updateTitleFontScaleOutput(form);
     updateTableMarkerScaleOutput(form);
     updateTableMarkerControls(form);
@@ -1686,6 +1729,29 @@ function updateVoicePlaybackRateOutput(form) {
   if (!input || !output) return;
   const rate = Number(input.value || DEFAULT_GAMEPLAY_PLAYBACK_RATE);
   output.textContent = `${(Number.isFinite(rate) ? rate : DEFAULT_GAMEPLAY_PLAYBACK_RATE).toFixed(1)}x`;
+}
+
+function updateSystemVolumeOutput(form) {
+  const input = form?.systemVolumePercent;
+  const output = form?.querySelector?.("[data-system-volume-output]");
+  if (!input || !output) return;
+  output.textContent = `${normalizeSystemVolumePercent(input.value)}%`;
+}
+
+function previewSystemVolume(form) {
+  if (!form?.systemVolumePercent) return;
+  const volume = normalizeSystemVolumePercent(form.systemVolumePercent.value);
+  form.systemVolumePercent.value = volume;
+  if (currentState) currentState.systemVolumePercent = volume;
+  updateSystemVolumeOutput(form);
+  applyAllManagedAudioVolumes();
+}
+
+function stepSystemVolume(form, delta) {
+  if (!form?.systemVolumePercent) return;
+  const next = normalizeSystemVolumePercent(Number(form.systemVolumePercent.value) + delta);
+  form.systemVolumePercent.value = next;
+  previewSystemVolume(form);
 }
 
 function normalizeTitleFontScale(value) {
@@ -2454,6 +2520,7 @@ function collectSettingsPayload(form) {
     durationMinutes: form.durationMinutes.value,
     voiceProfile: form.voiceProfile?.value || "female",
     voicePlaybackRate: form.voicePlaybackRate?.value || DEFAULT_GAMEPLAY_PLAYBACK_RATE,
+    systemVolumePercent: normalizeSystemVolumePercent(form.systemVolumePercent?.value),
     titleColor: normalizeHexColor(form.titleColor?.value),
     titleFontScale: normalizeTitleFontScale(form.titleFontScale?.value),
     tableMarkerAutoSize: form.tableMarkerAutoSize?.checked !== false,
@@ -2879,6 +2946,19 @@ document.addEventListener("click", (event) => {
     stepTitleFontScale(target.closest("[data-settings-form]"), 0.05);
     return;
   }
+  if (action === "system-volume-down") {
+    stepSystemVolume(target.closest("[data-settings-form]"), -5);
+    return;
+  }
+  if (action === "system-volume-up") {
+    stepSystemVolume(target.closest("[data-settings-form]"), 5);
+    return;
+  }
+  if (action === "test-system-volume") {
+    previewSystemVolume(target.closest("[data-settings-form]"));
+    playPromptAudio(getAlertPromptAudio(), "Volume test prompt").then(() => speak("声音测试"));
+    return;
+  }
   if (action === "table-marker-size-down") {
     stepTableMarkerScale(target.closest("[data-settings-form]"), -0.05);
     return;
@@ -2897,6 +2977,9 @@ document.addEventListener("click", (event) => {
 document.addEventListener("input", (event) => {
   const rateInput = event.target.closest("input[name='voicePlaybackRate']");
   if (rateInput) updateVoicePlaybackRateOutput(rateInput.form);
+
+  const systemVolumeInput = event.target.closest("input[name='systemVolumePercent']");
+  if (systemVolumeInput) previewSystemVolume(systemVolumeInput.form);
 
   const titleColorInput = event.target.closest("input[name='titleColor']");
   if (titleColorInput) previewTitleStyle(titleColorInput.form);

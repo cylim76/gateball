@@ -37,6 +37,18 @@
               <output data-voice-playback-rate-output>1.2x</output>
             </div>
           </label>
+          <label>
+            系统音量
+            <div class="range-control volume-control">
+              <input name="systemVolumePercent" type="range" min="0" max="100" step="5">
+              <output data-system-volume-output>100%</output>
+              <div class="volume-buttons">
+                <button class="secondary" type="button" data-action="system-volume-down">-</button>
+                <button class="secondary" type="button" data-action="system-volume-up">+</button>
+                <button class="secondary" type="button" data-action="test-system-volume">测试音量</button>
+              </div>
+            </div>
+          </label>
           <div class="title-style-control">
             <label>
               比赛标题颜色

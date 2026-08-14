@@ -113,6 +113,7 @@ DEFAULT_STATE = {
     "keyBindings": {},
     "voiceProfile": "female",
     "voicePlaybackRate": 1.2,
+    "systemVolumePercent": 100,
     "titleColor": "#ffe23a",
     "titleFontScale": 1.0,
     "tableMarkerAutoSize": True,
@@ -124,6 +125,35 @@ DEFAULT_STATE = {
     "hotspotSsid": "红星门球场1",
     "hotspotPassword": "12345678",
 }
+
+
+def set_system_volume_percent(percent: int) -> bool:
+    percent = min(100, max(0, int(percent)))
+    commands = [
+        ["pactl", "set-sink-volume", "@DEFAULT_SINK@", f"{percent}%"],
+        ["amixer", "sset", "Master", f"{percent}%"],
+        ["amixer", "-D", "pulse", "sset", "Master", f"{percent}%"],
+    ]
+    for command in commands:
+        try:
+            result = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if result.returncode == 0:
+            if command[0] == "pactl":
+                try:
+                    subprocess.run(
+                        ["pactl", "set-sink-mute", "@DEFAULT_SINK@", "1" if percent == 0 else "0"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=2,
+                    )
+                except (OSError, subprocess.SubprocessError):
+                    pass
+            return True
+    return False
+
+
 DEFAULT_STATE.update(
     {
         "rfRemoteEnabled": False,
@@ -243,6 +273,10 @@ class Store:
             self.state["matchStartedAt"] = None
         if not isinstance(self.state.get("keyBindings"), dict):
             self.state["keyBindings"] = {}
+        try:
+            self.state["systemVolumePercent"] = min(100, max(0, int(round(float(self.state.get("systemVolumePercent", 100))))))
+        except (TypeError, ValueError):
+            self.state["systemVolumePercent"] = 100
         if not isinstance(self.state.get("rfRemotes"), list):
             self.state["rfRemotes"] = []
         if not isinstance(self.state.get("rfLastSignal"), dict):
@@ -707,6 +741,13 @@ class Store:
                     try:
                         rate = round(float(payload["voicePlaybackRate"]), 1)
                         self.state["voicePlaybackRate"] = min(2.0, max(0.8, rate))
+                    except (TypeError, ValueError):
+                        pass
+                if "systemVolumePercent" in payload:
+                    try:
+                        volume = int(round(float(payload["systemVolumePercent"])))
+                        self.state["systemVolumePercent"] = min(100, max(0, volume))
+                        set_system_volume_percent(self.state["systemVolumePercent"])
                     except (TypeError, ValueError):
                         pass
                 if "titleFontScale" in payload:
