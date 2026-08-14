@@ -8,12 +8,16 @@ GATEBALL_DIR="${GATEBALL_DIR:-$REPO_DIR}"
 GATEBALL_USER="${GATEBALL_USER:-$(id -un)}"
 INSTALL_KIOSK="${INSTALL_KIOSK:-1}"
 INSTALL_KIOSK_SESSION="${INSTALL_KIOSK_SESSION:-0}"
+INSTALL_DIRECT_X_KIOSK="${INSTALL_DIRECT_X_KIOSK:-0}"
 CONFIGURE_QUIET_BOOT="${CONFIGURE_QUIET_BOOT:-1}"
 SERVICE_NAME="${SERVICE_NAME:-gateball.service}"
+DIRECT_X_SERVICE_NAME="${DIRECT_X_SERVICE_NAME:-gateball-x-kiosk.service}"
 AUTOSTART_FILE="$HOME/.config/autostart/gateball-kiosk.desktop"
 KIOSK_SESSION_RUNNER="/usr/local/bin/gateball-kiosk-session"
 KIOSK_XSESSION_FILE="/usr/share/xsessions/gateball-kiosk.desktop"
 LIGHTDM_KIOSK_CONF="/etc/lightdm/lightdm.conf.d/99-gateball-kiosk.conf"
+DIRECT_X_SERVICE_FILE="/etc/systemd/system/$DIRECT_X_SERVICE_NAME"
+XWRAPPER_CONFIG="/etc/X11/Xwrapper.config"
 
 backup_once() {
   local path="$1"
@@ -116,6 +120,36 @@ remove_kiosk_session_config() {
   sudo rm -f "$KIOSK_SESSION_RUNNER" "$KIOSK_XSESSION_FILE" "$LIGHTDM_KIOSK_CONF"
 }
 
+install_direct_x_kiosk() {
+  chmod +x "$SCRIPT_DIR/start-kiosk.sh" "$SCRIPT_DIR/gateball-kiosk-session-xinit.sh"
+  rm -f "$AUTOSTART_FILE"
+  remove_kiosk_session_config
+  sudo install -d /etc/X11
+  if [ -f "$XWRAPPER_CONFIG" ]; then
+    backup_once "$XWRAPPER_CONFIG"
+  fi
+  {
+    echo "allowed_users=anybody"
+    echo "needs_root_rights=yes"
+  } | sudo tee "$XWRAPPER_CONFIG" >/dev/null
+  sudo systemctl disable --now lightdm.service display-manager.service >/dev/null 2>&1 || true
+  sudo systemctl set-default multi-user.target
+  sed \
+    -e "s#__GATEBALL_DIR__#$GATEBALL_DIR#g" \
+    -e "s#__GATEBALL_USER__#$GATEBALL_USER#g" \
+    "$SCRIPT_DIR/gateball-x-kiosk.service.template" | sudo tee "$DIRECT_X_SERVICE_FILE" >/dev/null
+  sudo systemctl daemon-reload
+  sudo systemctl enable "$DIRECT_X_SERVICE_NAME"
+  sudo systemctl restart "$DIRECT_X_SERVICE_NAME"
+  echo "Direct X kiosk service installed: $DIRECT_X_SERVICE_FILE"
+}
+
+remove_direct_x_kiosk() {
+  sudo systemctl disable --now "$DIRECT_X_SERVICE_NAME" >/dev/null 2>&1 || true
+  sudo rm -f "$DIRECT_X_SERVICE_FILE"
+  sudo systemctl daemon-reload
+}
+
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required."
   exit 1
@@ -141,9 +175,15 @@ sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 
 if [ "$INSTALL_KIOSK" = "1" ]; then
-  if [ "$INSTALL_KIOSK_SESSION" = "1" ]; then
+  if [ "$INSTALL_DIRECT_X_KIOSK" = "1" ]; then
+    install_direct_x_kiosk
+  elif [ "$INSTALL_KIOSK_SESSION" = "1" ]; then
+    remove_direct_x_kiosk
     install_kiosk_session
   else
+    remove_direct_x_kiosk
+    sudo systemctl set-default graphical.target
+    sudo systemctl enable lightdm.service display-manager.service >/dev/null 2>&1 || true
     remove_kiosk_session_config
     install_desktop_autostart
   fi

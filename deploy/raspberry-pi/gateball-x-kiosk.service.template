@@ -1,0 +1,18 @@
+[Unit]
+Description=Gateball direct X kiosk
+After=systemd-user-sessions.service network-online.target gateball.service
+Wants=network-online.target gateball.service
+Conflicts=display-manager.service
+
+[Service]
+Type=simple
+User=__GATEBALL_USER__
+WorkingDirectory=__GATEBALL_DIR__
+Environment=HOME=/home/__GATEBALL_USER__
+Environment=XAUTHORITY=/tmp/gateball-xauthority
+ExecStart=/usr/bin/startx __GATEBALL_DIR__/deploy/raspberry-pi/gateball-kiosk-session-xinit.sh -- :0 -nolisten tcp -nocursor -s 0 -dpms vt1
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

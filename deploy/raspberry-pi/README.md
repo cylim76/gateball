@@ -9,6 +9,7 @@ the scoreboard in Chromium kiosk mode after desktop login.
 - `start-kiosk.sh`: disables screen blanking, shows the local startup screen, then opens Chromium on the scoreboard when the service is ready
 - `gateball-kiosk.desktop`: desktop autostart entry for the kiosk browser
 - `gateball-kiosk-session.sh.template`: optional dedicated kiosk session that avoids loading the normal desktop
+- `gateball-x-kiosk.service.template`: optional direct X kiosk service that bypasses the normal desktop entirely
 - `splash/splash.html`: local full-screen startup screen shown while the scoreboard starts
 
 The backend service and browser are started separately:
@@ -79,6 +80,25 @@ only after the normal autostart mode is working:
 
 ```bash
 INSTALL_KIOSK_SESSION=1 deploy/raspberry-pi/install.sh
+```
+
+On Raspberry Pi OS versions using Wayland, the LightDM Xsession method may be
+ignored. For the most appliance-like startup, install the direct X kiosk mode.
+It disables the normal display manager, boots to `multi-user.target`, and starts
+Xorg plus Chromium from systemd. The installer also backs up and updates
+`/etc/X11/Xwrapper.config` so the kiosk service can start Xorg:
+
+```bash
+sudo apt install -y xserver-xorg xinit openbox
+INSTALL_DIRECT_X_KIOSK=1 deploy/raspberry-pi/install.sh
+sudo reboot
+```
+
+To return to the reliable normal desktop autostart mode:
+
+```bash
+deploy/raspberry-pi/install.sh
+sudo reboot
 ```
 
 ## Useful Commands
@@ -169,8 +189,10 @@ chmod +x deploy/raspberry-pi/uninstall.sh
 deploy/raspberry-pi/uninstall.sh
 ```
 
-This removes the systemd service, kiosk autostart entry, dedicated kiosk
-session, and LightDM kiosk autologin config. If the installer created
-`.gateball.bak` boot-file backups, uninstall restores those files so the
-Gateball quiet-boot changes are removed. It also unmasks Plymouth services. It
-does not remove the project files or match history database.
+This removes the systemd service, direct X kiosk service, kiosk autostart entry,
+dedicated kiosk session, and LightDM kiosk autologin config. It restores the
+system default target to `graphical.target` and re-enables the display manager.
+If the installer created `.gateball.bak` boot-file backups, uninstall restores
+those files so the Gateball quiet-boot changes are removed. It also unmasks
+Plymouth services. It does not remove the project files or match history
+database.
