@@ -113,6 +113,12 @@ Startup logs are written to:
 /tmp/gateball-kiosk.log
 ```
 
+The startup script prefers Chromium's real executable paths, such as
+`/usr/lib/chromium-browser/chromium-browser` and `/usr/lib/chromium/chromium`,
+before falling back to wrapper commands like `chromium`. This avoids older
+Raspberry Pi Chromium wrapper flags such as `--no-decommit-pooled-pages` that
+newer Chromium builds may reject.
+
 Then it waits for:
 
 ```text

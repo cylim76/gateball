@@ -17,20 +17,26 @@ echo "Script: $SCRIPT_DIR"
 echo "Splash: $SPLASH_URL"
 echo "Scoreboard: $GATEBALL_URL"
 
-if command -v xset >/dev/null 2>&1; then
+if [ -n "${DISPLAY:-}" ] && command -v xset >/dev/null 2>&1; then
   xset s off || true
   xset -dpms || true
   xset s noblank || true
 fi
 
-if command -v xsetroot >/dev/null 2>&1; then
+if [ -n "${DISPLAY:-}" ] && command -v xsetroot >/dev/null 2>&1; then
   xsetroot -solid black || true
 fi
 
 pkill -f "chromium.*${GATEBALL_URL}" 2>/dev/null || true
 CHROMIUM_BIN=""
-for candidate in chromium-browser chromium chromium-browser-stable; do
-  if command -v "$candidate" >/dev/null 2>&1; then
+for candidate in \
+  /usr/lib/chromium-browser/chromium-browser \
+  /usr/lib/chromium/chromium \
+  /snap/bin/chromium \
+  chromium-browser \
+  chromium \
+  chromium-browser-stable; do
+  if [ -x "$candidate" ] || command -v "$candidate" >/dev/null 2>&1; then
     CHROMIUM_BIN="$candidate"
     break
   fi
