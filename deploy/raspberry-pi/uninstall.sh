@@ -9,6 +9,7 @@ KIOSK_XSESSION_FILE="/usr/share/xsessions/gateball-kiosk.desktop"
 LIGHTDM_KIOSK_CONF="/etc/lightdm/lightdm.conf.d/99-gateball-kiosk.conf"
 DIRECT_X_SERVICE_FILE="/etc/systemd/system/$DIRECT_X_SERVICE_NAME"
 XWRAPPER_CONFIG="/etc/X11/Xwrapper.config"
+REMOVE_KIOSK_PACKAGES="${REMOVE_KIOSK_PACKAGES:-0}"
 
 restore_boot_file() {
   local path="$1"
@@ -38,5 +39,9 @@ restore_boot_file "$XWRAPPER_CONFIG"
 for service in plymouth-start.service plymouth-quit.service plymouth-quit-wait.service; do
   sudo systemctl unmask "$service" >/dev/null 2>&1 || true
 done
+
+if [ "$REMOVE_KIOSK_PACKAGES" = "1" ]; then
+  sudo apt-get remove -y xserver-xorg xinit openbox
+fi
 
 echo "Removed Gateball service, kiosk autostart, and restored Gateball boot splash changes when backups existed."

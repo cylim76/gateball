@@ -89,10 +89,12 @@ Xorg plus Chromium from systemd. The installer also backs up and updates
 `/etc/X11/Xwrapper.config` so the kiosk service can start Xorg:
 
 ```bash
-sudo apt install -y xserver-xorg xinit openbox
 INSTALL_DIRECT_X_KIOSK=1 deploy/raspberry-pi/install.sh
 sudo reboot
 ```
+
+The installer installs `xserver-xorg`, `xinit`, and `openbox` automatically for
+direct X kiosk mode.
 
 To return to the reliable normal desktop autostart mode:
 
@@ -196,3 +198,10 @@ If the installer created `.gateball.bak` boot-file backups, uninstall restores
 those files so the Gateball quiet-boot changes are removed. It also unmasks
 Plymouth services. It does not remove the project files or match history
 database.
+
+Uninstall does not remove kiosk support packages by default. To remove the
+packages installed for direct X kiosk mode too:
+
+```bash
+REMOVE_KIOSK_PACKAGES=1 deploy/raspberry-pi/uninstall.sh
+```

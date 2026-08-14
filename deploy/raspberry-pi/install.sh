@@ -18,6 +18,7 @@ KIOSK_XSESSION_FILE="/usr/share/xsessions/gateball-kiosk.desktop"
 LIGHTDM_KIOSK_CONF="/etc/lightdm/lightdm.conf.d/99-gateball-kiosk.conf"
 DIRECT_X_SERVICE_FILE="/etc/systemd/system/$DIRECT_X_SERVICE_NAME"
 XWRAPPER_CONFIG="/etc/X11/Xwrapper.config"
+DIRECT_X_PACKAGES=(xserver-xorg xinit openbox)
 
 backup_once() {
   local path="$1"
@@ -122,6 +123,9 @@ remove_kiosk_session_config() {
 
 install_direct_x_kiosk() {
   chmod +x "$SCRIPT_DIR/start-kiosk.sh" "$SCRIPT_DIR/gateball-kiosk-session-xinit.sh"
+  echo "Installing direct X kiosk packages: ${DIRECT_X_PACKAGES[*]}"
+  sudo apt-get update
+  sudo apt-get install -y "${DIRECT_X_PACKAGES[@]}"
   rm -f "$AUTOSTART_FILE"
   remove_kiosk_session_config
   sudo install -d /etc/X11
