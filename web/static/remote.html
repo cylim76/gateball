@@ -68,7 +68,7 @@
     <div class="dialog" data-finish-dialog>
       <div class="dialog-box">
         <h2 class="dialog-title">结束比赛密码</h2>
-        <input class="dialog-input password-code-input finish-password-input" data-finish-password type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6">
+        <input class="dialog-input password-code-input finish-password-input" data-finish-password type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6">
         <strong class="dialog-result" data-finish-result></strong>
         <div class="dialog-actions">
           <button class="finish-cancel" data-action="close-finish">取消</button>
@@ -186,11 +186,11 @@
             </label>
             <label>
               新结束密码
-              <input name="finishPassword" type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" placeholder="不改请留空">
+              <input name="finishPassword" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" placeholder="不改请留空">
             </label>
             <label>
               新设置密码
-              <input name="settingsPassword" type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" placeholder="不改请留空">
+              <input name="settingsPassword" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" placeholder="不改请留空">
             </label>
             <button class="primary" type="submit">保存设置</button>
             <strong data-save-result></strong>
@@ -245,6 +245,7 @@
               <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-button="+">测试 + 得分</button>
               <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-button="-">测试 - 撤销</button>
               <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-button="OK">测试 OK 开始/暂停</button>
+              <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-button="#">测试 # 10秒</button>
             </div>
           </div>
         </section>
@@ -285,7 +286,7 @@
     <div class="dialog" data-settings-save-password-dialog>
       <div class="dialog-box">
         <h2 class="dialog-title">输入设置密码</h2>
-        <input class="dialog-input password-code-input" data-settings-save-password-input type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6">
+        <input class="dialog-input password-code-input" data-settings-save-password-input type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6">
         <strong class="dialog-result" data-settings-save-password-result></strong>
         <div class="dialog-actions">
           <button class="finish-cancel" type="button" data-action="close-settings-save-password">取消</button>

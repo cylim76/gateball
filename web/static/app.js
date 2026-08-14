@@ -90,7 +90,6 @@ const keyBindingSpecs = [
   { id: "ten_second_countdown", name: "10秒倒计时", special: "ten-second-countdown", defaults: [{ code: "Backspace", key: "Backspace", label: "Backspace" }] },
   { id: "finish_dialog", name: "结束比赛", special: "finish-dialog", defaults: [{ code: "NumpadMultiply", key: "*", label: "小键盘 *" }] },
   { id: "finish_cancel", name: "结束取消", special: "finish-cancel", defaults: [{ code: "NumpadMultiply", key: "*", label: "小键盘 *" }, { code: "Escape", key: "Escape", label: "Esc" }] },
-  { id: "settings_dialog", name: "打开设置", special: "remote-settings-dialog", defaults: [{ code: "NumpadDivide", key: "/", label: "小键盘 /" }] },
 ];
 
 const keyBindingSpecById = Object.fromEntries(keyBindingSpecs.map((spec) => [spec.id, spec]));
@@ -189,6 +188,7 @@ const rfActionLabels = {
   advance: "得分",
   undo: "撤销",
   toggle_timer: "开始/暂停",
+  ten_second_countdown: "10秒倒计时",
   finish_dialog: "结束比赛",
 };
 const VOICE_PROFILES = ["female", "male", "ko-female", "ko-male"];
@@ -1762,6 +1762,7 @@ function renderRfRemotes() {
         <button class="secondary" type="button" data-action="toggle-rf-remote" data-rf-id="${escapeHtml(remote.id)}" data-rf-enabled="${remote.enabled ? "0" : "1"}">${remote.enabled ? "停用" : "启用"}</button>
         <button class="secondary" type="button" data-action="rename-rf-remote" data-rf-id="${escapeHtml(remote.id)}">重命名</button>
         <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-address="${escapeHtml(remote.address || "")}" data-rf-button="+">测试</button>
+        <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-address="${escapeHtml(remote.address || "")}" data-rf-button="#">10秒</button>
         <button class="danger secondary" type="button" data-action="delete-rf-remote" data-rf-id="${escapeHtml(remote.id)}">删除</button>
       </div>
     `;
@@ -2691,6 +2692,7 @@ function handlePasswordKey(event) {
   if (finishDialogOpen) {
     if (eventMatchesBindingSpec(event, keyBindingSpecById.finish_dialog)) return closeFinishDialog();
     if (eventMatchesBindingSpec(event, keyBindingSpecById.finish_cancel)) return closeFinishDialog();
+    if (event.key === "Escape") return closeFinishDialog();
     if (digit && finishPassword.length < finishPasswordLength()) finishPassword += digit;
     if (event.key === "Backspace") {
       finishPassword = finishPassword.slice(0, -1);
@@ -2912,6 +2914,10 @@ document.addEventListener("input", (event) => {
   }
   const finishInput = event.target.closest("[data-finish-password]");
   if (finishInput) {
+    if (finishInput.value.includes("*")) {
+      closeFinishDialog();
+      return;
+    }
     finishPassword = finishInput.value.replace(/\D/g, "").slice(0, finishPasswordLength());
     finishInput.value = finishPassword;
     finishVerifyInFlight = false;

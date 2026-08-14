@@ -985,6 +985,7 @@ tr.selected {
   font-size: 32px;
   font-weight: 900;
   letter-spacing: 6px;
+  -webkit-text-security: disc;
 }
 
 .finish-password-input {

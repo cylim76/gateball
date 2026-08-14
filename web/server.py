@@ -63,6 +63,7 @@ RF_REMOTE_MODELS = {
             "+": "advance",
             "-": "undo",
             "OK": "toggle_timer",
+            "#": "ten_second_countdown",
             "*": "finish_dialog",
         },
     }
@@ -81,6 +82,7 @@ RF_ACTION_PAYLOADS = {
     "advance": {"action": "advance"},
     "undo": {"action": "undo"},
     "toggle_timer": {"action": "toggle_timer"},
+    "ten_second_countdown": {"action": "ten_second_countdown"},
 }
 
 
