@@ -2449,3 +2449,86 @@ body.scoreboard.finish-summary-active .celebration-canvas {
   font-size: 16px;
   font-weight: 800;
 }
+
+.rf-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.rf-panel h2,
+.rf-panel h3 {
+  margin: 0;
+  color: var(--gold);
+  font-size: 20px;
+}
+
+.rf-settings-form,
+.rf-add-form {
+  padding: 12px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #101010;
+}
+
+.rf-remotes-list {
+  display: grid;
+  gap: 10px;
+}
+
+.rf-empty,
+.rf-last-signal {
+  padding: 12px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #ddd;
+  background: #101010;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.rf-remote-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  background: #111;
+}
+
+.rf-remote-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #fff;
+}
+
+.rf-remote-main strong {
+  font-size: 17px;
+}
+
+.rf-remote-main span {
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.rf-remote-meta {
+  color: #bbb;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.rf-remote-actions,
+.rf-test-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rf-remote-actions button,
+.rf-test-row button {
+  min-height: 38px;
+  padding: 6px 10px;
+  font-size: 14px;
+}

@@ -45,6 +45,43 @@ VOICE_PROFILE_DIRS = {
     "ko-female": "voice-ko-female",
     "ko-male": "voice-ko-male",
 }
+RF_REMOTE_MODELS = {
+    "gateball-10key": {
+        "name": "10-key gateball remote",
+        "buttons": {
+            "1": "ball_1",
+            "2": "ball_2",
+            "3": "ball_3",
+            "4": "ball_4",
+            "5": "ball_5",
+            "6": "ball_6",
+            "7": "ball_7",
+            "8": "ball_8",
+            "9": "ball_9",
+            "10": "ball_10",
+            "0": "ball_10",
+            "+": "advance",
+            "-": "undo",
+            "OK": "toggle_timer",
+            "*": "finish_dialog",
+        },
+    }
+}
+RF_ACTION_PAYLOADS = {
+    "ball_1": {"action": "select", "ball": 1},
+    "ball_2": {"action": "select", "ball": 2},
+    "ball_3": {"action": "select", "ball": 3},
+    "ball_4": {"action": "select", "ball": 4},
+    "ball_5": {"action": "select", "ball": 5},
+    "ball_6": {"action": "select", "ball": 6},
+    "ball_7": {"action": "select", "ball": 7},
+    "ball_8": {"action": "select", "ball": 8},
+    "ball_9": {"action": "select", "ball": 9},
+    "ball_10": {"action": "select", "ball": 10},
+    "advance": {"action": "advance"},
+    "undo": {"action": "undo"},
+    "toggle_timer": {"action": "toggle_timer"},
+}
 
 
 DEFAULT_STATE = {
@@ -85,6 +122,15 @@ DEFAULT_STATE = {
     "hotspotSsid": "红星门球场1",
     "hotspotPassword": "12345678",
 }
+DEFAULT_STATE.update(
+    {
+        "rfRemoteEnabled": False,
+        "rfReceiverGpio": 27,
+        "rfRemoteModel": "gateball-10key",
+        "rfRemotes": [],
+        "rfLastSignal": None,
+    }
+)
 
 
 def atomic_write_json(path: Path, payload: dict) -> None:
@@ -195,6 +241,10 @@ class Store:
             self.state["matchStartedAt"] = None
         if not isinstance(self.state.get("keyBindings"), dict):
             self.state["keyBindings"] = {}
+        if not isinstance(self.state.get("rfRemotes"), list):
+            self.state["rfRemotes"] = []
+        if not isinstance(self.state.get("rfLastSignal"), dict):
+            self.state["rfLastSignal"] = None
         if "selectedBallAt" not in self.state:
             self.state["selectedBallAt"] = None
         if self.state.get("finishPassword") == "1234":
@@ -328,10 +378,169 @@ class Store:
         self.record("selection_required", None, message)
         return False
 
+    def normalize_rf_remotes(self) -> list[dict]:
+        remotes = self.state.get("rfRemotes")
+        if not isinstance(remotes, list):
+            remotes = []
+        normalized = []
+        seen = set()
+        for index, remote in enumerate(remotes):
+            if not isinstance(remote, dict):
+                continue
+            address = str(remote.get("address", "")).strip()
+            if not address or address in seen:
+                continue
+            seen.add(address)
+            remote_id = str(remote.get("id") or f"rf-{address}").strip()
+            normalized.append(
+                {
+                    "id": remote_id,
+                    "name": str(remote.get("name") or f"Remote {index + 1}").strip()[:40],
+                    "enabled": bool(remote.get("enabled", True)),
+                    "model": str(remote.get("model") or self.state.get("rfRemoteModel") or "gateball-10key"),
+                    "address": address,
+                    "lastSeenAt": remote.get("lastSeenAt"),
+                }
+            )
+        self.state["rfRemotes"] = normalized
+        return normalized
+
+    def record_rf_signal(self, *, raw: str, address: str, button: str, remote: dict | None, action_id: str, status: str) -> None:
+        self.state["rfLastSignal"] = {
+            "raw": raw,
+            "address": address,
+            "button": button,
+            "remoteId": remote.get("id") if remote else None,
+            "remoteName": remote.get("name") if remote else None,
+            "action": action_id,
+            "status": status,
+            "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        if remote:
+            remote["lastSeenAt"] = self.state["rfLastSignal"]["time"]
+
+    def handle_rf_signal(self, payload: dict) -> dict:
+        raw = str(payload.get("raw") or payload.get("code") or "").strip()
+        address = str(payload.get("address") or "").strip()
+        button = str(payload.get("button") or "").strip()
+        if not address and raw:
+            address = raw[:-1] if len(raw) > 1 else raw
+        if not button and raw:
+            button = raw[-1:]
+        remotes = self.normalize_rf_remotes()
+        remote = next((item for item in remotes if item["address"] == address), None)
+        action_id = ""
+        status = "ignored"
+        if not self.state.get("rfRemoteEnabled"):
+            status = "rf_disabled"
+        elif not remote:
+            status = "unknown_remote"
+        elif not remote.get("enabled"):
+            status = "remote_disabled"
+        else:
+            model = RF_REMOTE_MODELS.get(remote.get("model"), RF_REMOTE_MODELS["gateball-10key"])
+            action_id = model["buttons"].get(button, "")
+            if action_id == "finish_dialog":
+                status = "finish_requires_password"
+            elif action_id in RF_ACTION_PAYLOADS:
+                status = "executed"
+                self.action(RF_ACTION_PAYLOADS[action_id])
+            else:
+                status = "unknown_button"
+        self.record_rf_signal(raw=raw, address=address, button=button, remote=remote, action_id=action_id, status=status)
+        self.save()
+        return {"ok": status == "executed", "message": status, "state": self.snapshot()}
+
     def action(self, payload: dict) -> dict:
         self.tick()
         action = payload.get("action")
         message = ""
+
+        if action == "simulate_rf_signal":
+            return self.handle_rf_signal(payload)
+
+        if action == "update_rf_settings":
+            if payload.get("password") != self.state["settingsPassword"]:
+                message = "密码错误"
+            else:
+                self.state["rfRemoteEnabled"] = bool(payload.get("rfRemoteEnabled"))
+                try:
+                    gpio = int(payload.get("rfReceiverGpio", self.state.get("rfReceiverGpio", 27)))
+                    self.state["rfReceiverGpio"] = min(27, max(2, gpio))
+                except (TypeError, ValueError):
+                    pass
+                model = str(payload.get("rfRemoteModel") or "gateball-10key")
+                self.state["rfRemoteModel"] = model if model in RF_REMOTE_MODELS else "gateball-10key"
+                message = "RF remote settings saved"
+                self.state["lastMessage"] = message
+                self.record("rf_settings", None, message)
+            self.save()
+            return {"ok": message != "密码错误", "message": message, "state": self.snapshot()}
+
+        if action == "add_rf_remote":
+            if payload.get("password") != self.state["settingsPassword"]:
+                message = "密码错误"
+            else:
+                address = str(payload.get("address", "")).strip()
+                if not address:
+                    message = "RF address is required"
+                else:
+                    remotes = self.normalize_rf_remotes()
+                    existing = next((item for item in remotes if item["address"] == address), None)
+                    model = str(payload.get("model") or self.state.get("rfRemoteModel") or "gateball-10key")
+                    model = model if model in RF_REMOTE_MODELS else "gateball-10key"
+                    if existing:
+                        existing["name"] = str(payload.get("name") or existing["name"]).strip()[:40]
+                        existing["enabled"] = bool(payload.get("enabled", True))
+                        existing["model"] = model
+                    else:
+                        remotes.append(
+                            {
+                                "id": f"rf-{int(time.time() * 1000)}",
+                                "name": str(payload.get("name") or f"Remote {len(remotes) + 1}").strip()[:40],
+                                "enabled": bool(payload.get("enabled", True)),
+                                "model": model,
+                                "address": address,
+                                "lastSeenAt": None,
+                            }
+                        )
+                    self.state["rfRemotes"] = remotes
+                    message = "RF remote saved"
+                    self.state["lastMessage"] = message
+                    self.record("rf_remote", None, message)
+            self.save()
+            return {"ok": message != "密码错误" and "required" not in message, "message": message, "state": self.snapshot()}
+
+        if action == "update_rf_remote":
+            if payload.get("password") != self.state["settingsPassword"]:
+                message = "密码错误"
+            else:
+                remote_id = str(payload.get("id", "")).strip()
+                remote = next((item for item in self.normalize_rf_remotes() if item["id"] == remote_id), None)
+                if remote:
+                    if "name" in payload:
+                        remote["name"] = str(payload.get("name") or remote["name"]).strip()[:40]
+                    if "enabled" in payload:
+                        remote["enabled"] = bool(payload.get("enabled"))
+                    message = "RF remote updated"
+                    self.state["lastMessage"] = message
+                    self.record("rf_remote", None, message)
+                else:
+                    message = "RF remote not found"
+            self.save()
+            return {"ok": message == "RF remote updated", "message": message, "state": self.snapshot()}
+
+        if action == "delete_rf_remote":
+            if payload.get("password") != self.state["settingsPassword"]:
+                message = "密码错误"
+            else:
+                remote_id = str(payload.get("id", "")).strip()
+                self.state["rfRemotes"] = [remote for remote in self.normalize_rf_remotes() if remote["id"] != remote_id]
+                message = "RF remote deleted"
+                self.state["lastMessage"] = message
+                self.record("rf_remote", None, message)
+            self.save()
+            return {"ok": message == "RF remote deleted", "message": message, "state": self.snapshot()}
 
         if action == "select":
             number = int(payload.get("ball", 1))

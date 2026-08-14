@@ -166,6 +166,31 @@ const MATCH_TRANSITION_FALLBACK_MS = 45000;
 const ERROR_PROMPT_LEAD_MS = 400;
 const ERROR_PROMPT_FALLBACK_START_MS = 800;
 const DEFAULT_GAMEPLAY_PLAYBACK_RATE = 1.2;
+const rfStatusLabels = {
+  executed: "已执行",
+  rf_disabled: "总开关关闭",
+  unknown_remote: "未识别遥控器",
+  remote_disabled: "遥控器已停用",
+  unknown_button: "未识别按键",
+  finish_requires_password: "结束比赛需要密码确认",
+  ignored: "已忽略",
+};
+const rfActionLabels = {
+  ball_1: "1号球",
+  ball_2: "2号球",
+  ball_3: "3号球",
+  ball_4: "4号球",
+  ball_5: "5号球",
+  ball_6: "6号球",
+  ball_7: "7号球",
+  ball_8: "8号球",
+  ball_9: "9号球",
+  ball_10: "10号球",
+  advance: "得分",
+  undo: "撤销",
+  toggle_timer: "开始/暂停",
+  finish_dialog: "结束比赛",
+};
 const VOICE_PROFILES = ["female", "male", "ko-female", "ko-male"];
 const isKioskMode = new URLSearchParams(window.location.search).get("kiosk") === "1";
 
@@ -1562,6 +1587,7 @@ function renderSettings() {
   applyTitleFontScale(currentState.titleFontScale);
   applyTableMarkerScale(currentState.tableMarkerAutoSize, currentState.tableMarkerScale);
   renderNetworkSettings();
+  renderRfSettings();
   settingsHydrated = true;
 }
 
@@ -1605,6 +1631,7 @@ function switchSettingsTab(tabName) {
     panel.classList.toggle("active", panel.dataset.settingsPanel === tabName);
   });
   if (tabName === "network") loadNetworkStatus();
+  if (tabName === "rf") renderRfSettings();
 }
 
 function setNetworkResult(text, isError = false, selector = "[data-network-result]") {
@@ -1683,6 +1710,97 @@ function applyTitleFontScale(value) {
     const baseSize = parseFloat(window.getComputedStyle(title).fontSize);
     if (Number.isFinite(baseSize)) title.style.fontSize = `${Math.round(baseSize * scale)}px`;
   });
+}
+
+function rfResultElement() {
+  return document.querySelector("[data-rf-save-result]");
+}
+
+function setRfResult(text, isError = false) {
+  const element = rfResultElement();
+  if (!element) return;
+  element.textContent = text;
+  element.classList.toggle("error", isError);
+}
+
+function renderRfSettings() {
+  if (!currentState) return;
+  const form = document.querySelector("[data-rf-settings-form]");
+  if (form && !settingsHydrated) {
+    form.rfRemoteEnabled.checked = Boolean(currentState.rfRemoteEnabled);
+    form.rfReceiverGpio.value = Number(currentState.rfReceiverGpio || 27);
+    form.rfRemoteModel.value = currentState.rfRemoteModel || "gateball-10key";
+  }
+  renderRfRemotes();
+  renderRfLastSignal();
+}
+
+function renderRfRemotes() {
+  const list = document.querySelector("[data-rf-remotes-list]");
+  if (!list) return;
+  const remotes = Array.isArray(currentState?.rfRemotes) ? currentState.rfRemotes : [];
+  list.replaceChildren();
+  if (!remotes.length) {
+    const empty = document.createElement("div");
+    empty.className = "rf-empty";
+    empty.textContent = "还没有添加遥控器";
+    list.appendChild(empty);
+    return;
+  }
+  remotes.forEach((remote) => {
+    const card = document.createElement("div");
+    card.className = "rf-remote-card";
+    card.innerHTML = `
+      <div class="rf-remote-main">
+        <strong>${escapeHtml(remote.name || "遥控器")}</strong>
+        <span>${remote.enabled ? "已启用" : "已停用"}</span>
+      </div>
+      <div class="rf-remote-meta">地址码：${escapeHtml(remote.address || "-")}</div>
+      <div class="rf-remote-meta">型号：${escapeHtml(remote.model || "gateball-10key")}</div>
+      <div class="rf-remote-meta">最后接收：${escapeHtml(remote.lastSeenAt || "未使用")}</div>
+      <div class="rf-remote-actions">
+        <button class="secondary" type="button" data-action="toggle-rf-remote" data-rf-id="${escapeHtml(remote.id)}" data-rf-enabled="${remote.enabled ? "0" : "1"}">${remote.enabled ? "停用" : "启用"}</button>
+        <button class="secondary" type="button" data-action="rename-rf-remote" data-rf-id="${escapeHtml(remote.id)}">重命名</button>
+        <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-address="${escapeHtml(remote.address || "")}" data-rf-button="+">测试</button>
+        <button class="danger secondary" type="button" data-action="delete-rf-remote" data-rf-id="${escapeHtml(remote.id)}">删除</button>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+}
+
+function renderRfLastSignal() {
+  const element = document.querySelector("[data-rf-last-signal]");
+  if (!element) return;
+  const signal = currentState?.rfLastSignal;
+  if (!signal) {
+    element.textContent = "最近信号：未接收";
+    return;
+  }
+  const action = rfActionLabels[signal.action] || signal.action || "-";
+  const status = rfStatusLabels[signal.status] || signal.status || "-";
+  element.textContent = `最近信号：地址 ${signal.address || "-"} / 按键 ${signal.button || "-"} / 遥控器 ${signal.remoteName || "未识别"} / 动作 ${action} / ${status}`;
+}
+
+function collectRfSettingsPayload(form) {
+  return {
+    action: "update_rf_settings",
+    rfRemoteEnabled: form.rfRemoteEnabled.checked,
+    rfReceiverGpio: form.rfReceiverGpio.value,
+    rfRemoteModel: form.rfRemoteModel.value || "gateball-10key",
+    _resultSelector: "[data-rf-save-result]",
+  };
+}
+
+function collectRfAddPayload(form) {
+  return {
+    action: "add_rf_remote",
+    name: form.rfRemoteName.value.trim() || "遥控器",
+    address: form.rfRemoteAddress.value.trim(),
+    model: currentState?.rfRemoteModel || "gateball-10key",
+    enabled: true,
+    _resultSelector: "[data-rf-save-result]",
+  };
 }
 
 function previewScoreboardStyle(form) {
@@ -2397,14 +2515,17 @@ async function trySavePendingSettings() {
     resultEl.classList.remove("error");
   }
   try {
-    const result = await sendAction({ ...pendingSettingsPayload, password }, false);
+    const { _resultSelector, ...payload } = pendingSettingsPayload;
+    const result = await sendAction({ ...payload, password }, false);
     if (result.ok) {
-      const saveResult = document.querySelector("[data-save-result]");
+      const saveResult = document.querySelector(_resultSelector || "[data-save-result]");
       if (saveResult) {
         saveResult.textContent = result.message;
         saveResult.classList.remove("error");
       }
       settingsHydrated = false;
+      currentState = result.state;
+      renderSettings();
       closeSettingsSavePasswordDialog();
     } else if (resultEl) {
       resultEl.textContent = "密码错误";
@@ -2697,6 +2818,49 @@ document.addEventListener("click", (event) => {
     renderKeyBindings();
     return;
   }
+  if (action === "toggle-rf-remote") {
+    openSettingsSavePasswordDialog({
+      action: "update_rf_remote",
+      id: target.dataset.rfId || "",
+      enabled: target.dataset.rfEnabled === "1",
+      _resultSelector: "[data-rf-save-result]",
+    });
+    return;
+  }
+  if (action === "rename-rf-remote") {
+    const remote = (currentState?.rfRemotes || []).find((item) => item.id === target.dataset.rfId);
+    const name = window.prompt("遥控器名称", remote?.name || "遥控器");
+    if (!name) return;
+    openSettingsSavePasswordDialog({
+      action: "update_rf_remote",
+      id: target.dataset.rfId || "",
+      name,
+      _resultSelector: "[data-rf-save-result]",
+    });
+    return;
+  }
+  if (action === "delete-rf-remote") {
+    if (!window.confirm("删除这个遥控器？")) return;
+    openSettingsSavePasswordDialog({
+      action: "delete_rf_remote",
+      id: target.dataset.rfId || "",
+      _resultSelector: "[data-rf-save-result]",
+    });
+    return;
+  }
+  if (action === "simulate-rf-signal") {
+    const address = target.dataset.rfAddress || (currentState?.rfRemotes || [])[0]?.address || "";
+    sendAction({
+      action: "simulate_rf_signal",
+      address,
+      button: target.dataset.rfButton || "+",
+    }, false).then((result) => {
+      currentState = result.state;
+      renderRfSettings();
+      setRfResult(rfStatusLabels[result.message] || result.message, !result.ok);
+    });
+    return;
+  }
   if (action === "reset-title-color") {
     const form = target.closest("[data-settings-form]");
     if (form?.titleColor) {
@@ -2808,6 +2972,27 @@ document.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!validateNetworkSettings(networkForm)) return;
     openSettingsSavePasswordDialog(collectNetworkSettingsPayload(networkForm));
+    return;
+  }
+
+  const rfSettingsForm = event.target.closest("[data-rf-settings-form]");
+  if (rfSettingsForm) {
+    event.preventDefault();
+    setRfResult("");
+    openSettingsSavePasswordDialog(collectRfSettingsPayload(rfSettingsForm));
+    return;
+  }
+
+  const rfAddForm = event.target.closest("[data-rf-add-form]");
+  if (rfAddForm) {
+    event.preventDefault();
+    const payload = collectRfAddPayload(rfAddForm);
+    if (!payload.address) {
+      setRfResult("请输入地址码", true);
+      return;
+    }
+    setRfResult("");
+    openSettingsSavePasswordDialog(payload);
     return;
   }
 

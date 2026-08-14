@@ -116,6 +116,37 @@ Open pages:
 - Settings: `http://<raspberry-pi-ip>:8000/set`
 - Results: `http://<raspberry-pi-ip>:8000/results`
 
+## 433MHz Remote Debug
+
+Connect the receiver DATA pin to a Raspberry Pi BCM GPIO pin, then run:
+
+```bash
+python3 tools/rf_433_debug.py --gpio 27
+```
+
+The tool prefers `rpi-rf` when it is installed and prints decoded values:
+
+```text
+code=1234567 address=123456 button=7 protocol=1 pulse=350
+```
+
+After adding the remote address in Settings -> 遥控器, you can forward decoded
+signals to the running scoreboard for an end-to-end test:
+
+```bash
+python3 tools/rf_433_debug.py --gpio 27 --post-url http://127.0.0.1:8000/api/action
+```
+
+If `rpi-rf` is not installed, it falls back to `lgpio` or `RPi.GPIO` and prints
+pulse frames for protocol discovery. On Raspberry Pi OS you can install a GPIO
+fallback with:
+
+```bash
+sudo apt install -y python3-lgpio
+```
+
+Use the printed address code in Settings -> Remote Control to add a remote.
+
 ## Kiosk Browser
 
 The kiosk browser starts when the desktop session logs in. It first opens the
