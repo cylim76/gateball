@@ -7,6 +7,7 @@ WAIT_URL="${WAIT_URL:-http://127.0.0.1:8000/api/state}"
 CHROMIUM_PROFILE_DIR="${CHROMIUM_PROFILE_DIR:-/tmp/gateball-chromium-profile}"
 SPLASH_URL="${SPLASH_URL:-file://${SCRIPT_DIR}/splash/splash.html}"
 WAIT_SECONDS="${WAIT_SECONDS:-180}"
+MIN_SPLASH_SECONDS="${MIN_SPLASH_SECONDS:-5}"
 
 if command -v xset >/dev/null 2>&1; then
   xset s off || true
@@ -53,6 +54,7 @@ CHROMIUM_ARGS=(
 
 "$CHROMIUM_BIN" "${CHROMIUM_ARGS[@]}" "$SPLASH_URL" &
 SPLASH_PID="$!"
+SPLASH_STARTED_AT="$(date +%s)"
 
 for _ in $(seq 1 "$WAIT_SECONDS"); do
   if curl -fsS "$WAIT_URL" >/dev/null 2>&1; then
@@ -60,6 +62,11 @@ for _ in $(seq 1 "$WAIT_SECONDS"); do
   fi
   sleep 1
 done
+
+SPLASH_ELAPSED="$(($(date +%s) - SPLASH_STARTED_AT))"
+if [ "$SPLASH_ELAPSED" -lt "$MIN_SPLASH_SECONDS" ]; then
+  sleep "$((MIN_SPLASH_SECONDS - SPLASH_ELAPSED))"
+fi
 
 kill "$SPLASH_PID" 2>/dev/null || true
 pkill -f "chromium.*${SPLASH_URL}" 2>/dev/null || true

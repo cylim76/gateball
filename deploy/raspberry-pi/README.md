@@ -101,7 +101,8 @@ Then it waits for:
 http://127.0.0.1:8000/api/state
 ```
 
-When the backend is ready, it closes the startup screen and opens:
+When the backend is ready, it keeps the startup screen visible for at least 5
+seconds, then closes it and opens:
 
 ```text
 http://127.0.0.1:8000/scoreboard?kiosk=1
@@ -123,11 +124,13 @@ Chromium is started with a temporary profile under `/tmp/gateball-chromium-profi
 This keeps the kiosk session disposable, avoids the "restore pages" prompt after
 power loss, and reduces desktop keyring prompts on auto-login systems.
 
-The startup screen waits up to 180 seconds by default before opening the
-scoreboard URL. You can change that timeout:
+The startup screen stays visible for at least 5 seconds and waits up to 180
+seconds by default before opening the scoreboard URL. You can change these
+values:
 
 ```bash
 WAIT_SECONDS=240 deploy/raspberry-pi/start-kiosk.sh
+MIN_SPLASH_SECONDS=8 deploy/raspberry-pi/start-kiosk.sh
 ```
 
 ## Uninstall
