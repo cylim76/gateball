@@ -2498,6 +2498,7 @@ function confirmSwapTeam() {
 async function tryFinishWithPassword() {
   if (finishVerifyInFlight || finishPassword.length < finishPasswordLength()) return;
   finishVerifyInFlight = true;
+  const wasAlreadyFinished = Boolean(currentState?.matchFinished);
   const resultEl = document.querySelector("[data-finish-result]");
   if (resultEl) {
     resultEl.textContent = "正在检查...";
@@ -2508,7 +2509,13 @@ async function tryFinishWithPassword() {
     if (result.ok) {
       const snapshot = result.finishedMatch || currentState;
       closeFinishDialog();
-      playFinishThenAdvance(snapshot, { openingKey: "match_finished" });
+      if (wasAlreadyFinished) {
+        finishVerifyInFlight = false;
+        finishPassword = "";
+        advanceToNextMatchWithTransition();
+      } else {
+        playFinishThenAdvance(snapshot, { openingKey: "match_finished" });
+      }
     } else {
       finishVerifyInFlight = false;
       finishPassword = "";

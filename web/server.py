@@ -459,7 +459,7 @@ class Store:
                 self.record("finish_denied", None, message)
 
         elif action == "advance_to_next_match":
-            if self.state.get("matchFinished"):
+            if self.state.get("matchFinished") or self.state.get("timeExpired"):
                 message = self.reset_match()
                 return {"ok": True, "message": message, "state": self.snapshot()}
             message = self.state.get("lastMessage", "")
