@@ -28,6 +28,18 @@ enable_display_manager() {
   done
 }
 
+restore_desktop_shell() {
+  if [ -n "${DISPLAY:-}" ] && command -v pcmanfm >/dev/null 2>&1; then
+    pcmanfm --desktop >/dev/null 2>&1 || true
+  fi
+  if [ -n "${DISPLAY:-}" ] && command -v lxpanel >/dev/null 2>&1 && ! pgrep -x lxpanel >/dev/null 2>&1; then
+    lxpanel >/tmp/gateball-lxpanel-restore.log 2>&1 &
+  fi
+  if [ -n "${DISPLAY:-}" ] && command -v wf-panel-pi >/dev/null 2>&1 && ! pgrep -x wf-panel-pi >/dev/null 2>&1; then
+    wf-panel-pi >/tmp/gateball-wf-panel-restore.log 2>&1 &
+  fi
+}
+
 restore_boot_file() {
   local path="$1"
   if [ -f "${path}.gateball.bak" ]; then
@@ -45,6 +57,7 @@ sudo systemctl daemon-reload
 rm -f "$AUTOSTART_FILE"
 sudo rm -f "$KIOSK_SESSION_RUNNER" "$KIOSK_XSESSION_FILE" "$LIGHTDM_KIOSK_CONF"
 enable_display_manager
+restore_desktop_shell
 
 restore_boot_file /boot/firmware/cmdline.txt
 restore_boot_file /boot/cmdline.txt
