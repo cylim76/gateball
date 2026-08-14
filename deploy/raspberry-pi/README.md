@@ -61,11 +61,11 @@ This makes the early boot stage look like a black screen instead of showing
 normal boot text, the Raspberry Pi rainbow splash, or the Plymouth startup
 screen. When Plymouth services exist, the installer masks them too.
 
-By default, the installer uses the normal Raspberry Pi desktop autostart path.
-This is the most reliable mode across Raspberry Pi OS versions: the desktop may
-appear briefly, then the kiosk browser opens the local Gateball startup screen
-and switches to the scoreboard. Reboot after installation for these changes to
-take effect.
+By default, the installer uses the direct X kiosk mode. It installs required
+kiosk packages, disables the normal display manager, boots to
+`multi-user.target`, and starts Xorg plus Chromium from systemd. This is the
+most appliance-like startup mode and avoids loading the normal Raspberry Pi
+desktop. Reboot after installation for these changes to take effect.
 
 To skip the boot-file changes and only install the service/kiosk browser:
 
@@ -82,24 +82,19 @@ only after the normal autostart mode is working:
 INSTALL_KIOSK_SESSION=1 deploy/raspberry-pi/install.sh
 ```
 
-On Raspberry Pi OS versions using Wayland, the LightDM Xsession method may be
-ignored. For the most appliance-like startup, install the direct X kiosk mode.
-It disables the normal display manager, boots to `multi-user.target`, and starts
-Xorg plus Chromium from systemd. The installer also backs up and updates
-`/etc/X11/Xwrapper.config` so the kiosk service can start Xorg:
-
-```bash
-INSTALL_DIRECT_X_KIOSK=1 deploy/raspberry-pi/install.sh
-sudo reboot
-```
-
-The installer installs `xserver-xorg`, `xinit`, and `openbox` automatically for
-direct X kiosk mode.
-
-To return to the reliable normal desktop autostart mode:
+The direct X kiosk mode backs up and updates `/etc/X11/Xwrapper.config` so the
+kiosk service can start Xorg. It installs `xserver-xorg`, `xinit`, and `openbox`
+automatically. The default install command is:
 
 ```bash
 deploy/raspberry-pi/install.sh
+sudo reboot
+```
+
+To install the normal desktop autostart mode instead:
+
+```bash
+INSTALL_DESKTOP_AUTOSTART=1 deploy/raspberry-pi/install.sh
 sudo reboot
 ```
 

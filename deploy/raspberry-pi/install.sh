@@ -7,8 +7,9 @@ REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 GATEBALL_DIR="${GATEBALL_DIR:-$REPO_DIR}"
 GATEBALL_USER="${GATEBALL_USER:-$(id -un)}"
 INSTALL_KIOSK="${INSTALL_KIOSK:-1}"
+INSTALL_DESKTOP_AUTOSTART="${INSTALL_DESKTOP_AUTOSTART:-0}"
 INSTALL_KIOSK_SESSION="${INSTALL_KIOSK_SESSION:-0}"
-INSTALL_DIRECT_X_KIOSK="${INSTALL_DIRECT_X_KIOSK:-0}"
+INSTALL_DIRECT_X_KIOSK="${INSTALL_DIRECT_X_KIOSK:-1}"
 CONFIGURE_QUIET_BOOT="${CONFIGURE_QUIET_BOOT:-1}"
 SERVICE_NAME="${SERVICE_NAME:-gateball.service}"
 DIRECT_X_SERVICE_NAME="${DIRECT_X_SERVICE_NAME:-gateball-x-kiosk.service}"
@@ -179,7 +180,13 @@ sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 
 if [ "$INSTALL_KIOSK" = "1" ]; then
-  if [ "$INSTALL_DIRECT_X_KIOSK" = "1" ]; then
+  if [ "$INSTALL_DESKTOP_AUTOSTART" = "1" ]; then
+    remove_direct_x_kiosk
+    sudo systemctl set-default graphical.target
+    sudo systemctl enable lightdm.service display-manager.service >/dev/null 2>&1 || true
+    remove_kiosk_session_config
+    install_desktop_autostart
+  elif [ "$INSTALL_DIRECT_X_KIOSK" = "1" ]; then
     install_direct_x_kiosk
   elif [ "$INSTALL_KIOSK_SESSION" = "1" ]; then
     remove_direct_x_kiosk
