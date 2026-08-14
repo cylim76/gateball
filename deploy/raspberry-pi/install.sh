@@ -7,9 +7,9 @@ REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 GATEBALL_DIR="${GATEBALL_DIR:-$REPO_DIR}"
 GATEBALL_USER="${GATEBALL_USER:-$(id -un)}"
 INSTALL_KIOSK="${INSTALL_KIOSK:-1}"
-INSTALL_DESKTOP_AUTOSTART="${INSTALL_DESKTOP_AUTOSTART:-0}"
+INSTALL_DESKTOP_AUTOSTART="${INSTALL_DESKTOP_AUTOSTART:-1}"
 INSTALL_KIOSK_SESSION="${INSTALL_KIOSK_SESSION:-0}"
-INSTALL_DIRECT_X_KIOSK="${INSTALL_DIRECT_X_KIOSK:-1}"
+INSTALL_DIRECT_X_KIOSK="${INSTALL_DIRECT_X_KIOSK:-0}"
 CONFIGURE_QUIET_BOOT="${CONFIGURE_QUIET_BOOT:-1}"
 SERVICE_NAME="${SERVICE_NAME:-gateball.service}"
 DIRECT_X_SERVICE_NAME="${DIRECT_X_SERVICE_NAME:-gateball-x-kiosk.service}"
@@ -20,6 +20,23 @@ LIGHTDM_KIOSK_CONF="/etc/lightdm/lightdm.conf.d/99-gateball-kiosk.conf"
 DIRECT_X_SERVICE_FILE="/etc/systemd/system/$DIRECT_X_SERVICE_NAME"
 XWRAPPER_CONFIG="/etc/X11/Xwrapper.config"
 DIRECT_X_PACKAGES=(xserver-xorg xinit openbox)
+
+enable_display_manager() {
+  sudo systemctl set-default graphical.target
+  if [ -e /etc/systemd/system/display-manager.service ]; then
+    sudo systemctl enable display-manager.service >/dev/null 2>&1 || true
+    sudo systemctl restart display-manager.service >/dev/null 2>&1 || true
+    return
+  fi
+
+  for service in lightdm.service wayfire.service gdm3.service sddm.service; do
+    if systemctl list-unit-files "$service" 2>/dev/null | grep -q "^$service"; then
+      sudo systemctl enable "$service" >/dev/null 2>&1 || true
+      sudo systemctl restart "$service" >/dev/null 2>&1 || true
+      return
+    fi
+  done
+}
 
 backup_once() {
   local path="$1"
@@ -182,8 +199,7 @@ sudo systemctl restart "$SERVICE_NAME"
 if [ "$INSTALL_KIOSK" = "1" ]; then
   if [ "$INSTALL_DESKTOP_AUTOSTART" = "1" ]; then
     remove_direct_x_kiosk
-    sudo systemctl set-default graphical.target
-    sudo systemctl enable lightdm.service display-manager.service >/dev/null 2>&1 || true
+    enable_display_manager
     remove_kiosk_session_config
     install_desktop_autostart
   elif [ "$INSTALL_DIRECT_X_KIOSK" = "1" ]; then
@@ -193,8 +209,7 @@ if [ "$INSTALL_KIOSK" = "1" ]; then
     install_kiosk_session
   else
     remove_direct_x_kiosk
-    sudo systemctl set-default graphical.target
-    sudo systemctl enable lightdm.service display-manager.service >/dev/null 2>&1 || true
+    enable_display_manager
     remove_kiosk_session_config
     install_desktop_autostart
   fi

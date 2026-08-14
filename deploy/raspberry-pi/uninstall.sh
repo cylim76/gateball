@@ -11,6 +11,23 @@ DIRECT_X_SERVICE_FILE="/etc/systemd/system/$DIRECT_X_SERVICE_NAME"
 XWRAPPER_CONFIG="/etc/X11/Xwrapper.config"
 REMOVE_KIOSK_PACKAGES="${REMOVE_KIOSK_PACKAGES:-0}"
 
+enable_display_manager() {
+  sudo systemctl set-default graphical.target
+  if [ -e /etc/systemd/system/display-manager.service ]; then
+    sudo systemctl enable display-manager.service >/dev/null 2>&1 || true
+    sudo systemctl restart display-manager.service >/dev/null 2>&1 || true
+    return
+  fi
+
+  for service in lightdm.service wayfire.service gdm3.service sddm.service; do
+    if systemctl list-unit-files "$service" 2>/dev/null | grep -q "^$service"; then
+      sudo systemctl enable "$service" >/dev/null 2>&1 || true
+      sudo systemctl restart "$service" >/dev/null 2>&1 || true
+      return
+    fi
+  done
+}
+
 restore_boot_file() {
   local path="$1"
   if [ -f "${path}.gateball.bak" ]; then
@@ -27,8 +44,7 @@ sudo systemctl daemon-reload
 
 rm -f "$AUTOSTART_FILE"
 sudo rm -f "$KIOSK_SESSION_RUNNER" "$KIOSK_XSESSION_FILE" "$LIGHTDM_KIOSK_CONF"
-sudo systemctl set-default graphical.target
-sudo systemctl enable lightdm.service display-manager.service >/dev/null 2>&1 || true
+enable_display_manager
 
 restore_boot_file /boot/firmware/cmdline.txt
 restore_boot_file /boot/cmdline.txt
