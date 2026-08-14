@@ -51,11 +51,15 @@ them, then adds:
 
 - `quiet loglevel=3 vt.global_cursor_default=0 logo.nologo consoleblank=0` to
   the Raspberry Pi kernel command line when available
+- `plymouth.enable=0` to the Raspberry Pi kernel command line to disable the
+  Raspberry Pi OS graphical boot splash
 - `disable_splash=1` to the Raspberry Pi boot config when available
 
 This makes the early boot stage look like a black screen instead of showing
-normal boot text and the Raspberry Pi rainbow splash. After the desktop session
-starts, Chromium opens the local Gateball startup screen while it waits for the
+normal boot text, the Raspberry Pi rainbow splash, or the Plymouth startup
+screen. When Plymouth services exist, the installer masks them too. After the
+desktop session starts, the kiosk script immediately paints the desktop
+background black, opens the local Gateball startup screen, and waits for the
 scoreboard service. Reboot after installation for the boot-screen changes to
 take effect.
 
@@ -135,5 +139,5 @@ deploy/raspberry-pi/uninstall.sh
 
 This removes the systemd service and kiosk autostart entry. If the installer
 created `.gateball.bak` boot-file backups, uninstall restores those files so the
-Gateball quiet-boot changes are removed. It does not remove the project files or
-match history database.
+Gateball quiet-boot changes are removed. It also unmasks Plymouth services. It
+does not remove the project files or match history database.

@@ -60,7 +60,7 @@ configure_quiet_boot() {
   done
 
   if [ -n "$cmdline_file" ]; then
-    for arg in quiet loglevel=3 vt.global_cursor_default=0 logo.nologo consoleblank=0; do
+    for arg in quiet loglevel=3 vt.global_cursor_default=0 logo.nologo consoleblank=0 plymouth.enable=0; do
       ensure_cmdline_arg "$cmdline_file" "$arg"
     done
     echo "Quiet boot arguments configured: $cmdline_file"
@@ -74,6 +74,13 @@ configure_quiet_boot() {
   else
     echo "Boot config file not found; skipped Raspberry Pi splash setting."
   fi
+
+  for service in plymouth-start.service plymouth-quit.service plymouth-quit-wait.service; do
+    if systemctl list-unit-files "$service" 2>/dev/null | grep -q "^$service"; then
+      sudo systemctl mask "$service" >/dev/null 2>&1 || true
+      echo "Plymouth service masked: $service"
+    fi
+  done
 }
 
 if ! command -v python3 >/dev/null 2>&1; then

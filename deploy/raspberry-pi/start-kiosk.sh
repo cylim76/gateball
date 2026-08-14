@@ -14,6 +14,10 @@ if command -v xset >/dev/null 2>&1; then
   xset s noblank || true
 fi
 
+if command -v xsetroot >/dev/null 2>&1; then
+  xsetroot -solid black || true
+fi
+
 pkill -f "chromium.*${GATEBALL_URL}" 2>/dev/null || true
 CHROMIUM_BIN=""
 for candidate in chromium-browser chromium chromium-browser-stable; do

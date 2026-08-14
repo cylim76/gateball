@@ -23,4 +23,8 @@ restore_boot_file /boot/cmdline.txt
 restore_boot_file /boot/firmware/config.txt
 restore_boot_file /boot/config.txt
 
+for service in plymouth-start.service plymouth-quit.service plymouth-quit-wait.service; do
+  sudo systemctl unmask "$service" >/dev/null 2>&1 || true
+done
+
 echo "Removed Gateball service, kiosk autostart, and restored Gateball boot splash changes when backups existed."
