@@ -26,8 +26,8 @@ On the Raspberry Pi:
 
 ```bash
 cd /home/pi/gateball
-chmod +x deploy/raspberry-pi/install.sh
-deploy/raspberry-pi/install.sh
+chmod +x install.sh
+./install.sh
 ```
 
 Run the installer as the desktop user, not with `sudo`. The script asks `sudo`
@@ -37,14 +37,14 @@ under the correct desktop user.
 If the project is installed somewhere else, run:
 
 ```bash
-GATEBALL_DIR=/your/gateball/path deploy/raspberry-pi/install.sh
+GATEBALL_DIR=/your/gateball/path ./install.sh
 ```
 
 If your user is not `pi`, the installer uses the current user by default. You
 can override it:
 
 ```bash
-GATEBALL_USER=pi deploy/raspberry-pi/install.sh
+GATEBALL_USER=pi ./install.sh
 ```
 
 By default, the installer also configures quieter Raspberry Pi boot output. It
@@ -70,7 +70,7 @@ take effect.
 To skip the boot-file changes and only install the service/kiosk browser:
 
 ```bash
-CONFIGURE_QUIET_BOOT=0 deploy/raspberry-pi/install.sh
+CONFIGURE_QUIET_BOOT=0 ./install.sh
 ```
 
 There is also an optional dedicated `Gateball Kiosk` LightDM session that tries
@@ -79,13 +79,13 @@ more sensitive to Raspberry Pi OS session and window-manager differences. Use it
 only after the normal autostart mode is working:
 
 ```bash
-INSTALL_KIOSK_SESSION=1 deploy/raspberry-pi/install.sh
+INSTALL_KIOSK_SESSION=1 ./install.sh
 ```
 
 The default install command is:
 
 ```bash
-deploy/raspberry-pi/install.sh
+./install.sh
 sudo reboot
 ```
 
@@ -95,7 +95,7 @@ disables the normal display manager, boots to `multi-user.target`, and starts
 Xorg plus Chromium from systemd:
 
 ```bash
-INSTALL_DIRECT_X_KIOSK=1 INSTALL_DESKTOP_AUTOSTART=0 deploy/raspberry-pi/install.sh
+INSTALL_DIRECT_X_KIOSK=1 INSTALL_DESKTOP_AUTOSTART=0 ./install.sh
 sudo reboot
 ```
 
@@ -183,8 +183,8 @@ MIN_SPLASH_SECONDS=8 deploy/raspberry-pi/start-kiosk.sh
 ## Uninstall
 
 ```bash
-chmod +x deploy/raspberry-pi/uninstall.sh
-deploy/raspberry-pi/uninstall.sh
+chmod +x uninstall.sh
+./uninstall.sh
 ```
 
 This removes the systemd service, direct X kiosk service, kiosk autostart entry,
@@ -199,5 +199,5 @@ Uninstall does not remove kiosk support packages by default. To remove the
 packages installed for direct X kiosk mode too:
 
 ```bash
-REMOVE_KIOSK_PACKAGES=1 deploy/raspberry-pi/uninstall.sh
+REMOVE_KIOSK_PACKAGES=1 ./uninstall.sh
 ```
