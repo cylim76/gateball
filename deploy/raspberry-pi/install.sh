@@ -7,7 +7,7 @@ REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 GATEBALL_DIR="${GATEBALL_DIR:-$REPO_DIR}"
 GATEBALL_USER="${GATEBALL_USER:-$(id -un)}"
 INSTALL_KIOSK="${INSTALL_KIOSK:-1}"
-INSTALL_KIOSK_SESSION="${INSTALL_KIOSK_SESSION:-1}"
+INSTALL_KIOSK_SESSION="${INSTALL_KIOSK_SESSION:-0}"
 CONFIGURE_QUIET_BOOT="${CONFIGURE_QUIET_BOOT:-1}"
 SERVICE_NAME="${SERVICE_NAME:-gateball.service}"
 AUTOSTART_FILE="$HOME/.config/autostart/gateball-kiosk.desktop"
@@ -112,6 +112,10 @@ install_kiosk_session() {
   echo "LightDM kiosk autologin installed: $LIGHTDM_KIOSK_CONF"
 }
 
+remove_kiosk_session_config() {
+  sudo rm -f "$KIOSK_SESSION_RUNNER" "$KIOSK_XSESSION_FILE" "$LIGHTDM_KIOSK_CONF"
+}
+
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required."
   exit 1
@@ -140,6 +144,7 @@ if [ "$INSTALL_KIOSK" = "1" ]; then
   if [ "$INSTALL_KIOSK_SESSION" = "1" ]; then
     install_kiosk_session
   else
+    remove_kiosk_session_config
     install_desktop_autostart
   fi
 fi

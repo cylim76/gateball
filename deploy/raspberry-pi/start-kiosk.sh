@@ -8,6 +8,14 @@ CHROMIUM_PROFILE_DIR="${CHROMIUM_PROFILE_DIR:-/tmp/gateball-chromium-profile}"
 SPLASH_URL="${SPLASH_URL:-file://${SCRIPT_DIR}/splash/splash.html}"
 WAIT_SECONDS="${WAIT_SECONDS:-180}"
 MIN_SPLASH_SECONDS="${MIN_SPLASH_SECONDS:-5}"
+LOG_FILE="${LOG_FILE:-/tmp/gateball-kiosk.log}"
+
+exec >>"$LOG_FILE" 2>&1
+echo
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Gateball kiosk starting"
+echo "Script: $SCRIPT_DIR"
+echo "Splash: $SPLASH_URL"
+echo "Scoreboard: $GATEBALL_URL"
 
 if command -v xset >/dev/null 2>&1; then
   xset s off || true
@@ -32,6 +40,7 @@ if [ -z "$CHROMIUM_BIN" ]; then
   echo "Chromium is not installed. Try: sudo apt install chromium-browser"
   exit 1
 fi
+echo "Chromium: $CHROMIUM_BIN"
 
 pkill -f "chromium.*${SPLASH_URL}" 2>/dev/null || true
 pkill -f "chromium.*${GATEBALL_URL}" 2>/dev/null || true
@@ -55,9 +64,11 @@ CHROMIUM_ARGS=(
 "$CHROMIUM_BIN" "${CHROMIUM_ARGS[@]}" "$SPLASH_URL" &
 SPLASH_PID="$!"
 SPLASH_STARTED_AT="$(date +%s)"
+echo "Splash browser started: pid=$SPLASH_PID"
 
 for _ in $(seq 1 "$WAIT_SECONDS"); do
   if curl -fsS "$WAIT_URL" >/dev/null 2>&1; then
+    echo "Backend is ready: $WAIT_URL"
     break
   fi
   sleep 1
@@ -72,4 +83,5 @@ kill "$SPLASH_PID" 2>/dev/null || true
 pkill -f "chromium.*${SPLASH_URL}" 2>/dev/null || true
 sleep 0.4
 
+echo "Opening scoreboard"
 exec "$CHROMIUM_BIN" "${CHROMIUM_ARGS[@]}" "$GATEBALL_URL"

@@ -7,8 +7,8 @@ the scoreboard in Chromium kiosk mode after desktop login.
 
 - `gateball.service`: systemd service for `web/server.py`
 - `start-kiosk.sh`: disables screen blanking, shows the local startup screen, then opens Chromium on the scoreboard when the service is ready
-- `gateball-kiosk.desktop`: optional desktop autostart entry for the kiosk browser
-- `gateball-kiosk-session.sh.template`: dedicated kiosk session that avoids loading the normal desktop
+- `gateball-kiosk.desktop`: desktop autostart entry for the kiosk browser
+- `gateball-kiosk-session.sh.template`: optional dedicated kiosk session that avoids loading the normal desktop
 - `splash/splash.html`: local full-screen startup screen shown while the scoreboard starts
 
 The backend service and browser are started separately:
@@ -60,11 +60,11 @@ This makes the early boot stage look like a black screen instead of showing
 normal boot text, the Raspberry Pi rainbow splash, or the Plymouth startup
 screen. When Plymouth services exist, the installer masks them too.
 
-By default, the installer also configures LightDM to auto-login directly into a
-dedicated `Gateball Kiosk` session instead of the normal Raspberry Pi desktop.
-This reduces desktop flashes because the session starts with a black background
-and launches only the kiosk browser. Reboot after installation for these changes
-to take effect.
+By default, the installer uses the normal Raspberry Pi desktop autostart path.
+This is the most reliable mode across Raspberry Pi OS versions: the desktop may
+appear briefly, then the kiosk browser opens the local Gateball startup screen
+and switches to the scoreboard. Reboot after installation for these changes to
+take effect.
 
 To skip the boot-file changes and only install the service/kiosk browser:
 
@@ -72,11 +72,13 @@ To skip the boot-file changes and only install the service/kiosk browser:
 CONFIGURE_QUIET_BOOT=0 deploy/raspberry-pi/install.sh
 ```
 
-To keep the normal Raspberry Pi desktop and use the older desktop autostart
-method:
+There is also an optional dedicated `Gateball Kiosk` LightDM session that tries
+to avoid loading the normal desktop. It can reduce desktop flashes, but it is
+more sensitive to Raspberry Pi OS session and window-manager differences. Use it
+only after the normal autostart mode is working:
 
 ```bash
-INSTALL_KIOSK_SESSION=0 deploy/raspberry-pi/install.sh
+INSTALL_KIOSK_SESSION=1 deploy/raspberry-pi/install.sh
 ```
 
 ## Useful Commands
@@ -105,6 +107,12 @@ local startup screen:
 deploy/raspberry-pi/splash/splash.html
 ```
 
+Startup logs are written to:
+
+```text
+/tmp/gateball-kiosk.log
+```
+
 Then it waits for:
 
 ```text
@@ -118,10 +126,10 @@ seconds, then closes it and opens:
 http://127.0.0.1:8000/scoreboard?kiosk=1
 ```
 
-In the dedicated kiosk session, closing Chromium exits the kiosk browser. If
-LightDM auto-login is still enabled it may start the kiosk session again. To get
-back to the normal desktop permanently, run `deploy/raspberry-pi/uninstall.sh`
-or reinstall with `INSTALL_KIOSK_SESSION=0`.
+In the optional dedicated kiosk session, closing Chromium exits the kiosk
+browser. If LightDM auto-login is still enabled it may start the kiosk session
+again. To get back to the normal desktop permanently, run
+`deploy/raspberry-pi/uninstall.sh` or reinstall without `INSTALL_KIOSK_SESSION=1`.
 
 To close kiosk manually, press `Alt+F4` or switch terminal and run:
 
