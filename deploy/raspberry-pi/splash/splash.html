@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gateball Scoreboard Startup</title>
+  <style>
+    @font-face {
+      font-family: "Gateball Noto SC";
+      src: url("../../../web/static/fonts/NotoSansSC-wght.ttf") format("truetype");
+      font-weight: 400 900;
+      font-display: swap;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      cursor: none;
+      font-family: "Gateball Noto SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.56)),
+        url("./gateball-splash.png") center / cover no-repeat;
+    }
+
+    .startup {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      width: 100%;
+      height: 100%;
+      text-align: center;
+      color: #fff8d8;
+    }
+
+    .startup__panel {
+      display: grid;
+      gap: 28px;
+      transform: translateY(-4vh);
+      padding: 54px 96px 62px;
+      border: 2px solid rgba(238, 183, 48, 0.74);
+      border-radius: 28px;
+      background: rgba(0, 0, 0, 0.5);
+      box-shadow:
+        0 0 44px rgba(232, 171, 27, 0.26),
+        inset 0 0 52px rgba(232, 171, 27, 0.08);
+    }
+
+    .startup__title {
+      margin: 0;
+      font-size: clamp(56px, 6.4vw, 116px);
+      line-height: 1.04;
+      font-weight: 900;
+      letter-spacing: 0;
+      color: #ffe56b;
+      text-shadow:
+        0 3px 0 #9a5a00,
+        0 0 16px rgba(255, 212, 55, 0.5);
+    }
+
+    .startup__subtitle {
+      margin: 0;
+      font-size: clamp(26px, 2.1vw, 42px);
+      line-height: 1.2;
+      font-weight: 700;
+      color: #f8fff7;
+      text-shadow: 0 0 12px rgba(0, 0, 0, 0.8);
+    }
+
+    .startup__status {
+      position: fixed;
+      right: 70px;
+      bottom: 54px;
+      z-index: 1;
+      font-size: clamp(18px, 1.5vw, 28px);
+      font-weight: 800;
+      color: #26d044;
+      text-shadow: 0 0 10px rgba(0, 0, 0, 0.85);
+    }
+  </style>
+</head>
+<body>
+  <main class="startup" aria-label="Gateball scoreboard startup screen">
+    <section class="startup__panel">
+      <h1 class="startup__title">红星门球计分系统</h1>
+      <p class="startup__subtitle">正在启动计分板</p>
+    </section>
+    <div class="startup__status">请稍候</div>
+  </main>
+</body>
+</html>

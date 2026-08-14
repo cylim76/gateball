@@ -6,8 +6,9 @@ the scoreboard in Chromium kiosk mode after desktop login.
 ## What It Installs
 
 - `gateball.service`: systemd service for `web/server.py`
-- `start-kiosk.sh`: waits for the web service, disables screen blanking, opens Chromium
+- `start-kiosk.sh`: disables screen blanking, shows the local startup screen, then opens Chromium on the scoreboard when the service is ready
 - `gateball-kiosk.desktop`: desktop autostart entry for the kiosk browser
+- `splash/splash.html`: local full-screen startup screen shown while the scoreboard starts
 
 The backend service and browser are started separately:
 
@@ -44,6 +45,26 @@ can override it:
 GATEBALL_USER=pi deploy/raspberry-pi/install.sh
 ```
 
+By default, the installer also configures quieter Raspberry Pi boot output. It
+backs up the original boot files with a `.gateball.bak` suffix before changing
+them, then adds:
+
+- `quiet loglevel=3 vt.global_cursor_default=0 logo.nologo consoleblank=0` to
+  the Raspberry Pi kernel command line when available
+- `disable_splash=1` to the Raspberry Pi boot config when available
+
+This makes the early boot stage look like a black screen instead of showing
+normal boot text and the Raspberry Pi rainbow splash. After the desktop session
+starts, Chromium opens the local Gateball startup screen while it waits for the
+scoreboard service. Reboot after installation for the boot-screen changes to
+take effect.
+
+To skip the boot-file changes and only install the service/kiosk browser:
+
+```bash
+CONFIGURE_QUIET_BOOT=0 deploy/raspberry-pi/install.sh
+```
+
 ## Useful Commands
 
 ```bash
@@ -63,7 +84,20 @@ Open pages:
 
 ## Kiosk Browser
 
-The kiosk browser starts when the desktop session logs in. It opens:
+The kiosk browser starts when the desktop session logs in. It first opens the
+local startup screen:
+
+```text
+deploy/raspberry-pi/splash/splash.html
+```
+
+Then it waits for:
+
+```text
+http://127.0.0.1:8000/api/state
+```
+
+When the backend is ready, it closes the startup screen and opens:
 
 ```text
 http://127.0.0.1:8000/scoreboard?kiosk=1
@@ -85,6 +119,13 @@ Chromium is started with a temporary profile under `/tmp/gateball-chromium-profi
 This keeps the kiosk session disposable, avoids the "restore pages" prompt after
 power loss, and reduces desktop keyring prompts on auto-login systems.
 
+The startup screen waits up to 180 seconds by default before opening the
+scoreboard URL. You can change that timeout:
+
+```bash
+WAIT_SECONDS=240 deploy/raspberry-pi/start-kiosk.sh
+```
+
 ## Uninstall
 
 ```bash
@@ -92,5 +133,7 @@ chmod +x deploy/raspberry-pi/uninstall.sh
 deploy/raspberry-pi/uninstall.sh
 ```
 
-This removes the systemd service and kiosk autostart entry. It does not remove
-the project files or match history database.
+This removes the systemd service and kiosk autostart entry. If the installer
+created `.gateball.bak` boot-file backups, uninstall restores those files so the
+Gateball quiet-boot changes are removed. It does not remove the project files or
+match history database.
