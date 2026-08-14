@@ -7,7 +7,8 @@ the scoreboard in Chromium kiosk mode after desktop login.
 
 - `gateball.service`: systemd service for `web/server.py`
 - `start-kiosk.sh`: disables screen blanking, shows the local startup screen, then opens Chromium on the scoreboard when the service is ready
-- `gateball-kiosk.desktop`: desktop autostart entry for the kiosk browser
+- `gateball-kiosk.desktop`: optional desktop autostart entry for the kiosk browser
+- `gateball-kiosk-session.sh.template`: dedicated kiosk session that avoids loading the normal desktop
 - `splash/splash.html`: local full-screen startup screen shown while the scoreboard starts
 
 The backend service and browser are started separately:
@@ -57,16 +58,25 @@ them, then adds:
 
 This makes the early boot stage look like a black screen instead of showing
 normal boot text, the Raspberry Pi rainbow splash, or the Plymouth startup
-screen. When Plymouth services exist, the installer masks them too. After the
-desktop session starts, the kiosk script immediately paints the desktop
-background black, opens the local Gateball startup screen, and waits for the
-scoreboard service. Reboot after installation for the boot-screen changes to
-take effect.
+screen. When Plymouth services exist, the installer masks them too.
+
+By default, the installer also configures LightDM to auto-login directly into a
+dedicated `Gateball Kiosk` session instead of the normal Raspberry Pi desktop.
+This reduces desktop flashes because the session starts with a black background
+and launches only the kiosk browser. Reboot after installation for these changes
+to take effect.
 
 To skip the boot-file changes and only install the service/kiosk browser:
 
 ```bash
 CONFIGURE_QUIET_BOOT=0 deploy/raspberry-pi/install.sh
+```
+
+To keep the normal Raspberry Pi desktop and use the older desktop autostart
+method:
+
+```bash
+INSTALL_KIOSK_SESSION=0 deploy/raspberry-pi/install.sh
 ```
 
 ## Useful Commands
@@ -108,6 +118,11 @@ seconds, then closes it and opens:
 http://127.0.0.1:8000/scoreboard?kiosk=1
 ```
 
+In the dedicated kiosk session, closing Chromium exits the kiosk browser. If
+LightDM auto-login is still enabled it may start the kiosk session again. To get
+back to the normal desktop permanently, run `deploy/raspberry-pi/uninstall.sh`
+or reinstall with `INSTALL_KIOSK_SESSION=0`.
+
 To close kiosk manually, press `Alt+F4` or switch terminal and run:
 
 ```bash
@@ -140,7 +155,8 @@ chmod +x deploy/raspberry-pi/uninstall.sh
 deploy/raspberry-pi/uninstall.sh
 ```
 
-This removes the systemd service and kiosk autostart entry. If the installer
-created `.gateball.bak` boot-file backups, uninstall restores those files so the
+This removes the systemd service, kiosk autostart entry, dedicated kiosk
+session, and LightDM kiosk autologin config. If the installer created
+`.gateball.bak` boot-file backups, uninstall restores those files so the
 Gateball quiet-boot changes are removed. It also unmasks Plymouth services. It
 does not remove the project files or match history database.

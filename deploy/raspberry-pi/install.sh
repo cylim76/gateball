@@ -7,8 +7,13 @@ REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 GATEBALL_DIR="${GATEBALL_DIR:-$REPO_DIR}"
 GATEBALL_USER="${GATEBALL_USER:-$(id -un)}"
 INSTALL_KIOSK="${INSTALL_KIOSK:-1}"
+INSTALL_KIOSK_SESSION="${INSTALL_KIOSK_SESSION:-1}"
 CONFIGURE_QUIET_BOOT="${CONFIGURE_QUIET_BOOT:-1}"
 SERVICE_NAME="${SERVICE_NAME:-gateball.service}"
+AUTOSTART_FILE="$HOME/.config/autostart/gateball-kiosk.desktop"
+KIOSK_SESSION_RUNNER="/usr/local/bin/gateball-kiosk-session"
+KIOSK_XSESSION_FILE="/usr/share/xsessions/gateball-kiosk.desktop"
+LIGHTDM_KIOSK_CONF="/etc/lightdm/lightdm.conf.d/99-gateball-kiosk.conf"
 
 backup_once() {
   local path="$1"
@@ -83,6 +88,30 @@ configure_quiet_boot() {
   done
 }
 
+install_desktop_autostart() {
+  chmod +x "$SCRIPT_DIR/start-kiosk.sh"
+  local autostart_dir="$HOME/.config/autostart"
+  mkdir -p "$autostart_dir"
+  sed "s#__GATEBALL_DIR__#$GATEBALL_DIR#g" \
+    "$SCRIPT_DIR/gateball-kiosk.desktop" > "$AUTOSTART_FILE"
+  chmod +x "$AUTOSTART_FILE"
+  echo "Kiosk desktop autostart installed: $AUTOSTART_FILE"
+}
+
+install_kiosk_session() {
+  chmod +x "$SCRIPT_DIR/start-kiosk.sh"
+  sudo install -d /usr/local/bin /usr/share/xsessions /etc/lightdm/lightdm.conf.d
+  sed "s#__GATEBALL_DIR__#$GATEBALL_DIR#g" \
+    "$SCRIPT_DIR/gateball-kiosk-session.sh.template" | sudo tee "$KIOSK_SESSION_RUNNER" >/dev/null
+  sudo chmod +x "$KIOSK_SESSION_RUNNER"
+  sudo install -m 644 "$SCRIPT_DIR/gateball-kiosk-xsession.desktop" "$KIOSK_XSESSION_FILE"
+  sed "s#__GATEBALL_USER__#$GATEBALL_USER#g" \
+    "$SCRIPT_DIR/gateball-lightdm.conf.template" | sudo tee "$LIGHTDM_KIOSK_CONF" >/dev/null
+  rm -f "$AUTOSTART_FILE"
+  echo "Dedicated kiosk session installed: $KIOSK_XSESSION_FILE"
+  echo "LightDM kiosk autologin installed: $LIGHTDM_KIOSK_CONF"
+}
+
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required."
   exit 1
@@ -108,13 +137,11 @@ sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 
 if [ "$INSTALL_KIOSK" = "1" ]; then
-  chmod +x "$SCRIPT_DIR/start-kiosk.sh"
-  AUTOSTART_DIR="$HOME/.config/autostart"
-  mkdir -p "$AUTOSTART_DIR"
-  sed "s#__GATEBALL_DIR__#$GATEBALL_DIR#g" \
-    "$SCRIPT_DIR/gateball-kiosk.desktop" > "$AUTOSTART_DIR/gateball-kiosk.desktop"
-  chmod +x "$AUTOSTART_DIR/gateball-kiosk.desktop"
-  echo "Kiosk autostart installed: $AUTOSTART_DIR/gateball-kiosk.desktop"
+  if [ "$INSTALL_KIOSK_SESSION" = "1" ]; then
+    install_kiosk_session
+  else
+    install_desktop_autostart
+  fi
 fi
 
 if [ "$CONFIGURE_QUIET_BOOT" = "1" ]; then

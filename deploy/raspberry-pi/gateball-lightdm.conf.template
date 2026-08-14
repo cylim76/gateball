@@ -1,0 +1,5 @@
+[Seat:*]
+autologin-user=__GATEBALL_USER__
+autologin-user-timeout=0
+autologin-session=gateball-kiosk
+user-session=gateball-kiosk

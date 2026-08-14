@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=Gateball Kiosk
+Comment=Dedicated Gateball scoreboard kiosk session
+Exec=/usr/local/bin/gateball-kiosk-session
+Type=Application
