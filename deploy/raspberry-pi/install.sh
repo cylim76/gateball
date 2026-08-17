@@ -5,7 +5,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 GATEBALL_DIR="${GATEBALL_DIR:-$REPO_DIR}"
-GATEBALL_USER="${GATEBALL_USER:-$(id -un)}"
+DEFAULT_GATEBALL_USER="$(id -un)"
+if [ "$DEFAULT_GATEBALL_USER" = "root" ] && [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+  DEFAULT_GATEBALL_USER="$SUDO_USER"
+fi
+GATEBALL_USER="${GATEBALL_USER:-$DEFAULT_GATEBALL_USER}"
+GATEBALL_HOME="$(getent passwd "$GATEBALL_USER" | cut -d: -f6)"
+if [ -z "$GATEBALL_HOME" ]; then
+  echo "Cannot determine home directory for user: $GATEBALL_USER"
+  exit 1
+fi
 INSTALL_KIOSK="${INSTALL_KIOSK:-1}"
 INSTALL_DESKTOP_AUTOSTART="${INSTALL_DESKTOP_AUTOSTART:-1}"
 INSTALL_KIOSK_SESSION="${INSTALL_KIOSK_SESSION:-0}"
@@ -13,7 +22,7 @@ INSTALL_DIRECT_X_KIOSK="${INSTALL_DIRECT_X_KIOSK:-0}"
 CONFIGURE_QUIET_BOOT="${CONFIGURE_QUIET_BOOT:-1}"
 SERVICE_NAME="${SERVICE_NAME:-gateball.service}"
 DIRECT_X_SERVICE_NAME="${DIRECT_X_SERVICE_NAME:-gateball-x-kiosk.service}"
-AUTOSTART_FILE="$HOME/.config/autostart/gateball-kiosk.desktop"
+AUTOSTART_FILE="$GATEBALL_HOME/.config/autostart/gateball-kiosk.desktop"
 KIOSK_SESSION_RUNNER="/usr/local/bin/gateball-kiosk-session"
 KIOSK_XSESSION_FILE="/usr/share/xsessions/gateball-kiosk.desktop"
 LIGHTDM_KIOSK_CONF="/etc/lightdm/lightdm.conf.d/99-gateball-kiosk.conf"
@@ -113,11 +122,12 @@ configure_quiet_boot() {
 
 install_desktop_autostart() {
   chmod +x "$SCRIPT_DIR/start-kiosk.sh"
-  local autostart_dir="$HOME/.config/autostart"
-  mkdir -p "$autostart_dir"
+  local autostart_dir="$GATEBALL_HOME/.config/autostart"
+  install -d -m 755 "$autostart_dir"
   sed "s#__GATEBALL_DIR__#$GATEBALL_DIR#g" \
     "$SCRIPT_DIR/gateball-kiosk.desktop" > "$AUTOSTART_FILE"
   chmod +x "$AUTOSTART_FILE"
+  sudo chown -R "$GATEBALL_USER:$GATEBALL_USER" "$autostart_dir"
   echo "Kiosk desktop autostart installed: $AUTOSTART_FILE"
 }
 
@@ -185,6 +195,7 @@ fi
 echo "Installing Gateball service"
 echo "Project: $GATEBALL_DIR"
 echo "User:    $GATEBALL_USER"
+echo "Home:    $GATEBALL_HOME"
 
 sudo install -d /etc/systemd/system
 sed \

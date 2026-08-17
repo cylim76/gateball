@@ -32,7 +32,9 @@ chmod +x install.sh
 
 Run the installer as the desktop user, not with `sudo`. The script asks `sudo`
 only for the systemd service install step. This keeps the kiosk autostart entry
-under the correct desktop user.
+under the correct desktop user. If you accidentally run it through `sudo`, the
+installer now falls back to `SUDO_USER` so the service and desktop autostart
+still target the real Raspberry Pi desktop user.
 
 If the project is installed somewhere else, run:
 
