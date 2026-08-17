@@ -1579,6 +1579,11 @@ button:disabled {
   background: #1667d8;
 }
 
+.music-action {
+  color: white;
+  background: #6b4ce6;
+}
+
 .results-page {
   min-height: 100vh;
   color: #f4f4f4;
@@ -2189,6 +2194,23 @@ body.scoreboard.finish-summary-active .celebration-canvas {
 .settings-form .volume-buttons button {
   min-height: 38px;
   padding: 6px 10px;
+}
+
+.music-settings-panel {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #101010;
+}
+
+.music-settings-panel legend {
+  padding: 0 6px;
+  color: var(--gold);
+  font-size: 18px;
+  font-weight: 900;
 }
 
 .title-style-control {

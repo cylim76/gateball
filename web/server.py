@@ -29,6 +29,9 @@ DATA_FILE = ROOT / "data" / "web_state.json"
 RESULTS_DB_FILE = ROOT / "data" / "gateball.sqlite3"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 TEAM_NAME_AUDIO_DIR = STATIC_DIR / "audio" / "team-names"
+PROJECT_MUSIC_DIR = STATIC_DIR / "audio" / "music"
+EXTERNAL_MUSIC_DIRS = [Path("/home/lucas/gateball-music"), Path.home() / "gateball-music"]
+MUSIC_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a"}
 WEATHER_CACHE: dict = {"timestamp": 0.0, "payload": {"ok": False}}
 SELECTION_TIMEOUT_SECONDS = 30
 CLIENT_DISCONNECT_ERRNOS = {
@@ -64,6 +67,7 @@ RF_REMOTE_MODELS = {
             "-": "undo",
             "OK": "toggle_timer",
             "#": "ten_second_countdown",
+            "M": "toggle_music",
             "*": "finish_dialog",
         },
     }
@@ -83,6 +87,7 @@ RF_ACTION_PAYLOADS = {
     "undo": {"action": "undo"},
     "toggle_timer": {"action": "toggle_timer"},
     "ten_second_countdown": {"action": "ten_second_countdown"},
+    "toggle_music": {"action": "toggle_music"},
 }
 
 
@@ -114,6 +119,15 @@ DEFAULT_STATE = {
     "voiceProfile": "female",
     "voicePlaybackRate": 1.2,
     "systemVolumePercent": 100,
+    "musicEnabled": False,
+    "musicVolumePercent": 35,
+    "musicMode": "loop",
+    "musicAutoPlayDuringMatch": True,
+    "musicStopWhenMatchEnds": True,
+    "musicDuckDuringSpeech": True,
+    "musicDuckPercent": 30,
+    "selectedMusicTrack": "",
+    "musicPlaying": False,
     "titleColor": "#ffe23a",
     "titleFontScale": 1.0,
     "tableMarkerAutoSize": True,
@@ -152,6 +166,73 @@ def set_system_volume_percent(percent: int) -> bool:
                     pass
             return True
     return False
+
+
+def music_directories() -> list[tuple[str, Path]]:
+    directories = [("external", path) for path in EXTERNAL_MUSIC_DIRS]
+    directories.append(("project", PROJECT_MUSIC_DIR))
+    unique = []
+    seen = set()
+    for source, path in directories:
+        resolved = path.expanduser()
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((source, resolved))
+    return unique
+
+
+def music_track_id(source: str, relative_path: Path) -> str:
+    return f"{source}:{relative_path.as_posix()}"
+
+
+def list_music_tracks() -> list[dict]:
+    tracks = []
+    for source, directory in music_directories():
+        if not directory.exists() or not directory.is_dir():
+            continue
+        for path in sorted(directory.rglob("*")):
+            if not path.is_file() or path.suffix.lower() not in MUSIC_EXTENSIONS:
+                continue
+            try:
+                relative = path.relative_to(directory)
+            except ValueError:
+                continue
+            track_id = music_track_id(source, relative)
+            tracks.append(
+                {
+                    "id": track_id,
+                    "name": path.stem,
+                    "fileName": path.name,
+                    "source": source,
+                    "url": f"/api/music/file?id={quote(track_id)}",
+                }
+            )
+    return tracks
+
+
+def resolve_music_track(track_id: str) -> Path | None:
+    if ":" not in track_id:
+        return None
+    source, relative_text = track_id.split(":", 1)
+    if not relative_text:
+        return None
+    relative = Path(relative_text)
+    if relative.is_absolute() or ".." in relative.parts:
+        return None
+    for candidate_source, directory in music_directories():
+        if candidate_source != source:
+            continue
+        base = directory.resolve()
+        target = (base / relative).resolve()
+        try:
+            target.relative_to(base)
+        except ValueError:
+            return None
+        if target.exists() and target.is_file() and target.suffix.lower() in MUSIC_EXTENSIONS:
+            return target
+    return None
 
 
 DEFAULT_STATE.update(
@@ -277,6 +358,15 @@ class Store:
             self.state["systemVolumePercent"] = min(100, max(0, int(round(float(self.state.get("systemVolumePercent", 100))))))
         except (TypeError, ValueError):
             self.state["systemVolumePercent"] = 100
+        for key, fallback in [("musicVolumePercent", 35), ("musicDuckPercent", 30)]:
+            try:
+                self.state[key] = min(100, max(0, int(round(float(self.state.get(key, fallback))))))
+            except (TypeError, ValueError):
+                self.state[key] = fallback
+        if self.state.get("musicMode") not in {"loop", "sequence", "random"}:
+            self.state["musicMode"] = "loop"
+        if not self.state.get("musicEnabled") or not self.state.get("selectedMusicTrack"):
+            self.state["musicPlaying"] = False
         if not isinstance(self.state.get("rfRemotes"), list):
             self.state["rfRemotes"] = []
         if not isinstance(self.state.get("rfLastSignal"), dict):
@@ -391,6 +481,7 @@ class Store:
         self.state["lastTickRemainingSeconds"] = self.state["remainingSeconds"]
         self.state["selectedBall"] = 1
         self.state["selectedBallAt"] = None
+        self.state["musicPlaying"] = False
         self.state["lastMessage"] = f"第{self.state['matchNumber']}场，等待开始"
         self.record("next_match", None, self.state["lastMessage"])
         self.save()
@@ -630,9 +721,21 @@ class Store:
                 message = "比赛开始" if not self.state.get("timerStarted") else "比赛继续"
                 if not self.state.get("timerStarted"):
                     self.state["matchStartedAt"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    if self.state.get("musicEnabled") and self.state.get("musicAutoPlayDuringMatch") and self.state.get("selectedMusicTrack"):
+                        self.state["musicPlaying"] = True
                 self.state["timerStarted"] = True
             self.state["lastMessage"] = message
             self.record("toggle_timer", None, message)
+
+        elif action == "toggle_music":
+            if self.state.get("musicEnabled") and self.state.get("selectedMusicTrack"):
+                self.state["musicPlaying"] = not bool(self.state.get("musicPlaying"))
+                message = "音乐播放" if self.state["musicPlaying"] else "音乐暂停"
+            else:
+                self.state["musicPlaying"] = False
+                message = "未启用背景音乐"
+            self.state["lastMessage"] = message
+            self.record("toggle_music", None, message)
 
         elif action == "ten_second_countdown":
             message = "10秒倒计时"
@@ -691,6 +794,8 @@ class Store:
                     self.state["running"] = False
                     self.state["deadline"] = None
                     self.state["matchFinished"] = True
+                    if self.state.get("musicStopWhenMatchEnds", True):
+                        self.state["musicPlaying"] = False
                     message = "match finished"
                     self.state["lastMessage"] = message
                     self.record("finish", None, message)
@@ -750,6 +855,34 @@ class Store:
                         set_system_volume_percent(self.state["systemVolumePercent"])
                     except (TypeError, ValueError):
                         pass
+                if "musicEnabled" in payload:
+                    self.state["musicEnabled"] = bool(payload["musicEnabled"])
+                if "musicAutoPlayDuringMatch" in payload:
+                    self.state["musicAutoPlayDuringMatch"] = bool(payload["musicAutoPlayDuringMatch"])
+                if "musicStopWhenMatchEnds" in payload:
+                    self.state["musicStopWhenMatchEnds"] = bool(payload["musicStopWhenMatchEnds"])
+                if "musicDuckDuringSpeech" in payload:
+                    self.state["musicDuckDuringSpeech"] = bool(payload["musicDuckDuringSpeech"])
+                if "selectedMusicTrack" in payload:
+                    track_id = str(payload.get("selectedMusicTrack") or "")
+                    self.state["selectedMusicTrack"] = track_id if not track_id or resolve_music_track(track_id) else ""
+                if "musicMode" in payload:
+                    mode = str(payload.get("musicMode") or "loop")
+                    self.state["musicMode"] = mode if mode in {"loop", "sequence", "random"} else "loop"
+                if "musicVolumePercent" in payload:
+                    try:
+                        volume = int(round(float(payload["musicVolumePercent"])))
+                        self.state["musicVolumePercent"] = min(100, max(0, volume))
+                    except (TypeError, ValueError):
+                        pass
+                if "musicDuckPercent" in payload:
+                    try:
+                        duck = int(round(float(payload["musicDuckPercent"])))
+                        self.state["musicDuckPercent"] = min(80, max(10, duck))
+                    except (TypeError, ValueError):
+                        pass
+                if not self.state.get("musicEnabled") or not self.state.get("selectedMusicTrack"):
+                    self.state["musicPlaying"] = False
                 if "titleFontScale" in payload:
                     try:
                         scale = round(float(payload["titleFontScale"]), 2)
@@ -1000,6 +1133,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(network_status(store.state))
         elif path == "/api/network/scan":
             self.send_json(scan_wifi_networks())
+        elif path == "/api/music/tracks":
+            self.send_json({"ok": True, "tracks": list_music_tracks()})
+        elif path == "/api/music/file":
+            params = parse_qs(urlparse(self.path).query)
+            target = resolve_music_track(params.get("id", [""])[0])
+            if target:
+                self.serve_file(target)
+            else:
+                self.send_error(404)
         elif path == "/api/results/month":
             params = parse_qs(urlparse(self.path).query)
             now = time.localtime()

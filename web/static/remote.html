@@ -55,6 +55,7 @@
         <button class="score-action" data-action="advance">✅ + 得分</button>
         <button class="swap-team-action" data-action="swap_team_names">🔴 ⇄ ⚪ 队名更换</button>
         <button class="countdown-action compact" data-action="ten-second-countdown">⏰ 10秒倒计时</button>
+        <button class="music-action compact" data-action="toggle_music">♪ 音乐</button>
         <div class="finish-results-row">
           <button class="danger" data-action="finish-dialog">🏆 结束比赛</button>
           <a class="results-link" href="/results">📊 成绩</a>
@@ -116,6 +117,7 @@
         </div>
         <div class="settings-tabs">
           <button class="settings-tab active" type="button" data-action="settings-tab" data-settings-tab="general">常规</button>
+          <button class="settings-tab" type="button" data-action="settings-tab" data-settings-tab="music">背景音乐</button>
           <button class="settings-tab" type="button" data-action="settings-tab" data-settings-tab="keys">按键映射</button>
           <button class="settings-tab" type="button" data-action="settings-tab" data-settings-tab="rf">遥控器</button>
           <button class="settings-tab" type="button" data-action="settings-tab" data-settings-tab="network">网络</button>
@@ -209,6 +211,61 @@
           </form>
         </section>
 
+        <section class="settings-tab-panel" data-settings-panel="music">
+          <form class="settings-form music-settings-form" data-settings-form>
+            <fieldset class="music-settings-panel">
+              <legend>背景音乐</legend>
+              <label class="check">
+                <input name="musicEnabled" type="checkbox">
+                启用背景音乐
+              </label>
+              <label>
+                音乐文件
+                <select name="selectedMusicTrack">
+                  <option value="">正在读取音乐...</option>
+                </select>
+              </label>
+              <label>
+                播放模式
+                <select name="musicMode">
+                  <option value="loop">单曲循环</option>
+                  <option value="sequence">顺序播放</option>
+                  <option value="random">随机播放</option>
+                </select>
+              </label>
+              <label>
+                音乐音量
+                <div class="range-control">
+                  <input name="musicVolumePercent" type="range" min="0" max="100" step="5">
+                  <output data-music-volume-output>35%</output>
+                </div>
+              </label>
+              <label class="check">
+                <input name="musicAutoPlayDuringMatch" type="checkbox">
+                比赛开始自动播放
+              </label>
+              <label class="check">
+                <input name="musicStopWhenMatchEnds" type="checkbox">
+                比赛结束自动停止
+              </label>
+              <label class="check">
+                <input name="musicDuckDuringSpeech" type="checkbox">
+                播报时压低音乐
+              </label>
+              <label>
+                播报时压低到
+                <div class="range-control">
+                  <input name="musicDuckPercent" type="range" min="10" max="80" step="5">
+                  <output data-music-duck-output>30%</output>
+                </div>
+              </label>
+              <button class="secondary" type="button" data-action="test-music">测试播放</button>
+            </fieldset>
+            <button class="primary" type="submit">保存背景音乐设置</button>
+            <strong data-music-save-result></strong>
+          </form>
+        </section>
+
         <section class="settings-tab-panel" data-settings-panel="keys">
           <div class="key-binding-panel">
             <h3>按键映射</h3>
@@ -258,6 +315,7 @@
               <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-button="-">测试 - 撤销</button>
               <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-button="OK">测试 OK 开始/暂停</button>
               <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-button="#">测试 # 10秒</button>
+              <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-button="M">测试 M 音乐</button>
             </div>
           </div>
         </section>

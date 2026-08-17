@@ -145,6 +145,17 @@ fallback with:
 sudo apt install -y python3-lgpio
 ```
 
+## Background Music
+
+For production music on Raspberry Pi, put audio files in:
+
+```bash
+/home/lucas/gateball-music
+```
+
+The app also scans `web/static/audio/music` for test files. Supported formats:
+mp3, wav, ogg, and m4a.
+
 Use the printed address code in Settings -> Remote Control to add a remote.
 
 ## Kiosk Browser
