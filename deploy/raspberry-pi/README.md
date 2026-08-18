@@ -36,6 +36,11 @@ under the correct desktop user. If you accidentally run it through `sudo`, the
 installer now falls back to `SUDO_USER` so the service and desktop autostart
 still target the real Raspberry Pi desktop user.
 
+The installer checks GPIO remote support by trying to import `rpi_rf`. If it is
+missing, it installs `python3-pip`, `python3-rpi.gpio`, and `rpi-rf` before the
+service starts. To skip this optional RF dependency step, run
+`INSTALL_RF_SUPPORT=0 ./install.sh`.
+
 The installer does not restart the display manager by default, because that can
 close the current desktop terminal before the script finishes. Reboot after
 installation. If you deliberately want an immediate display-manager restart, run
@@ -145,8 +150,8 @@ python3 tools/rf_433_debug.py --gpio 27 --post-url http://127.0.0.1:8000/api/act
 ```
 
 If `rpi-rf` is not installed, it falls back to `lgpio` or `RPi.GPIO` and prints
-pulse frames for protocol discovery. On Raspberry Pi OS you can install a GPIO
-fallback with:
+pulse frames for protocol discovery. The main installer installs `rpi-rf` by
+default. On Raspberry Pi OS you can also install a GPIO fallback with:
 
 ```bash
 sudo apt install -y python3-lgpio

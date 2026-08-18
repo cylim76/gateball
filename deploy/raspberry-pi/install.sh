@@ -21,6 +21,7 @@ INSTALL_KIOSK_SESSION="${INSTALL_KIOSK_SESSION:-0}"
 INSTALL_DIRECT_X_KIOSK="${INSTALL_DIRECT_X_KIOSK:-0}"
 CONFIGURE_QUIET_BOOT="${CONFIGURE_QUIET_BOOT:-1}"
 RESTART_DISPLAY_MANAGER="${RESTART_DISPLAY_MANAGER:-0}"
+INSTALL_RF_SUPPORT="${INSTALL_RF_SUPPORT:-1}"
 SERVICE_NAME="${SERVICE_NAME:-gateball.service}"
 DIRECT_X_SERVICE_NAME="${DIRECT_X_SERVICE_NAME:-gateball-x-kiosk.service}"
 AUTOSTART_FILE="$GATEBALL_HOME/.config/autostart/gateball-kiosk.desktop"
@@ -193,6 +194,54 @@ remove_direct_x_kiosk() {
   sudo systemctl daemon-reload
 }
 
+python_has_module() {
+  local module_name="$1"
+  python3 - "$module_name" <<'PY' >/dev/null 2>&1
+import importlib.util
+import sys
+sys.exit(0 if importlib.util.find_spec(sys.argv[1]) else 1)
+PY
+}
+
+pip_supports_break_system_packages() {
+  python3 -m pip help install 2>/dev/null | grep -q -- "--break-system-packages"
+}
+
+install_rf_support() {
+  if [ "$INSTALL_RF_SUPPORT" != "1" ]; then
+    echo "RF GPIO support install skipped: INSTALL_RF_SUPPORT=$INSTALL_RF_SUPPORT"
+    return
+  fi
+  if python_has_module rpi_rf; then
+    echo "RF GPIO decoder already installed: rpi-rf"
+    return
+  fi
+
+  echo "Installing RF GPIO decoder dependencies: python3-pip python3-rpi.gpio rpi-rf"
+  if ! sudo apt-get update || ! sudo apt-get install -y python3-pip python3-rpi.gpio; then
+    echo "Warning: failed to install RF GPIO apt dependencies. GPIO remote learning may not work yet."
+    echo "Try manually: sudo apt install -y python3-pip python3-rpi.gpio"
+    return
+  fi
+
+  local pip_args=(install rpi-rf)
+  if pip_supports_break_system_packages; then
+    pip_args+=(--break-system-packages)
+  fi
+
+  if ! sudo python3 -m pip "${pip_args[@]}"; then
+    echo "Warning: failed to install rpi-rf. GPIO remote learning will not work until rpi-rf is installed."
+    echo "Try manually: sudo python3 -m pip install rpi-rf --break-system-packages"
+    return
+  fi
+
+  if python_has_module rpi_rf; then
+    echo "RF GPIO decoder installed: rpi-rf"
+  else
+    echo "Warning: rpi-rf installation finished, but python3 still cannot import rpi_rf."
+  fi
+}
+
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required."
   exit 1
@@ -207,6 +256,8 @@ echo "Installing Gateball service"
 echo "Project: $GATEBALL_DIR"
 echo "User:    $GATEBALL_USER"
 echo "Home:    $GATEBALL_HOME"
+
+install_rf_support
 
 sudo install -d /etc/systemd/system
 sed \
