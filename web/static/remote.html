@@ -118,7 +118,6 @@
         <div class="settings-tabs">
           <button class="settings-tab active" type="button" data-action="settings-tab" data-settings-tab="general">常规</button>
           <button class="settings-tab" type="button" data-action="settings-tab" data-settings-tab="music">背景音乐</button>
-          <button class="settings-tab" type="button" data-action="settings-tab" data-settings-tab="keys">按键映射</button>
           <button class="settings-tab" type="button" data-action="settings-tab" data-settings-tab="rf">遥控器</button>
           <button class="settings-tab" type="button" data-action="settings-tab" data-settings-tab="network">网络</button>
         </div>
@@ -266,57 +265,10 @@
           </form>
         </section>
 
-        <section class="settings-tab-panel" data-settings-panel="keys">
-          <div class="key-binding-panel">
-            <h3>按键映射</h3>
-            <div class="key-binding-head">
-              <span>名称</span>
-              <span>按键</span>
-            </div>
-            <div class="key-binding-list" data-key-binding-list></div>
-          </div>
-        </section>
         <section class="settings-tab-panel" data-settings-panel="rf">
           <div class="rf-panel" data-rf-panel>
             <h3>射频遥控器</h3>
-            <form class="settings-form rf-settings-form" data-rf-settings-form>
-              <label class="check">
-                <input name="rfRemoteEnabled" type="checkbox">
-                启用射频遥控器
-              </label>
-              <label>
-                接收 GPIO
-                <input name="rfReceiverGpio" type="number" min="2" max="27" step="1">
-              </label>
-              <label>
-                遥控器型号
-                <select name="rfRemoteModel">
-                  <option value="gateball-10key">10键门球遥控器</option>
-                </select>
-              </label>
-              <button class="primary" type="submit">保存遥控器设置</button>
-              <strong data-rf-save-result></strong>
-            </form>
-            <form class="settings-form rf-add-form" data-rf-add-form>
-              <label>
-                遥控器名称
-                <input name="rfRemoteName" autocomplete="off" placeholder="遥控器A">
-              </label>
-              <label>
-                地址码
-                <input name="rfRemoteAddress" autocomplete="off" placeholder="先用调试工具读取">
-              </label>
-              <button class="secondary" type="submit">添加遥控器</button>
-            </form>
-            <div class="rf-remotes-list" data-rf-remotes-list></div>
-            <div class="rf-last-signal" data-rf-last-signal>最近信号：未接收</div>
-            <div class="rf-test-row">
-              <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-button="+">测试 + 得分</button>
-              <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-button="-">测试 - 撤销</button>
-              <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-button="OK">测试 OK 开始/暂停</button>
-              <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-button="#">测试 # 10秒</button>
-              <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-button="M">测试 M 音乐</button>
-            </div>
+            <div class="rf-layout" data-rf-layout></div>
           </div>
         </section>
         <section class="settings-tab-panel" data-settings-panel="network">

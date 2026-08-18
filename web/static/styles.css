@@ -2566,3 +2566,150 @@ body.scoreboard.finish-summary-active .celebration-canvas {
   padding: 6px 10px;
   font-size: 14px;
 }
+
+.rf-layout {
+  display: grid;
+  gap: 12px;
+}
+
+.rf-receiver-form {
+  margin-bottom: 0;
+}
+
+.rf-receiver-row,
+.rf-slot-head {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  align-items: end;
+  gap: 10px;
+}
+
+.switch-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.switch-control input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switch-control span {
+  position: relative;
+  width: 54px;
+  height: 28px;
+  flex: 0 0 auto;
+  border: 1px solid #777;
+  border-radius: 999px;
+  background: #303030;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.switch-control span::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #eee;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  transition: transform 0.16s ease;
+}
+
+.switch-control input:checked + span {
+  border-color: #30c65a;
+  background: #0f7c31;
+}
+
+.switch-control input:checked + span::after {
+  transform: translateX(26px);
+}
+
+.switch-control strong {
+  color: #fff;
+  font-size: 15px;
+}
+
+.rf-device-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rf-device-tab {
+  min-height: 38px;
+  padding: 6px 14px;
+  border: 1px solid #555;
+  border-radius: 6px;
+  background: #151515;
+  color: #eee;
+  font-weight: 900;
+}
+
+.rf-device-tab.active {
+  border-color: var(--gold);
+  background: #3a2700;
+  color: var(--gold);
+}
+
+.rf-device-panel {
+  padding: 12px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #0d0d0d;
+}
+
+.rf-action-list {
+  display: grid;
+  gap: 6px;
+}
+
+.rf-action-row {
+  display: grid;
+  grid-template-columns: minmax(92px, 1fr) minmax(110px, 1.4fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #272727;
+  border-radius: 6px;
+  background: #141414;
+}
+
+.rf-action-name {
+  color: #fff;
+  font-weight: 900;
+}
+
+.rf-binding-value {
+  min-width: 0;
+  overflow: hidden;
+  color: #ffd54a;
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.key-binding-panel.embedded {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+@media (max-width: 620px) {
+  .rf-action-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .rf-binding-value {
+    grid-column: 1 / -1;
+  }
+}

@@ -89,6 +89,12 @@ RF_ACTION_PAYLOADS = {
     "ten_second_countdown": {"action": "ten_second_countdown"},
     "toggle_music": {"action": "toggle_music"},
 }
+RF_ACTION_IDS = set(RF_ACTION_PAYLOADS) | {"finish_dialog"}
+DEFAULT_RF_REMOTE_SLOTS = [
+    {"id": "rf1", "name": "遥控器1", "enabled": False, "bindings": {}},
+    {"id": "rf2", "name": "遥控器2", "enabled": False, "bindings": {}},
+    {"id": "rf3", "name": "遥控器3", "enabled": False, "bindings": {}},
+]
 
 
 DEFAULT_STATE = {
@@ -235,13 +241,27 @@ def resolve_music_track(track_id: str) -> Path | None:
     return None
 
 
+def default_rf_remote_slots() -> list[dict]:
+    return [
+        {
+            "id": slot["id"],
+            "name": slot["name"],
+            "enabled": bool(slot.get("enabled")),
+            "bindings": {},
+        }
+        for slot in DEFAULT_RF_REMOTE_SLOTS
+    ]
+
+
 DEFAULT_STATE.update(
     {
         "rfRemoteEnabled": False,
         "rfReceiverGpio": 27,
         "rfRemoteModel": "gateball-10key",
         "rfRemotes": [],
+        "rfRemoteSlots": default_rf_remote_slots(),
         "rfLastSignal": None,
+        "keyboardInputEnabled": True,
     }
 )
 
@@ -354,6 +374,8 @@ class Store:
             self.state["matchStartedAt"] = None
         if not isinstance(self.state.get("keyBindings"), dict):
             self.state["keyBindings"] = {}
+        if not isinstance(self.state.get("keyboardInputEnabled"), bool):
+            self.state["keyboardInputEnabled"] = True
         try:
             self.state["systemVolumePercent"] = min(100, max(0, int(round(float(self.state.get("systemVolumePercent", 100))))))
         except (TypeError, ValueError):
@@ -369,6 +391,7 @@ class Store:
             self.state["musicPlaying"] = False
         if not isinstance(self.state.get("rfRemotes"), list):
             self.state["rfRemotes"] = []
+        self.normalize_rf_remote_slots()
         if not isinstance(self.state.get("rfLastSignal"), dict):
             self.state["rfLastSignal"] = None
         if "selectedBallAt" not in self.state:
@@ -505,6 +528,69 @@ class Store:
         self.record("selection_required", None, message)
         return False
 
+    def normalize_rf_binding(self, value: object) -> dict | None:
+        if not isinstance(value, dict):
+            return None
+        raw = str(value.get("raw") or value.get("code") or "").strip()
+        address = str(value.get("address") or "").strip()
+        button = str(value.get("button") or "").strip()
+        label = str(value.get("label") or raw or f"{address} {button}").strip()
+        if not raw and not address and not button:
+            return None
+        if not raw and address and button:
+            raw = f"{address}:{button}"
+        return {
+            "raw": raw[:80],
+            "address": address[:80],
+            "button": button[:40],
+            "label": label[:80],
+        }
+
+    def normalize_rf_remote_slots(self) -> list[dict]:
+        raw_slots = self.state.get("rfRemoteSlots")
+        if not isinstance(raw_slots, list):
+            raw_slots = []
+        by_id = {str(slot.get("id")): slot for slot in raw_slots if isinstance(slot, dict)}
+        normalized = []
+        for default_slot in default_rf_remote_slots():
+            existing = by_id.get(default_slot["id"], {})
+            bindings = {}
+            raw_bindings = existing.get("bindings") if isinstance(existing, dict) else {}
+            if isinstance(raw_bindings, dict):
+                for action_id, binding in raw_bindings.items():
+                    action_id = str(action_id)
+                    if action_id not in RF_ACTION_IDS:
+                        continue
+                    normalized_binding = self.normalize_rf_binding(binding)
+                    if normalized_binding:
+                        bindings[action_id] = normalized_binding
+            normalized.append(
+                {
+                    "id": default_slot["id"],
+                    "name": str(existing.get("name") or default_slot["name"]).strip()[:40] if isinstance(existing, dict) else default_slot["name"],
+                    "enabled": bool(existing.get("enabled", default_slot["enabled"])) if isinstance(existing, dict) else default_slot["enabled"],
+                    "bindings": bindings,
+                }
+            )
+        if not any(slot["bindings"] for slot in normalized) and self.state.get("rfRemotes"):
+            old_remotes = self.normalize_rf_remotes()
+            if old_remotes:
+                first = old_remotes[0]
+                normalized[0]["name"] = first.get("name") or normalized[0]["name"]
+                normalized[0]["enabled"] = bool(first.get("enabled", True))
+                model = RF_REMOTE_MODELS.get(first.get("model"), RF_REMOTE_MODELS["gateball-10key"])
+                for button, action_id in model["buttons"].items():
+                    if action_id not in RF_ACTION_IDS:
+                        continue
+                    normalized[0]["bindings"][action_id] = {
+                        "raw": f"{first['address']}:{button}",
+                        "address": first["address"],
+                        "button": button,
+                        "label": button,
+                    }
+        self.state["rfRemoteSlots"] = normalized
+        return normalized
+
     def normalize_rf_remotes(self) -> list[dict]:
         remotes = self.state.get("rfRemotes")
         if not isinstance(remotes, list):
@@ -554,25 +640,37 @@ class Store:
             address = raw[:-1] if len(raw) > 1 else raw
         if not button and raw:
             button = raw[-1:]
-        remotes = self.normalize_rf_remotes()
-        remote = next((item for item in remotes if item["address"] == address), None)
+        slots = self.normalize_rf_remote_slots()
+        remote = None
         action_id = ""
         status = "ignored"
         if not self.state.get("rfRemoteEnabled"):
             status = "rf_disabled"
-        elif not remote:
-            status = "unknown_remote"
-        elif not remote.get("enabled"):
-            status = "remote_disabled"
         else:
-            model = RF_REMOTE_MODELS.get(remote.get("model"), RF_REMOTE_MODELS["gateball-10key"])
-            action_id = model["buttons"].get(button, "")
+            for slot in slots:
+                if not slot.get("enabled"):
+                    continue
+                for candidate_action, binding in slot.get("bindings", {}).items():
+                    if raw and binding.get("raw") == raw:
+                        remote = slot
+                        action_id = candidate_action
+                        break
+                    if address and button and binding.get("address") == address and binding.get("button") == button:
+                        remote = slot
+                        action_id = candidate_action
+                        break
+                if remote:
+                    break
+            if not remote:
+                status = "unknown_remote"
+            elif not action_id:
+                status = "unknown_button"
             if action_id == "finish_dialog":
                 status = "finish_requires_password"
             elif action_id in RF_ACTION_PAYLOADS:
                 status = "executed"
                 self.action(RF_ACTION_PAYLOADS[action_id])
-            else:
+            elif action_id:
                 status = "unknown_button"
         self.record_rf_signal(raw=raw, address=address, button=button, remote=remote, action_id=action_id, status=status)
         self.save()
@@ -603,6 +701,76 @@ class Store:
                 self.record("rf_settings", None, message)
             self.save()
             return {"ok": message != "密码错误", "message": message, "state": self.snapshot()}
+
+        if action == "update_rf_remote_slot":
+            if payload.get("password") != self.state["settingsPassword"]:
+                message = "密码错误"
+            else:
+                slot_id = str(payload.get("slotId") or "").strip()
+                slots = self.normalize_rf_remote_slots()
+                slot = next((item for item in slots if item["id"] == slot_id), None)
+                if not slot:
+                    message = "遥控器不存在"
+                else:
+                    slot["name"] = str(payload.get("name") or slot["name"]).strip()[:40]
+                    slot["enabled"] = bool(payload.get("enabled"))
+                    bindings = {}
+                    raw_bindings = payload.get("bindings")
+                    if isinstance(raw_bindings, dict):
+                        for action_id, binding in raw_bindings.items():
+                            action_id = str(action_id)
+                            if action_id not in RF_ACTION_IDS:
+                                continue
+                            normalized_binding = self.normalize_rf_binding(binding)
+                            if normalized_binding:
+                                bindings[action_id] = normalized_binding
+                    slot["bindings"] = bindings
+                    self.state["rfRemoteSlots"] = slots
+                    message = "遥控器设置已保存"
+                    self.state["lastMessage"] = message
+                    self.record("rf_remote", None, message)
+            self.save()
+            return {"ok": message == "遥控器设置已保存", "message": message, "state": self.snapshot()}
+
+        if action == "clear_rf_remote_slot":
+            if payload.get("password") != self.state["settingsPassword"]:
+                message = "密码错误"
+            else:
+                slot_id = str(payload.get("slotId") or "").strip()
+                slots = self.normalize_rf_remote_slots()
+                slot = next((item for item in slots if item["id"] == slot_id), None)
+                if slot:
+                    slot["bindings"] = {}
+                    self.state["rfRemoteSlots"] = slots
+                    message = "遥控器按键已清除"
+                    self.state["lastMessage"] = message
+                    self.record("rf_remote", None, message)
+                else:
+                    message = "遥控器不存在"
+            self.save()
+            return {"ok": message == "遥控器按键已清除", "message": message, "state": self.snapshot()}
+
+        if action == "update_keyboard_settings":
+            if payload.get("password") != self.state["settingsPassword"]:
+                message = "密码错误"
+            else:
+                self.state["keyboardInputEnabled"] = bool(payload.get("keyboardInputEnabled"))
+                message = "小键盘设置已保存"
+                self.state["lastMessage"] = message
+                self.record("keyboard_settings", None, message)
+            self.save()
+            return {"ok": message == "小键盘设置已保存", "message": message, "state": self.snapshot()}
+
+        if action == "clear_key_bindings":
+            if payload.get("password") != self.state["settingsPassword"]:
+                message = "密码错误"
+            else:
+                self.state["keyBindings"] = {}
+                message = "小键盘映射已恢复默认"
+                self.state["lastMessage"] = message
+                self.record("keyboard_settings", None, message)
+            self.save()
+            return {"ok": message == "小键盘映射已恢复默认", "message": message, "state": self.snapshot()}
 
         if action == "add_rf_remote":
             if payload.get("password") != self.state["settingsPassword"]:
@@ -966,6 +1134,84 @@ class Store:
 
 results_store = ResultsStore(RESULTS_DB_FILE)
 store = Store()
+rf_listener_started = False
+
+
+def split_rf_code(code: object) -> tuple[str, str]:
+    text = str(code)
+    if len(text) <= 1:
+        return text, ""
+    return text[:-1], text[-1]
+
+
+def rf_listener_loop() -> None:
+    try:
+        from rpi_rf import RFDevice  # type: ignore
+    except ImportError:
+        print("RF listener disabled: rpi-rf is not installed")
+        return
+
+    rfdevice = None
+    active_gpio = None
+    last_timestamp = None
+    last_code = None
+    last_at = 0.0
+    while True:
+        try:
+            enabled = bool(store.state.get("rfRemoteEnabled"))
+            gpio = int(store.state.get("rfReceiverGpio", 27))
+            if not enabled:
+                if rfdevice:
+                    rfdevice.cleanup()
+                    rfdevice = None
+                    active_gpio = None
+                    print("RF listener paused")
+                time.sleep(1.0)
+                continue
+            if rfdevice is None or active_gpio != gpio:
+                if rfdevice:
+                    rfdevice.cleanup()
+                rfdevice = RFDevice(gpio)
+                rfdevice.enable_rx()
+                active_gpio = gpio
+                last_timestamp = None
+                print(f"RF listener active on BCM GPIO {gpio}")
+            timestamp = rfdevice.rx_code_timestamp
+            if timestamp and timestamp != last_timestamp:
+                last_timestamp = timestamp
+                now = time.monotonic()
+                code = rfdevice.rx_code
+                if code != last_code or (now - last_at) >= 0.3:
+                    address, button = split_rf_code(code)
+                    store.action(
+                        {
+                            "action": "simulate_rf_signal",
+                            "raw": str(code),
+                            "address": address,
+                            "button": button,
+                        }
+                    )
+                    last_code = code
+                    last_at = now
+            time.sleep(0.01)
+        except Exception as exc:
+            print(f"RF listener error: {exc}")
+            try:
+                if rfdevice:
+                    rfdevice.cleanup()
+            except Exception:
+                pass
+            rfdevice = None
+            active_gpio = None
+            time.sleep(3.0)
+
+
+def start_rf_listener() -> None:
+    global rf_listener_started
+    if rf_listener_started:
+        return
+    rf_listener_started = True
+    Thread(target=rf_listener_loop, name="gateball-rf-listener", daemon=True).start()
 
 
 def weather_icon(code: int) -> str:
@@ -1270,6 +1516,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    start_rf_listener()
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"Gateball web prototype: http://127.0.0.1:{PORT}/scoreboard")
     print(f"Phone remote: http://127.0.0.1:{PORT}/remote")

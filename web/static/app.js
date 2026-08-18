@@ -118,6 +118,8 @@ let settingsSavePasswordDialogOpen = false;
 let pendingSettingsPayload = null;
 let settingsSaveInFlight = false;
 let keyCaptureAction = "";
+let pendingRfLearn = null;
+let rfDraftBindings = {};
 let alertPromptAudio = null;
 let errorPromptAudio = null;
 let finishPromptAudio = null;
@@ -205,6 +207,14 @@ const rfActionLabels = {
   toggle_music: "音乐播放/暂停",
   finish_dialog: "结束比赛",
 };
+const rfSlotTabs = [
+  { id: "rf1", label: "遥控器1" },
+  { id: "rf2", label: "遥控器2" },
+  { id: "rf3", label: "遥控器3" },
+  { id: "keyboard", label: "小键盘" },
+];
+const rfBindableActions = keyBindingSpecs.filter((spec) => spec.id !== "finish_cancel");
+let activeRfTab = "rf1";
 const VOICE_PROFILES = ["female", "male", "ko-female", "ko-male"];
 const isKioskMode = new URLSearchParams(window.location.search).get("kiosk") === "1";
 
@@ -317,6 +327,7 @@ function keyLabelFromEvent(event) {
 }
 
 function keyboardActionForEvent(event) {
+  if (currentState?.keyboardInputEnabled === false) return null;
   for (const spec of keyBindingSpecs) {
     if (eventMatchesBindingSpec(event, spec)) return spec;
   }
@@ -1666,7 +1677,7 @@ function renderSettings() {
   applyTitleFontScale(currentState.titleFontScale);
   applyTableMarkerScale(currentState.tableMarkerAutoSize, currentState.tableMarkerScale);
   renderNetworkSettings();
-  renderRfSettings();
+  if (!settingsHydrated || document.querySelector("[data-settings-panel='rf'].active")) renderRfSettings();
   settingsHydrated = true;
 }
 
@@ -1678,27 +1689,27 @@ function renderNetworkSettings() {
 }
 
 function renderKeyBindings() {
-  const list = document.querySelector("[data-key-binding-list]");
-  if (!list) return;
-  list.replaceChildren();
-  keyBindingSpecs.forEach((spec) => {
-    const row = document.createElement("div");
-    row.className = "key-binding-row";
+  document.querySelectorAll("[data-key-binding-list]").forEach((list) => {
+    list.replaceChildren();
+    rfBindableActions.forEach((spec) => {
+      const row = document.createElement("div");
+      row.className = "key-binding-row";
 
-    const name = document.createElement("span");
-    name.className = "key-binding-name";
-    name.textContent = spec.name;
+      const name = document.createElement("span");
+      name.className = "key-binding-name";
+      name.textContent = spec.name;
 
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "key-binding-button";
-    button.dataset.action = "capture-key-binding";
-    button.dataset.bindingAction = spec.id;
-    const binding = bindingForSpec(spec);
-    button.textContent = keyCaptureAction === spec.id ? "请按键..." : (binding.label || binding.code || binding.key || "未设置");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "key-binding-button";
+      button.dataset.action = "capture-key-binding";
+      button.dataset.bindingAction = spec.id;
+      const binding = bindingForSpec(spec);
+      button.textContent = keyCaptureAction === spec.id ? "请按键..." : (binding.label || binding.code || binding.key || "未设置");
 
-    row.append(name, button);
-    list.appendChild(row);
+      row.append(name, button);
+      list.appendChild(row);
+    });
   });
 }
 
@@ -2024,50 +2035,145 @@ function setRfResult(text, isError = false) {
 
 function renderRfSettings() {
   if (!currentState) return;
-  const form = document.querySelector("[data-rf-settings-form]");
-  if (form && !settingsHydrated) {
-    form.rfRemoteEnabled.checked = Boolean(currentState.rfRemoteEnabled);
-    form.rfReceiverGpio.value = Number(currentState.rfReceiverGpio || 27);
-    form.rfRemoteModel.value = currentState.rfRemoteModel || "gateball-10key";
-  }
-  renderRfRemotes();
+  const layout = document.querySelector("[data-rf-layout]");
+  if (!layout) return;
+  if (!rfSlotTabs.some((tab) => tab.id === activeRfTab)) activeRfTab = "rf1";
+  layout.innerHTML = `
+    <form class="settings-form rf-settings-form rf-receiver-form" data-rf-settings-form>
+      <div class="rf-receiver-row">
+        ${renderSwitchControl("rfRemoteEnabled", Boolean(currentState.rfRemoteEnabled), "启用射频接收")}
+        <label>
+          接收 GPIO
+          <input name="rfReceiverGpio" type="number" min="2" max="27" step="1" value="${escapeHtml(currentState.rfReceiverGpio || 27)}">
+        </label>
+        <button class="primary" type="submit">保存接收设置</button>
+      </div>
+      <strong data-rf-save-result></strong>
+    </form>
+    <div class="rf-last-signal" data-rf-last-signal>最近信号：未接收</div>
+    <div class="rf-device-tabs">
+      ${rfSlotTabs.map((tab) => `
+        <button class="rf-device-tab ${activeRfTab === tab.id ? "active" : ""}" type="button" data-action="rf-device-tab" data-rf-tab="${tab.id}">${escapeHtml(tab.label)}</button>
+      `).join("")}
+    </div>
+    <div class="rf-device-panel" data-rf-device-panel></div>
+  `;
   renderRfLastSignal();
+  renderRfDevicePanel();
+  consumePendingRfLearn();
 }
 
-function renderRfRemotes() {
-  const list = document.querySelector("[data-rf-remotes-list]");
-  if (!list) return;
-  const remotes = Array.isArray(currentState?.rfRemotes) ? currentState.rfRemotes : [];
-  list.replaceChildren();
-  if (!remotes.length) {
-    const empty = document.createElement("div");
-    empty.className = "rf-empty";
-    empty.textContent = "还没有添加遥控器";
-    list.appendChild(empty);
+function renderSwitchControl(name, checked, label) {
+  return `
+    <label class="switch-control">
+      <input name="${escapeHtml(name)}" type="checkbox" ${checked ? "checked" : ""}>
+      <span aria-hidden="true"></span>
+      <strong>${escapeHtml(label)}</strong>
+    </label>
+  `;
+}
+
+function rfSlots() {
+  const slots = Array.isArray(currentState?.rfRemoteSlots) ? currentState.rfRemoteSlots : [];
+  return ["rf1", "rf2", "rf3"].map((id, index) => {
+    const slot = slots.find((item) => item.id === id) || {};
+    return {
+      id,
+      name: slot.name || `遥控器${index + 1}`,
+      enabled: Boolean(slot.enabled),
+      bindings: slot.bindings && typeof slot.bindings === "object" ? slot.bindings : {},
+    };
+  });
+}
+
+function rfSlotById(slotId) {
+  return rfSlots().find((slot) => slot.id === slotId) || rfSlots()[0];
+}
+
+function rfBindingText(binding) {
+  if (!binding) return "未学习";
+  return binding.label || binding.raw || [binding.address, binding.button].filter(Boolean).join(" / ") || "已学习";
+}
+
+function rfSignalKey(signal) {
+  if (!signal) return "";
+  return [signal.time || "", signal.raw || "", signal.address || "", signal.button || ""].join("|");
+}
+
+function draftBindingFor(slotId, actionId, savedBinding) {
+  const slotDraft = rfDraftBindings[slotId];
+  if (!slotDraft || !(actionId in slotDraft)) return savedBinding;
+  return slotDraft[actionId];
+}
+
+function rememberDraftBinding(slotId, actionId, binding) {
+  if (!slotId || !actionId) return;
+  if (!rfDraftBindings[slotId]) rfDraftBindings[slotId] = {};
+  rfDraftBindings[slotId][actionId] = binding;
+}
+
+function rfBindingDataAttributes(binding) {
+  if (!binding) return "";
+  return [
+    `data-rf-raw="${escapeHtml(binding.raw || "")}"`,
+    `data-rf-address="${escapeHtml(binding.address || "")}"`,
+    `data-rf-button="${escapeHtml(binding.button || "")}"`,
+    `data-rf-label="${escapeHtml(binding.label || "")}"`,
+  ].join(" ");
+}
+
+function renderRfDevicePanel() {
+  const panel = document.querySelector("[data-rf-device-panel]");
+  if (!panel || !currentState) return;
+  if (activeRfTab === "keyboard") {
+    panel.innerHTML = `
+      <form class="settings-form keyboard-settings-form" data-keyboard-settings-form>
+        <div class="rf-slot-head">
+          ${renderSwitchControl("keyboardInputEnabled", currentState.keyboardInputEnabled !== false, "启用小键盘")}
+          <button class="secondary" type="button" data-action="clear-key-bindings">恢复默认映射</button>
+        </div>
+        <div class="key-binding-panel embedded">
+          <div class="key-binding-head">
+            <span>功能</span>
+            <span>按键</span>
+          </div>
+          <div class="key-binding-list" data-key-binding-list></div>
+        </div>
+        <button class="primary" type="submit">保存小键盘设置</button>
+        <strong data-keyboard-save-result></strong>
+      </form>
+    `;
+    renderKeyBindings();
     return;
   }
-  remotes.forEach((remote) => {
-    const card = document.createElement("div");
-    card.className = "rf-remote-card";
-    card.innerHTML = `
-      <div class="rf-remote-main">
-        <strong>${escapeHtml(remote.name || "遥控器")}</strong>
-        <span>${remote.enabled ? "已启用" : "已停用"}</span>
+  const slot = rfSlotById(activeRfTab);
+  panel.innerHTML = `
+    <form class="settings-form rf-slot-form" data-rf-slot-form data-slot-id="${escapeHtml(slot.id)}">
+      <div class="rf-slot-head">
+        <label>
+          遥控器名称
+          <input name="rfSlotName" autocomplete="off" maxlength="40" value="${escapeHtml(slot.name)}">
+        </label>
+        ${renderSwitchControl("rfSlotEnabled", Boolean(slot.enabled), "启用")}
+        <button class="secondary danger" type="button" data-action="clear-rf-slot" data-slot-id="${escapeHtml(slot.id)}">全部清除</button>
       </div>
-      <div class="rf-remote-meta">地址码：${escapeHtml(remote.address || "-")}</div>
-      <div class="rf-remote-meta">型号：${escapeHtml(remote.model || "gateball-10key")}</div>
-      <div class="rf-remote-meta">最后接收：${escapeHtml(remote.lastSeenAt || "未使用")}</div>
-      <div class="rf-remote-actions">
-        <button class="secondary" type="button" data-action="toggle-rf-remote" data-rf-id="${escapeHtml(remote.id)}" data-rf-enabled="${remote.enabled ? "0" : "1"}">${remote.enabled ? "停用" : "启用"}</button>
-        <button class="secondary" type="button" data-action="rename-rf-remote" data-rf-id="${escapeHtml(remote.id)}">重命名</button>
-        <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-address="${escapeHtml(remote.address || "")}" data-rf-button="+">测试</button>
-        <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-address="${escapeHtml(remote.address || "")}" data-rf-button="#">10秒</button>
-        <button class="secondary" type="button" data-action="simulate-rf-signal" data-rf-address="${escapeHtml(remote.address || "")}" data-rf-button="M">音乐</button>
-        <button class="danger secondary" type="button" data-action="delete-rf-remote" data-rf-id="${escapeHtml(remote.id)}">删除</button>
+      <div class="rf-action-list">
+        ${rfBindableActions.map((spec) => {
+          const binding = draftBindingFor(slot.id, spec.id, slot.bindings[spec.id]);
+          return `
+            <div class="rf-action-row" data-rf-binding-row data-slot-id="${escapeHtml(slot.id)}" data-rf-action-id="${escapeHtml(spec.id)}" ${rfBindingDataAttributes(binding)}>
+              <span class="rf-action-name">${escapeHtml(spec.name)}</span>
+              <span class="rf-binding-value" data-rf-binding-value>${escapeHtml(rfBindingText(binding))}</span>
+              <button class="secondary" type="button" data-action="learn-rf-binding" data-slot-id="${escapeHtml(slot.id)}" data-rf-action-id="${escapeHtml(spec.id)}">学习</button>
+              <button class="secondary" type="button" data-action="clear-rf-binding" data-rf-action-id="${escapeHtml(spec.id)}">清除</button>
+            </div>
+          `;
+        }).join("")}
       </div>
-    `;
-    list.appendChild(card);
-  });
+      <button class="primary" type="submit">保存这个遥控器</button>
+      <strong data-rf-slot-result></strong>
+    </form>
+  `;
 }
 
 function renderRfLastSignal() {
@@ -2080,7 +2186,29 @@ function renderRfLastSignal() {
   }
   const action = rfActionLabels[signal.action] || signal.action || "-";
   const status = rfStatusLabels[signal.status] || signal.status || "-";
-  element.textContent = `最近信号：地址 ${signal.address || "-"} / 按键 ${signal.button || "-"} / 遥控器 ${signal.remoteName || "未识别"} / 动作 ${action} / ${status}`;
+  const raw = signal.raw ? ` / 原始 ${signal.raw}` : "";
+  element.textContent = `最近信号：地址 ${signal.address || "-"} / 按键 ${signal.button || "-"}${raw} / 遥控器 ${signal.remoteName || "未识别"} / 动作 ${action} / ${status}`;
+}
+
+function consumePendingRfLearn() {
+  if (!pendingRfLearn) return;
+  const signal = currentState?.rfLastSignal;
+  const key = rfSignalKey(signal);
+  if (!key || key === pendingRfLearn.startedSignalKey) return;
+  activeRfTab = pendingRfLearn.slotId;
+  renderRfDevicePanel();
+  const row = Array.from(document.querySelectorAll("[data-rf-binding-row]")).find((item) => (
+    item.dataset.slotId === pendingRfLearn.slotId && item.dataset.rfActionId === pendingRfLearn.actionId
+  ));
+  const binding = {
+    raw: signal.raw || [signal.address, signal.button].filter(Boolean).join(":"),
+    address: signal.address || "",
+    button: signal.button || "",
+    label: signal.raw || [signal.address, signal.button].filter(Boolean).join(":"),
+  };
+  setRfBindingRow(row, binding);
+  pendingRfLearn = null;
+  setRfResult("已学习，点击保存后生效");
 }
 
 function collectRfSettingsPayload(form) {
@@ -2088,20 +2216,74 @@ function collectRfSettingsPayload(form) {
     action: "update_rf_settings",
     rfRemoteEnabled: form.rfRemoteEnabled.checked,
     rfReceiverGpio: form.rfReceiverGpio.value,
-    rfRemoteModel: form.rfRemoteModel.value || "gateball-10key",
     _resultSelector: "[data-rf-save-result]",
   };
 }
 
-function collectRfAddPayload(form) {
+function collectRfSlotPayload(form) {
+  const bindings = {};
+  form.querySelectorAll("[data-rf-binding-row]").forEach((row) => {
+    const actionId = row.dataset.rfActionId || "";
+    const raw = row.dataset.rfRaw || "";
+    const address = row.dataset.rfAddress || "";
+    const button = row.dataset.rfButton || "";
+    const label = row.dataset.rfLabel || "";
+    if (!actionId || (!raw && !address && !button)) return;
+    bindings[actionId] = { raw, address, button, label };
+  });
   return {
-    action: "add_rf_remote",
-    name: form.rfRemoteName.value.trim() || "遥控器",
-    address: form.rfRemoteAddress.value.trim(),
-    model: currentState?.rfRemoteModel || "gateball-10key",
-    enabled: true,
-    _resultSelector: "[data-rf-save-result]",
+    action: "update_rf_remote_slot",
+    slotId: form.dataset.slotId || activeRfTab,
+    name: form.rfSlotName.value.trim() || rfSlotById(form.dataset.slotId || activeRfTab).name,
+    enabled: form.rfSlotEnabled.checked,
+    bindings,
+    _resultSelector: "[data-rf-slot-result]",
   };
+}
+
+function collectKeyboardSettingsPayload(form) {
+  return {
+    action: "update_keyboard_settings",
+    keyboardInputEnabled: form.keyboardInputEnabled.checked,
+    _resultSelector: "[data-keyboard-save-result]",
+  };
+}
+
+function parseRfManualInput(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const parts = text.split(/[:：,\s]+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return {
+      raw: text,
+      address: parts[0],
+      button: parts.slice(1).join(" "),
+      label: text,
+    };
+  }
+  return { raw: text, address: "", button: "", label: text };
+}
+
+function setRfBindingRow(row, binding) {
+  if (!row || !binding) return;
+  row.dataset.rfRaw = binding.raw || "";
+  row.dataset.rfAddress = binding.address || "";
+  row.dataset.rfButton = binding.button || "";
+  row.dataset.rfLabel = binding.label || binding.raw || [binding.address, binding.button].filter(Boolean).join(" / ");
+  rememberDraftBinding(row.dataset.slotId, row.dataset.rfActionId, { ...binding, label: row.dataset.rfLabel });
+  const value = row.querySelector("[data-rf-binding-value]");
+  if (value) value.textContent = rfBindingText(binding);
+}
+
+function clearRfBindingRow(row) {
+  if (!row) return;
+  rememberDraftBinding(row.dataset.slotId, row.dataset.rfActionId, null);
+  delete row.dataset.rfRaw;
+  delete row.dataset.rfAddress;
+  delete row.dataset.rfButton;
+  delete row.dataset.rfLabel;
+  const value = row.querySelector("[data-rf-binding-value]");
+  if (value) value.textContent = "未学习";
 }
 
 function previewScoreboardStyle(form) {
@@ -2832,14 +3014,18 @@ async function trySavePendingSettings() {
     const { _resultSelector, ...payload } = pendingSettingsPayload;
     const result = await sendAction({ ...payload, password }, false);
     if (result.ok) {
+      settingsHydrated = false;
+      currentState = result.state;
+      if (payload.action === "update_rf_remote_slot" || payload.action === "clear_rf_remote_slot") {
+        delete rfDraftBindings[payload.slotId || activeRfTab];
+        if (pendingRfLearn?.slotId === (payload.slotId || activeRfTab)) pendingRfLearn = null;
+      }
+      renderSettings();
       const saveResult = document.querySelector(_resultSelector || "[data-save-result]");
       if (saveResult) {
         saveResult.textContent = result.message;
         saveResult.classList.remove("error");
       }
-      settingsHydrated = false;
-      currentState = result.state;
-      renderSettings();
       closeSettingsSavePasswordDialog();
     } else if (resultEl) {
       resultEl.textContent = "密码错误";
@@ -3125,12 +3311,51 @@ document.addEventListener("click", (event) => {
   if (action === "open-result-match") return openResultMatch(target.dataset.matchId);
   if (action === "enable-scoreboard-sound") return enableScoreboardSound();
   if (action === "settings-tab") return switchSettingsTab(target.dataset.settingsTab || "general");
+  if (action === "rf-device-tab") {
+    activeRfTab = target.dataset.rfTab || "rf1";
+    renderRfSettings();
+    return;
+  }
   if (action === "scan-wifi") return scanWifiNetworks();
   if (action === "select-wifi") return selectWifiNetwork(target);
   if (action === "connect-wifi") return connectSelectedWifi();
   if (action === "capture-key-binding") {
     keyCaptureAction = target.dataset.bindingAction || "";
     renderKeyBindings();
+    return;
+  }
+  if (action === "learn-rf-binding") {
+    const row = target.closest("[data-rf-binding-row]");
+    pendingRfLearn = {
+      slotId: target.dataset.slotId || activeRfTab,
+      actionId: target.dataset.rfActionId || row?.dataset.rfActionId || "",
+      startedSignalKey: rfSignalKey(currentState?.rfLastSignal),
+    };
+    const value = row?.querySelector("[data-rf-binding-value]");
+    if (value) value.textContent = "等待遥控器信号...";
+    setRfResult("请按下遥控器按键，收到信号后会自动填入");
+    return;
+  }
+  if (action === "clear-rf-binding") {
+    clearRfBindingRow(target.closest("[data-rf-binding-row]"));
+    setRfResult("已清除，点击保存后生效");
+    return;
+  }
+  if (action === "clear-rf-slot") {
+    if (!window.confirm("清除这个遥控器的全部按键？")) return;
+    openSettingsSavePasswordDialog({
+      action: "clear_rf_remote_slot",
+      slotId: target.dataset.slotId || activeRfTab,
+      _resultSelector: "[data-rf-slot-result]",
+    });
+    return;
+  }
+  if (action === "clear-key-bindings") {
+    if (!window.confirm("恢复小键盘默认映射？")) return;
+    openSettingsSavePasswordDialog({
+      action: "clear_key_bindings",
+      _resultSelector: "[data-keyboard-save-result]",
+    });
     return;
   }
   if (action === "toggle-rf-remote") {
@@ -3164,11 +3389,13 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (action === "simulate-rf-signal") {
-    const address = target.dataset.rfAddress || (currentState?.rfRemotes || [])[0]?.address || "";
+    const firstBinding = rfSlots().flatMap((slot) => Object.values(slot.bindings || {}))[0] || {};
+    const address = target.dataset.rfAddress || firstBinding.address || "";
     sendAction({
       action: "simulate_rf_signal",
       address,
       button: target.dataset.rfButton || "+",
+      raw: target.dataset.rfRaw || firstBinding.raw || "",
     }, false).then((result) => {
       currentState = result.state;
       renderRfSettings();
@@ -3342,16 +3569,18 @@ document.addEventListener("submit", async (event) => {
     return;
   }
 
-  const rfAddForm = event.target.closest("[data-rf-add-form]");
-  if (rfAddForm) {
+  const rfSlotForm = event.target.closest("[data-rf-slot-form]");
+  if (rfSlotForm) {
     event.preventDefault();
-    const payload = collectRfAddPayload(rfAddForm);
-    if (!payload.address) {
-      setRfResult("请输入地址码", true);
-      return;
-    }
     setRfResult("");
-    openSettingsSavePasswordDialog(payload);
+    openSettingsSavePasswordDialog(collectRfSlotPayload(rfSlotForm));
+    return;
+  }
+
+  const keyboardSettingsForm = event.target.closest("[data-keyboard-settings-form]");
+  if (keyboardSettingsForm) {
+    event.preventDefault();
+    openSettingsSavePasswordDialog(collectKeyboardSettingsPayload(keyboardSettingsForm));
     return;
   }
 
