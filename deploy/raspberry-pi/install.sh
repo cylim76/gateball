@@ -20,6 +20,7 @@ INSTALL_DESKTOP_AUTOSTART="${INSTALL_DESKTOP_AUTOSTART:-1}"
 INSTALL_KIOSK_SESSION="${INSTALL_KIOSK_SESSION:-0}"
 INSTALL_DIRECT_X_KIOSK="${INSTALL_DIRECT_X_KIOSK:-0}"
 CONFIGURE_QUIET_BOOT="${CONFIGURE_QUIET_BOOT:-1}"
+RESTART_DISPLAY_MANAGER="${RESTART_DISPLAY_MANAGER:-0}"
 SERVICE_NAME="${SERVICE_NAME:-gateball.service}"
 DIRECT_X_SERVICE_NAME="${DIRECT_X_SERVICE_NAME:-gateball-x-kiosk.service}"
 AUTOSTART_FILE="$GATEBALL_HOME/.config/autostart/gateball-kiosk.desktop"
@@ -34,14 +35,24 @@ enable_display_manager() {
   sudo systemctl set-default graphical.target
   if [ -e /etc/systemd/system/display-manager.service ]; then
     sudo systemctl enable display-manager.service >/dev/null 2>&1 || true
-    sudo systemctl restart display-manager.service >/dev/null 2>&1 || true
+    if [ "$RESTART_DISPLAY_MANAGER" = "1" ]; then
+      echo "Restarting display-manager.service because RESTART_DISPLAY_MANAGER=1"
+      sudo systemctl restart display-manager.service >/dev/null 2>&1 || true
+    else
+      echo "Display manager enabled; reboot to apply without closing this terminal."
+    fi
     return
   fi
 
   for service in lightdm.service wayfire.service gdm3.service sddm.service; do
     if systemctl list-unit-files "$service" 2>/dev/null | grep -q "^$service"; then
       sudo systemctl enable "$service" >/dev/null 2>&1 || true
-      sudo systemctl restart "$service" >/dev/null 2>&1 || true
+      if [ "$RESTART_DISPLAY_MANAGER" = "1" ]; then
+        echo "Restarting $service because RESTART_DISPLAY_MANAGER=1"
+        sudo systemctl restart "$service" >/dev/null 2>&1 || true
+      else
+        echo "$service enabled; reboot to apply without closing this terminal."
+      fi
       return
     fi
   done
@@ -210,9 +221,9 @@ sudo systemctl restart "$SERVICE_NAME"
 if [ "$INSTALL_KIOSK" = "1" ]; then
   if [ "$INSTALL_DESKTOP_AUTOSTART" = "1" ]; then
     remove_direct_x_kiosk
-    enable_display_manager
     remove_kiosk_session_config
     install_desktop_autostart
+    enable_display_manager
   elif [ "$INSTALL_DIRECT_X_KIOSK" = "1" ]; then
     install_direct_x_kiosk
   elif [ "$INSTALL_KIOSK_SESSION" = "1" ]; then
@@ -220,9 +231,9 @@ if [ "$INSTALL_KIOSK" = "1" ]; then
     install_kiosk_session
   else
     remove_direct_x_kiosk
-    enable_display_manager
     remove_kiosk_session_config
     install_desktop_autostart
+    enable_display_manager
   fi
 fi
 

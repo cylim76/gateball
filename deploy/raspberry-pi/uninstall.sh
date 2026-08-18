@@ -19,19 +19,30 @@ LIGHTDM_KIOSK_CONF="/etc/lightdm/lightdm.conf.d/99-gateball-kiosk.conf"
 DIRECT_X_SERVICE_FILE="/etc/systemd/system/$DIRECT_X_SERVICE_NAME"
 XWRAPPER_CONFIG="/etc/X11/Xwrapper.config"
 REMOVE_KIOSK_PACKAGES="${REMOVE_KIOSK_PACKAGES:-0}"
+RESTART_DISPLAY_MANAGER="${RESTART_DISPLAY_MANAGER:-0}"
 
 enable_display_manager() {
   sudo systemctl set-default graphical.target
   if [ -e /etc/systemd/system/display-manager.service ]; then
     sudo systemctl enable display-manager.service >/dev/null 2>&1 || true
-    sudo systemctl restart display-manager.service >/dev/null 2>&1 || true
+    if [ "$RESTART_DISPLAY_MANAGER" = "1" ]; then
+      echo "Restarting display-manager.service because RESTART_DISPLAY_MANAGER=1"
+      sudo systemctl restart display-manager.service >/dev/null 2>&1 || true
+    else
+      echo "Display manager enabled; reboot to apply without closing this terminal."
+    fi
     return
   fi
 
   for service in lightdm.service wayfire.service gdm3.service sddm.service; do
     if systemctl list-unit-files "$service" 2>/dev/null | grep -q "^$service"; then
       sudo systemctl enable "$service" >/dev/null 2>&1 || true
-      sudo systemctl restart "$service" >/dev/null 2>&1 || true
+      if [ "$RESTART_DISPLAY_MANAGER" = "1" ]; then
+        echo "Restarting $service because RESTART_DISPLAY_MANAGER=1"
+        sudo systemctl restart "$service" >/dev/null 2>&1 || true
+      else
+        echo "$service enabled; reboot to apply without closing this terminal."
+      fi
       return
     fi
   done

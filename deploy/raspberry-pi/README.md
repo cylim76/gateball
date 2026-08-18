@@ -36,6 +36,11 @@ under the correct desktop user. If you accidentally run it through `sudo`, the
 installer now falls back to `SUDO_USER` so the service and desktop autostart
 still target the real Raspberry Pi desktop user.
 
+The installer does not restart the display manager by default, because that can
+close the current desktop terminal before the script finishes. Reboot after
+installation. If you deliberately want an immediate display-manager restart, run
+`RESTART_DISPLAY_MANAGER=1 ./install.sh`.
+
 If the project is installed somewhere else, run:
 
 ```bash
