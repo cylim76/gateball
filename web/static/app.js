@@ -215,6 +215,11 @@ const rfSlotTabs = [
 ];
 const rfBindableActions = keyBindingSpecs.filter((spec) => spec.id !== "finish_cancel");
 let activeRfTab = "rf1";
+const rfReceiverTypeLabels = {
+  gpio: "GPIO 接收器",
+  serial: "USB 串口接收器",
+  keyboard: "USB 键盘/HID",
+};
 const VOICE_PROFILES = ["female", "male", "ko-female", "ko-male"];
 const isKioskMode = new URLSearchParams(window.location.search).get("kiosk") === "1";
 
@@ -2038,14 +2043,30 @@ function renderRfSettings() {
   const layout = document.querySelector("[data-rf-layout]");
   if (!layout) return;
   if (!rfSlotTabs.some((tab) => tab.id === activeRfTab)) activeRfTab = "rf1";
+  const receiverType = currentState.rfReceiverType || "gpio";
   layout.innerHTML = `
     <form class="settings-form rf-settings-form rf-receiver-form" data-rf-settings-form>
       <div class="rf-receiver-row">
-        ${renderSwitchControl("rfRemoteEnabled", Boolean(currentState.rfRemoteEnabled), "启用射频接收")}
+        ${renderSwitchControl("rfRemoteEnabled", Boolean(currentState.rfRemoteEnabled), "启用外部接收")}
         <label>
+          接收方式
+          <select name="rfReceiverType" data-rf-receiver-type>
+            ${Object.entries(rfReceiverTypeLabels).map(([value, label]) => `
+              <option value="${escapeHtml(value)}" ${receiverType === value ? "selected" : ""}>${escapeHtml(label)}</option>
+            `).join("")}
+          </select>
+        </label>
+        <label class="rf-receiver-field ${receiverType === "gpio" ? "" : "hidden"}" data-rf-receiver-field="gpio">
           接收 GPIO
           <input name="rfReceiverGpio" type="number" min="2" max="27" step="1" value="${escapeHtml(currentState.rfReceiverGpio || 27)}">
         </label>
+        <label class="rf-receiver-field ${receiverType === "serial" ? "" : "hidden"}" data-rf-receiver-field="serial">
+          USB 串口设备
+          <input name="rfReceiverSerialDevice" autocomplete="off" placeholder="/dev/ttyUSB0 或 /dev/serial/by-id/..." value="${escapeHtml(currentState.rfReceiverSerialDevice || "")}">
+        </label>
+        <div class="rf-receiver-note ${receiverType === "keyboard" ? "" : "hidden"}" data-rf-receiver-field="keyboard">
+          USB 键盘/HID 接收器会被系统当成键盘，按键请在“小键盘”页签里映射。
+        </div>
         <button class="primary" type="submit">保存接收设置</button>
       </div>
       <strong data-rf-save-result></strong>
@@ -2215,7 +2236,9 @@ function collectRfSettingsPayload(form) {
   return {
     action: "update_rf_settings",
     rfRemoteEnabled: form.rfRemoteEnabled.checked,
+    rfReceiverType: form.rfReceiverType.value || "gpio",
     rfReceiverGpio: form.rfReceiverGpio.value,
+    rfReceiverSerialDevice: form.rfReceiverSerialDevice.value.trim(),
     _resultSelector: "[data-rf-save-result]",
   };
 }
@@ -2284,6 +2307,13 @@ function clearRfBindingRow(row) {
   delete row.dataset.rfLabel;
   const value = row.querySelector("[data-rf-binding-value]");
   if (value) value.textContent = "未学习";
+}
+
+function updateRfReceiverFields(form) {
+  const receiverType = form?.rfReceiverType?.value || "gpio";
+  form?.querySelectorAll?.("[data-rf-receiver-field]").forEach((field) => {
+    field.classList.toggle("hidden", field.dataset.rfReceiverField !== receiverType);
+  });
 }
 
 function previewScoreboardStyle(form) {
@@ -3517,6 +3547,11 @@ document.addEventListener("change", (event) => {
   const musicControl = event.target.closest("input[name='musicEnabled'], input[name='musicAutoPlayDuringMatch'], input[name='musicStopWhenMatchEnds'], input[name='musicDuckDuringSpeech'], select[name='selectedMusicTrack'], select[name='musicMode']");
   if (musicControl) {
     previewMusicSettings(musicControl.form);
+    return;
+  }
+  const rfReceiverType = event.target.closest("select[name='rfReceiverType']");
+  if (rfReceiverType) {
+    updateRfReceiverFields(rfReceiverType.form);
     return;
   }
   const yearSelect = event.target.closest("[data-results-year]");

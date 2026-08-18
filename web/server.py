@@ -5,6 +5,7 @@ import json
 import mimetypes
 import os
 import re
+import select
 import subprocess
 from threading import RLock, Thread
 import time
@@ -256,7 +257,9 @@ def default_rf_remote_slots() -> list[dict]:
 DEFAULT_STATE.update(
     {
         "rfRemoteEnabled": False,
+        "rfReceiverType": "gpio",
         "rfReceiverGpio": 27,
+        "rfReceiverSerialDevice": "",
         "rfRemoteModel": "gateball-10key",
         "rfRemotes": [],
         "rfRemoteSlots": default_rf_remote_slots(),
@@ -391,6 +394,9 @@ class Store:
             self.state["musicPlaying"] = False
         if not isinstance(self.state.get("rfRemotes"), list):
             self.state["rfRemotes"] = []
+        if self.state.get("rfReceiverType") not in {"gpio", "serial", "keyboard"}:
+            self.state["rfReceiverType"] = "gpio"
+        self.state["rfReceiverSerialDevice"] = str(self.state.get("rfReceiverSerialDevice") or "").strip()[:160]
         self.normalize_rf_remote_slots()
         if not isinstance(self.state.get("rfLastSignal"), dict):
             self.state["rfLastSignal"] = None
@@ -689,11 +695,14 @@ class Store:
                 message = "密码错误"
             else:
                 self.state["rfRemoteEnabled"] = bool(payload.get("rfRemoteEnabled"))
+                receiver_type = str(payload.get("rfReceiverType") or self.state.get("rfReceiverType") or "gpio")
+                self.state["rfReceiverType"] = receiver_type if receiver_type in {"gpio", "serial", "keyboard"} else "gpio"
                 try:
                     gpio = int(payload.get("rfReceiverGpio", self.state.get("rfReceiverGpio", 27)))
                     self.state["rfReceiverGpio"] = min(27, max(2, gpio))
                 except (TypeError, ValueError):
                     pass
+                self.state["rfReceiverSerialDevice"] = str(payload.get("rfReceiverSerialDevice") or "").strip()[:160]
                 model = str(payload.get("rfRemoteModel") or "gateball-10key")
                 self.state["rfRemoteModel"] = model if model in RF_REMOTE_MODELS else "gateball-10key"
                 message = "RF remote settings saved"
@@ -1144,65 +1153,147 @@ def split_rf_code(code: object) -> tuple[str, str]:
     return text[:-1], text[-1]
 
 
-def rf_listener_loop() -> None:
-    try:
-        from rpi_rf import RFDevice  # type: ignore
-    except ImportError:
-        print("RF listener disabled: rpi-rf is not installed")
-        return
+def rf_payload_from_code(code: object, *, address: str = "", button: str = "") -> dict:
+    raw = str(code).strip()
+    if not address and not button:
+        address, button = split_rf_code(raw)
+    return {
+        "action": "simulate_rf_signal",
+        "raw": raw,
+        "address": str(address or "").strip(),
+        "button": str(button or "").strip(),
+    }
 
+
+def rf_payload_from_serial_line(line: str) -> dict | None:
+    text = line.strip()
+    if not text:
+        return None
+    if text.startswith("{"):
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            data = {}
+        raw = data.get("raw") or data.get("code") or data.get("value") or ""
+        if raw or data.get("address") or data.get("button"):
+            return rf_payload_from_code(raw, address=str(data.get("address") or ""), button=str(data.get("button") or ""))
+    parts = re.split(r"[:：,\s]+", text)
+    parts = [part for part in parts if part]
+    if len(parts) >= 2:
+        return rf_payload_from_code(text, address=parts[0], button=" ".join(parts[1:]))
+    return rf_payload_from_code(text)
+
+
+def cleanup_rf_device(device: object | None) -> None:
+    if not device:
+        return
+    cleanup = getattr(device, "cleanup", None)
+    close = getattr(device, "close", None)
+    try:
+        if callable(cleanup):
+            cleanup()
+        elif callable(close):
+            close()
+    except Exception:
+        pass
+
+
+def rf_listener_loop() -> None:
     rfdevice = None
+    serial_file = None
+    rf_device_class = None
+    rpi_rf_missing_logged = False
     active_gpio = None
+    active_serial_device = ""
+    active_mode = ""
     last_timestamp = None
     last_code = None
     last_at = 0.0
     while True:
         try:
             enabled = bool(store.state.get("rfRemoteEnabled"))
+            receiver_type = str(store.state.get("rfReceiverType") or "gpio")
             gpio = int(store.state.get("rfReceiverGpio", 27))
-            if not enabled:
-                if rfdevice:
-                    rfdevice.cleanup()
+            serial_device = str(store.state.get("rfReceiverSerialDevice") or "").strip()
+            if not enabled or receiver_type == "keyboard":
+                if rfdevice or serial_file:
+                    cleanup_rf_device(rfdevice)
+                    cleanup_rf_device(serial_file)
                     rfdevice = None
+                    serial_file = None
                     active_gpio = None
+                    active_serial_device = ""
+                    active_mode = ""
                     print("RF listener paused")
                 time.sleep(1.0)
                 continue
-            if rfdevice is None or active_gpio != gpio:
+            if receiver_type == "gpio":
+                if rf_device_class is None:
+                    try:
+                        from rpi_rf import RFDevice  # type: ignore
+                        rf_device_class = RFDevice
+                    except ImportError:
+                        if not rpi_rf_missing_logged:
+                            print("RF GPIO listener disabled: rpi-rf is not installed")
+                            rpi_rf_missing_logged = True
+                        time.sleep(5.0)
+                        continue
+                if serial_file:
+                    cleanup_rf_device(serial_file)
+                    serial_file = None
+                    active_serial_device = ""
+                if rfdevice is None or active_mode != "gpio" or active_gpio != gpio:
+                    cleanup_rf_device(rfdevice)
+                    rfdevice = rf_device_class(gpio)
+                    rfdevice.enable_rx()
+                    active_mode = "gpio"
+                    active_gpio = gpio
+                    last_timestamp = None
+                    print(f"RF GPIO listener active on BCM GPIO {gpio}")
+                timestamp = rfdevice.rx_code_timestamp
+                if timestamp and timestamp != last_timestamp:
+                    last_timestamp = timestamp
+                    now = time.monotonic()
+                    code = rfdevice.rx_code
+                    if code != last_code or (now - last_at) >= 0.3:
+                        store.action(rf_payload_from_code(code))
+                        last_code = code
+                        last_at = now
+                time.sleep(0.01)
+                continue
+            if receiver_type == "serial":
                 if rfdevice:
-                    rfdevice.cleanup()
-                rfdevice = RFDevice(gpio)
-                rfdevice.enable_rx()
-                active_gpio = gpio
-                last_timestamp = None
-                print(f"RF listener active on BCM GPIO {gpio}")
-            timestamp = rfdevice.rx_code_timestamp
-            if timestamp and timestamp != last_timestamp:
-                last_timestamp = timestamp
-                now = time.monotonic()
-                code = rfdevice.rx_code
-                if code != last_code or (now - last_at) >= 0.3:
-                    address, button = split_rf_code(code)
-                    store.action(
-                        {
-                            "action": "simulate_rf_signal",
-                            "raw": str(code),
-                            "address": address,
-                            "button": button,
-                        }
-                    )
-                    last_code = code
-                    last_at = now
-            time.sleep(0.01)
+                    cleanup_rf_device(rfdevice)
+                    rfdevice = None
+                active_gpio = None
+                if not serial_device:
+                    cleanup_rf_device(serial_file)
+                    serial_file = None
+                    active_serial_device = ""
+                    time.sleep(1.0)
+                    continue
+                if serial_file is None or active_mode != "serial" or active_serial_device != serial_device:
+                    cleanup_rf_device(serial_file)
+                    serial_file = open(serial_device, "r", encoding="utf-8", errors="replace", buffering=1)
+                    active_mode = "serial"
+                    active_serial_device = serial_device
+                    print(f"RF serial listener active on {serial_device}")
+                readable, _, _ = select.select([serial_file], [], [], 0.25)
+                if readable:
+                    payload = rf_payload_from_serial_line(serial_file.readline())
+                    if payload:
+                        store.action(payload)
+                continue
+            time.sleep(1.0)
         except Exception as exc:
             print(f"RF listener error: {exc}")
-            try:
-                if rfdevice:
-                    rfdevice.cleanup()
-            except Exception:
-                pass
+            cleanup_rf_device(rfdevice)
+            cleanup_rf_device(serial_file)
             rfdevice = None
+            serial_file = None
             active_gpio = None
+            active_serial_device = ""
+            active_mode = ""
             time.sleep(3.0)
 
 

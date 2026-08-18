@@ -2584,6 +2584,22 @@ body.scoreboard.finish-summary-active .celebration-canvas {
   gap: 10px;
 }
 
+.rf-receiver-field.hidden,
+.rf-receiver-note.hidden {
+  display: none;
+}
+
+.rf-receiver-note {
+  align-self: center;
+  padding: 10px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #ddd;
+  background: #111;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .switch-control {
   display: flex;
   align-items: center;
