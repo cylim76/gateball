@@ -18,6 +18,12 @@ from dataclasses import dataclass
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="433MHz GPIO hex code test")
     parser.add_argument("--gpio", type=int, required=True, help="BCM GPIO number connected to receiver DATA")
+    parser.add_argument(
+        "--backend",
+        choices=("auto", "rpi-rf", "lgpio", "rpi-gpio"),
+        default="auto",
+        help="GPIO backend. Use lgpio to bypass rpi-rf and decode raw GPIO edges.",
+    )
     parser.add_argument("--debounce-ms", type=int, default=300, help="Ignore repeated decoded codes in this window")
     parser.add_argument("--gap-us", type=int, default=6000, help="Pulse gap that marks a raw frame boundary")
     parser.add_argument("--min-pulses", type=int, default=24, help="Minimum raw pulses before printing fallback data")
@@ -151,7 +157,7 @@ def print_decoded_frame(frame: Frame, *, prefix: str, debounce_ms: int, state: d
     print(
         f"{prefix} code=0x{frame.code:06X} hex={int_to_hex_bytes(frame.code)} "
         f"address=0x{address:04X} button=0x{button:02X} "
-        f"short≈{frame.short_us:.0f}us long≈{frame.long_us:.0f}us",
+        f"short_us={frame.short_us:.0f} long_us={frame.long_us:.0f}",
         flush=True,
     )
     state["last_code"] = frame.code
@@ -314,17 +320,18 @@ def run_rpi_gpio(gpio: int, gap_us: int, min_pulses: int) -> bool:
 def main() -> int:
     args = parse_args()
     print(f"GPIO: BCM {args.gpio}")
+    print(f"Backend: {args.backend}")
     print(f"Decimal text hex example: {text_to_hex_bytes(str(args.gpio))}")
-    if run_rpi_rf(args.gpio, args.debounce_ms):
+    if args.backend in ("auto", "rpi-rf") and run_rpi_rf(args.gpio, args.debounce_ms):
         return 0
-    if run_lgpio(args.gpio, args.gap_us, args.min_pulses):
+    if args.backend in ("auto", "lgpio") and run_lgpio(args.gpio, args.gap_us, args.min_pulses):
         return 0
-    if run_rpi_gpio(args.gpio, args.gap_us, args.min_pulses):
+    if args.backend in ("auto", "rpi-gpio") and run_rpi_gpio(args.gpio, args.gap_us, args.min_pulses):
         return 0
     print("No supported library found.")
-    print("Install decoder: sudo apt install -y python3-pip python3-rpi.gpio")
+    print("Install decoder: sudo apt install -y python3-pip python3-rpi.gpio python3-lgpio")
     print("Then: sudo python3 -m pip install rpi-rf --break-system-packages")
-    print("Or raw pulse fallback: sudo apt install -y python3-lgpio")
+    print("For Windows-like GPIO edge decoding, run: python3 rf_hex_test.py --gpio 17 --backend lgpio")
     return 1
 
 

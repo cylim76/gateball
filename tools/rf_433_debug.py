@@ -22,6 +22,12 @@ from urllib import request
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Debug 433MHz RF remote codes")
     parser.add_argument("--gpio", type=int, default=27, help="BCM GPIO number connected to receiver DATA")
+    parser.add_argument(
+        "--backend",
+        choices=("auto", "rpi-rf", "lgpio", "rpi-gpio"),
+        default="auto",
+        help="GPIO backend. Use lgpio to bypass rpi-rf.",
+    )
     parser.add_argument("--debounce-ms", type=int, default=300, help="Ignore duplicate decoded codes within this window")
     parser.add_argument("--gap-us", type=int, default=6000, help="Pulse gap that marks the end of a fallback frame")
     parser.add_argument("--min-pulses", type=int, default=24, help="Minimum fallback pulses before a frame is printed")
@@ -197,11 +203,11 @@ def run_rpi_gpio(gpio: int, gap_us: int, min_pulses: int) -> bool:
 
 def main() -> int:
     args = parse_args()
-    if run_rpi_rf(args.gpio, args.debounce_ms, args.post_url):
+    if args.backend in ("auto", "rpi-rf") and run_rpi_rf(args.gpio, args.debounce_ms, args.post_url):
         return 0
-    if run_lgpio(args.gpio, args.gap_us, args.min_pulses):
+    if args.backend in ("auto", "lgpio") and run_lgpio(args.gpio, args.gap_us, args.min_pulses):
         return 0
-    if run_rpi_gpio(args.gpio, args.gap_us, args.min_pulses):
+    if args.backend in ("auto", "rpi-gpio") and run_rpi_gpio(args.gpio, args.gap_us, args.min_pulses):
         return 0
     print("No supported GPIO library found. Try: pip install rpi-rf or sudo apt install python3-lgpio")
     return 1
