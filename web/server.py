@@ -715,8 +715,10 @@ class Store:
         return normalized
 
     def record_rf_signal(self, *, raw: str, address: str, button: str, remote: dict | None, action_id: str, status: str) -> None:
+        now = time.time()
         self.state["rfLastSignal"] = {
-            "id": f"{time.time():.6f}",
+            "id": f"{now:.6f}",
+            "receivedAt": now,
             "raw": raw,
             "address": address,
             "button": button,

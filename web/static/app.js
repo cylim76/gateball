@@ -120,6 +120,7 @@ let settingsSaveInFlight = false;
 let keyCaptureAction = "";
 let pendingRfLearn = null;
 let rfLearnPollTimer = null;
+let rfLearnTimeoutTimer = null;
 let rfDraftBindings = {};
 let alertPromptAudio = null;
 let errorPromptAudio = null;
@@ -2085,6 +2086,25 @@ function clearRfLearnPolling() {
   rfLearnPollTimer = null;
 }
 
+function clearRfLearnTimeout() {
+  if (!rfLearnTimeoutTimer) return;
+  window.clearTimeout(rfLearnTimeoutTimer);
+  rfLearnTimeoutTimer = null;
+}
+
+function cancelPendingRfLearn(message = "学习已取消") {
+  if (!pendingRfLearn) return;
+  const row = Array.from(document.querySelectorAll("[data-rf-binding-row]")).find((item) => (
+    item.dataset.slotId === pendingRfLearn.slotId && item.dataset.rfActionId === pendingRfLearn.actionId
+  ));
+  const value = row?.querySelector("[data-rf-binding-value]");
+  if (value && row) value.textContent = rfBindingText(draftBindingFor(row.dataset.slotId, row.dataset.rfActionId, null));
+  pendingRfLearn = null;
+  clearRfLearnPolling();
+  clearRfLearnTimeout();
+  setRfResult(message);
+}
+
 function startRfLearnPolling() {
   clearRfLearnPolling();
   rfLearnPollTimer = window.setInterval(async () => {
@@ -2099,6 +2119,13 @@ function startRfLearnPolling() {
       return;
     }
   }, 500);
+}
+
+function startRfLearnTimeout() {
+  clearRfLearnTimeout();
+  rfLearnTimeoutTimer = window.setTimeout(() => {
+    cancelPendingRfLearn("10秒内没有收到信号，已取消学习");
+  }, 10000);
 }
 
 function receiverSettingsSavedForLearning() {
@@ -2162,7 +2189,6 @@ function renderRfSettings() {
       </div>
       <strong data-rf-save-result></strong>
     </form>
-    <div class="rf-last-signal" data-rf-last-signal>最近信号：未接收</div>
     <div class="rf-device-tabs">
       ${rfSlotTabs.map((tab) => `
         <button class="rf-device-tab ${activeRfTab === tab.id ? "active" : ""}" type="button" data-action="rf-device-tab" data-rf-tab="${tab.id}">${escapeHtml(tab.label)}</button>
@@ -2170,7 +2196,6 @@ function renderRfSettings() {
     </div>
     <div class="rf-device-panel" data-rf-device-panel></div>
   `;
-  renderRfLastSignal();
   renderRfDevicePanel();
   consumePendingRfLearn();
 }
@@ -2320,30 +2345,20 @@ function renderRfDevicePanel() {
   `;
 }
 
-function renderRfLastSignal() {
-  const element = document.querySelector("[data-rf-last-signal]");
-  if (!element) return;
-  const signal = currentState?.rfLastSignal;
-  if (!signal) {
-    element.textContent = "最近信号：未接收";
-    return;
-  }
-  const action = rfActionLabels[signal.action] || signal.action || "-";
-  const status = rfStatusLabels[signal.status] || signal.status || "-";
-  element.textContent = `最近信号：${rfCodeDisplay(signal)} / 遥控器 ${signal.remoteName || "未识别"} / 动作 ${action} / ${status}`;
-}
-
 function consumePendingRfLearn() {
   if (!pendingRfLearn) return;
   const signal = currentState?.rfLastSignal;
   const key = rfSignalKey(signal);
   if (!key || key === pendingRfLearn.startedSignalKey) return;
   if (!signal?.address && !signal?.button && !signal?.raw) return;
+  const signalAt = Number.parseFloat(signal.receivedAt ?? signal.id ?? "");
+  if (Number.isFinite(signalAt) && signalAt < pendingRfLearn.acceptAfter) return;
   activeRfTab = pendingRfLearn.slotId;
   renderRfDevicePanel();
   const row = Array.from(document.querySelectorAll("[data-rf-binding-row]")).find((item) => (
     item.dataset.slotId === pendingRfLearn.slotId && item.dataset.rfActionId === pendingRfLearn.actionId
   ));
+  if (!row) return;
   const binding = {
     raw: signal.raw || [signal.address, signal.button].filter(Boolean).join(":"),
     address: signal.address || "",
@@ -2353,6 +2368,7 @@ function consumePendingRfLearn() {
   setRfBindingRow(row, binding);
   pendingRfLearn = null;
   clearRfLearnPolling();
+  clearRfLearnTimeout();
   setRfResult("已学习，点击保存后生效");
 }
 
@@ -3172,7 +3188,7 @@ async function trySavePendingSettings() {
       currentState = result.state;
       if (payload.action === "update_rf_remote_slot" || payload.action === "clear_rf_remote_slot") {
         delete rfDraftBindings[payload.slotId || activeRfTab];
-        if (pendingRfLearn?.slotId === (payload.slotId || activeRfTab)) pendingRfLearn = null;
+        if (pendingRfLearn?.slotId === (payload.slotId || activeRfTab)) cancelPendingRfLearn("学习已取消");
       }
       if (payload.action === "delete_music_item") {
         musicTracksLoaded = false;
@@ -3484,7 +3500,7 @@ document.addEventListener("click", (event) => {
   if (action === "select-wifi") return selectWifiNetwork(target);
   if (action === "connect-wifi") return connectSelectedWifi();
   if (action === "capture-key-binding") {
-    pendingRfLearn = null;
+    cancelPendingRfLearn("学习已取消");
     if ((currentState?.rfReceiverType || "gpio") !== "keyboard") {
       setRfResult("请先把接收方式切换为 USB 键盘/HID，再学习小键盘");
       return;
@@ -3501,17 +3517,26 @@ document.addEventListener("click", (event) => {
       slotId: target.dataset.slotId || activeRfTab,
       actionId: target.dataset.rfActionId || row?.dataset.rfActionId || "",
       startedSignalKey: rfSignalKey(currentState?.rfLastSignal),
+      acceptAfter: Date.now() / 1000 + 0.35,
     };
     const value = row?.querySelector("[data-rf-binding-value]");
-    if (value) value.textContent = "等待遥控器信号...";
-    setRfResult("请按下遥控器按键，收到信号后会自动填入");
+    if (value) value.textContent = "准备接收...";
+    setRfResult("请松开遥控器后再按目标按键，收到新信号后会自动填入");
+    window.setTimeout(() => {
+      if (!pendingRfLearn) return;
+      const activeRow = Array.from(document.querySelectorAll("[data-rf-binding-row]")).find((item) => (
+        item.dataset.slotId === pendingRfLearn.slotId && item.dataset.rfActionId === pendingRfLearn.actionId
+      ));
+      const activeValue = activeRow?.querySelector("[data-rf-binding-value]");
+      if (activeValue) activeValue.textContent = "等待遥控器信号...";
+    }, 350);
     startRfLearnPolling();
+    startRfLearnTimeout();
     return;
   }
   if (action === "clear-rf-binding") {
     if (pendingRfLearn?.slotId === (target.dataset.slotId || activeRfTab)) {
-      pendingRfLearn = null;
-      clearRfLearnPolling();
+      cancelPendingRfLearn("学习已取消");
     }
     clearRfBindingRow(target.closest("[data-rf-binding-row]"));
     setRfResult("已清除，点击保存后生效");

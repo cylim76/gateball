@@ -2652,8 +2652,7 @@ body.scoreboard.finish-summary-active .celebration-canvas {
   gap: 10px;
 }
 
-.rf-empty,
-.rf-last-signal {
+.rf-empty {
   padding: 12px;
   border: 1px solid #333;
   border-radius: 6px;
