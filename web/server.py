@@ -784,6 +784,12 @@ class Store:
         if action == "simulate_rf_signal":
             return self.handle_rf_signal(payload)
 
+        if action == "clear_rf_last_signal":
+            self.state["rfLastSignal"] = None
+            self.save()
+            self.emit()
+            return {"ok": True, "message": "RF signal cleared", "state": self.snapshot()}
+
         if action == "update_rf_settings":
             if payload.get("password") != self.state["settingsPassword"]:
                 message = "密码错误"

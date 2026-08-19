@@ -2128,6 +2128,42 @@ function startRfLearnTimeout() {
   }, 10000);
 }
 
+async function beginRfBindingLearn(target) {
+  keyCaptureAction = "";
+  if (!receiverSettingsSavedForLearning()) return;
+  const row = target.closest("[data-rf-binding-row]");
+  const slotId = target.dataset.slotId || activeRfTab;
+  const actionId = target.dataset.rfActionId || row?.dataset.rfActionId || "";
+  const value = row?.querySelector("[data-rf-binding-value]");
+  if (value) value.textContent = "准备接收...";
+  setRfResult("正在清空旧信号...");
+  try {
+    const result = await sendAction({ action: "clear_rf_last_signal" }, false);
+    if (result?.state) currentState = result.state;
+  } catch (error) {
+    setRfResult("清空旧信号失败，请重试", true);
+    return;
+  }
+  pendingRfLearn = {
+    slotId,
+    actionId,
+    startedSignalKey: "",
+    acceptAfter: serverNowSeconds() + 0.25,
+  };
+  renderRfDevicePanel();
+  setRfResult("请松开遥控器后再按目标按键，收到新信号后会自动填入");
+  window.setTimeout(() => {
+    if (!pendingRfLearn) return;
+    const activeRow = Array.from(document.querySelectorAll("[data-rf-binding-row]")).find((item) => (
+      item.dataset.slotId === pendingRfLearn.slotId && item.dataset.rfActionId === pendingRfLearn.actionId
+    ));
+    const activeValue = activeRow?.querySelector("[data-rf-binding-value]");
+    if (activeValue) activeValue.textContent = "等待遥控器信号...";
+  }, 250);
+  startRfLearnPolling();
+  startRfLearnTimeout();
+}
+
 function receiverSettingsSavedForLearning() {
   const form = document.querySelector("[data-rf-settings-form]");
   if (!form || !currentState) return true;
@@ -2363,8 +2399,6 @@ function consumePendingRfLearn() {
   if (!signal?.address && !signal?.button && !signal?.raw) return;
   const signalAt = Number.parseFloat(signal.receivedAt ?? signal.id ?? "");
   if (Number.isFinite(signalAt) && signalAt < pendingRfLearn.acceptAfter) return;
-  const signalRaw = rfCodeParts(signal).raw;
-  if (signalRaw && signalRaw === pendingRfLearn.startedRaw && Number.isFinite(signalAt) && signalAt < pendingRfLearn.ignoreSameUntil) return;
   activeRfTab = pendingRfLearn.slotId;
   renderRfDevicePanel();
   const row = Array.from(document.querySelectorAll("[data-rf-binding-row]")).find((item) => (
@@ -3522,32 +3556,7 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (action === "learn-rf-binding") {
-    keyCaptureAction = "";
-    if (!receiverSettingsSavedForLearning()) return;
-    const row = target.closest("[data-rf-binding-row]");
-    const currentSignal = currentState?.rfLastSignal;
-    const now = serverNowSeconds();
-    pendingRfLearn = {
-      slotId: target.dataset.slotId || activeRfTab,
-      actionId: target.dataset.rfActionId || row?.dataset.rfActionId || "",
-      startedSignalKey: rfSignalKey(currentSignal),
-      startedRaw: rfCodeParts(currentSignal).raw,
-      acceptAfter: now + 0.35,
-      ignoreSameUntil: now + 1.2,
-    };
-    const value = row?.querySelector("[data-rf-binding-value]");
-    if (value) value.textContent = "准备接收...";
-    setRfResult("请松开遥控器后再按目标按键，收到新信号后会自动填入");
-    window.setTimeout(() => {
-      if (!pendingRfLearn) return;
-      const activeRow = Array.from(document.querySelectorAll("[data-rf-binding-row]")).find((item) => (
-        item.dataset.slotId === pendingRfLearn.slotId && item.dataset.rfActionId === pendingRfLearn.actionId
-      ));
-      const activeValue = activeRow?.querySelector("[data-rf-binding-value]");
-      if (activeValue) activeValue.textContent = "等待遥控器信号...";
-    }, 350);
-    startRfLearnPolling();
-    startRfLearnTimeout();
+    beginRfBindingLearn(target);
     return;
   }
   if (action === "clear-rf-binding") {
