@@ -1,9 +1,8 @@
 # Gateball Scoreboard Prototypes
 
-This workspace contains two small prototypes for comparing implementation paths:
+This workspace contains the browser-based gateball scoreboard used for Raspberry Pi kiosk deployment:
 
 - `web/`: browser/kiosk version for Raspberry Pi, with scoreboard, phone remote, settings, and local persistence.
-- `pyside6/`: native desktop version for keyboard-control comparison.
 
 ## Web Prototype
 
@@ -42,17 +41,3 @@ deploy/raspberry-pi/README.md
 The deployment module installs a systemd backend service with automatic restart
 and a desktop autostart entry that opens the scoreboard in full-screen kiosk
 mode.
-
-## PySide6 Prototype
-
-Install dependency:
-
-```powershell
-python -m pip install -r pyside6/requirements.txt
-```
-
-Run:
-
-```powershell
-python pyside6/main.py
-```
