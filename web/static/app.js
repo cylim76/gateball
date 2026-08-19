@@ -2269,6 +2269,15 @@ function rfCodeDisplay(source) {
   return [remotePart, buttonPart, rawPart].filter(Boolean).join(" / ");
 }
 
+function serverNowSeconds() {
+  return Number(currentState?.serverTime) || Date.now() / 1000;
+}
+
+function pendingRfLearnText(slotId, actionId) {
+  if (!pendingRfLearn || pendingRfLearn.slotId !== slotId || pendingRfLearn.actionId !== actionId) return "";
+  return serverNowSeconds() < pendingRfLearn.acceptAfter ? "准备接收..." : "等待遥控器信号...";
+}
+
 function draftBindingFor(slotId, actionId, savedBinding) {
   const slotDraft = rfDraftBindings[slotId];
   if (!slotDraft || !(actionId in slotDraft)) return savedBinding;
@@ -2329,10 +2338,11 @@ function renderRfDevicePanel() {
       <div class="rf-action-list">
         ${rfBindableActions.map((spec) => {
           const binding = draftBindingFor(slot.id, spec.id, slot.bindings[spec.id]);
+          const learningText = pendingRfLearnText(slot.id, spec.id);
           return `
             <div class="rf-action-row" data-rf-binding-row data-slot-id="${escapeHtml(slot.id)}" data-rf-action-id="${escapeHtml(spec.id)}" ${rfBindingDataAttributes(binding)}>
               <span class="rf-action-name">${escapeHtml(spec.name)}</span>
-              <span class="rf-binding-value" data-rf-binding-value>${escapeHtml(rfBindingText(binding))}</span>
+              <span class="rf-binding-value" data-rf-binding-value>${escapeHtml(learningText || rfBindingText(binding))}</span>
               <button class="secondary" type="button" data-action="learn-rf-binding" data-slot-id="${escapeHtml(slot.id)}" data-rf-action-id="${escapeHtml(spec.id)}">学习</button>
               <button class="secondary" type="button" data-action="clear-rf-binding" data-rf-action-id="${escapeHtml(spec.id)}">清除</button>
             </div>
@@ -2353,6 +2363,8 @@ function consumePendingRfLearn() {
   if (!signal?.address && !signal?.button && !signal?.raw) return;
   const signalAt = Number.parseFloat(signal.receivedAt ?? signal.id ?? "");
   if (Number.isFinite(signalAt) && signalAt < pendingRfLearn.acceptAfter) return;
+  const signalRaw = rfCodeParts(signal).raw;
+  if (signalRaw && signalRaw === pendingRfLearn.startedRaw && Number.isFinite(signalAt) && signalAt < pendingRfLearn.ignoreSameUntil) return;
   activeRfTab = pendingRfLearn.slotId;
   renderRfDevicePanel();
   const row = Array.from(document.querySelectorAll("[data-rf-binding-row]")).find((item) => (
@@ -3513,11 +3525,15 @@ document.addEventListener("click", (event) => {
     keyCaptureAction = "";
     if (!receiverSettingsSavedForLearning()) return;
     const row = target.closest("[data-rf-binding-row]");
+    const currentSignal = currentState?.rfLastSignal;
+    const now = serverNowSeconds();
     pendingRfLearn = {
       slotId: target.dataset.slotId || activeRfTab,
       actionId: target.dataset.rfActionId || row?.dataset.rfActionId || "",
-      startedSignalKey: rfSignalKey(currentState?.rfLastSignal),
-      acceptAfter: Date.now() / 1000 + 0.35,
+      startedSignalKey: rfSignalKey(currentSignal),
+      startedRaw: rfCodeParts(currentSignal).raw,
+      acceptAfter: now + 0.35,
+      ignoreSameUntil: now + 1.2,
     };
     const value = row?.querySelector("[data-rf-binding-value]");
     if (value) value.textContent = "准备接收...";
