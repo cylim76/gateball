@@ -33,7 +33,14 @@ RESULTS_DB_FILE = ROOT / "data" / "gateball.sqlite3"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 TEAM_NAME_AUDIO_DIR = STATIC_DIR / "audio" / "team-names"
 PROJECT_MUSIC_DIR = STATIC_DIR / "audio" / "music"
-EXTERNAL_MUSIC_DIRS = [Path("/home/lucas/gateball-music"), Path.home() / "gateball-music"]
+EXTERNAL_MUSIC_DIRS = [
+    Path("/home/lucas/gateball-music"),
+    Path.home() / "gateball-music",
+    Path("/home/lucas/Music"),
+    Path("/home/lucas/音乐"),
+    Path.home() / "Music",
+    Path.home() / "音乐",
+]
 MUSIC_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a"}
 WEATHER_CACHE: dict = {"timestamp": 0.0, "payload": {"ok": False}}
 SELECTION_TIMEOUT_SECONDS = 30
@@ -182,13 +189,19 @@ def music_directories() -> list[tuple[str, Path]]:
     directories.append(("project", PROJECT_MUSIC_DIR))
     unique = []
     seen = set()
+    source_counts: dict[str, int] = {}
     for source, path in directories:
         resolved = path.expanduser()
-        key = str(resolved)
+        try:
+            key = str(resolved.resolve())
+        except OSError:
+            key = str(resolved)
         if key in seen:
             continue
         seen.add(key)
-        unique.append((source, resolved))
+        source_counts[source] = source_counts.get(source, 0) + 1
+        source_id = source if source_counts[source] == 1 else f"{source}-{source_counts[source]}"
+        unique.append((source_id, resolved))
     return unique
 
 
@@ -201,7 +214,7 @@ def music_directory_id(source: str, relative_path: Path) -> str:
 
 
 def music_source_label(source: str) -> str:
-    return "external" if source == "external" else "project"
+    return "external" if source.startswith("external") else "project"
 
 
 def list_music_items() -> tuple[list[dict], list[dict]]:
@@ -210,6 +223,15 @@ def list_music_items() -> tuple[list[dict], list[dict]]:
     for source, directory in music_directories():
         if not directory.exists() or not directory.is_dir():
             continue
+        items.append(
+            {
+                "id": music_directory_id(source, Path(".")),
+                "type": "directory",
+                "name": directory.name or directory.as_posix(),
+                "source": music_source_label(source),
+                "deletable": False,
+            }
+        )
         for path in sorted(directory.rglob("*")):
             if not path.is_dir():
                 continue
@@ -226,6 +248,7 @@ def list_music_items() -> tuple[list[dict], list[dict]]:
                     "type": "directory",
                     "name": relative.as_posix(),
                     "source": music_source_label(source),
+                    "deletable": True,
                 }
             )
         for path in sorted(directory.rglob("*")):
@@ -243,6 +266,7 @@ def list_music_items() -> tuple[list[dict], list[dict]]:
                 "displayName": path.stem,
                 "fileName": path.name,
                 "source": music_source_label(source),
+                "deletable": True,
                 "url": f"/api/music/file?id={quote(track_id)}",
             }
             tracks.append(track)

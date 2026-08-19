@@ -1950,8 +1950,11 @@ function updateMusicOutput(form) {
   const deleteButton = form?.querySelector?.("[data-action='delete-music-item']");
   if (deleteButton) {
     const item = musicItemForId(form.selectedMusicTrack?.value || "");
-    deleteButton.disabled = !item;
-    deleteButton.title = item ? `删除当前${item.type === "directory" ? "目录" : "音乐"}` : "请先选择音乐或目录";
+    const canDelete = Boolean(item && item.deletable !== false);
+    deleteButton.disabled = !canDelete;
+    deleteButton.title = item
+      ? (canDelete ? `删除当前${item.type === "directory" ? "目录" : "音乐"}` : "根音乐目录不能删除")
+      : "请先选择音乐或目录";
   }
 }
 
@@ -3673,7 +3676,7 @@ document.addEventListener("click", (event) => {
   if (action === "delete-music-item") {
     const form = target.closest("[data-settings-form]");
     const item = musicItemForId(form?.selectedMusicTrack?.value || "");
-    if (!item) return;
+    if (!item || item.deletable === false) return;
     const itemTypeText = item.type === "directory" ? "目录" : "音乐";
     if (!window.confirm(`确定删除当前${itemTypeText}：${item.name || item.fileName}？`)) return;
     openSettingsSavePasswordDialog({
