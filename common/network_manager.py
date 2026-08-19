@@ -85,7 +85,7 @@ def network_status(state: dict) -> dict:
         "hotspotSsid": state.get("hotspotSsid", ""),
         "hotspotPassword": state.get("hotspotPassword", ""),
         "hotspotAddress": "http://menqiu.hongxing",
-        "fallbackAddress": "http://192.168.50.1:8000",
+        "fallbackAddress": "http://192.168.1.1:8000",
         "localAddresses": local_ipv4_addresses(),
         "activeWifi": active_wifi,
         "internetOk": internet_ok,

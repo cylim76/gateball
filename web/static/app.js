@@ -144,6 +144,7 @@ let musicDuckDepth = 0;
 let lastMusicTrackId = "";
 let lastSyncedSelectedMusicTrack = "";
 let musicTestPlaying = false;
+let musicDuckingUpdateTimer = null;
 let tenSecondCountdownIntroAudio = null;
 let tenSecondCountdownAudio = null;
 let tenSecondCountdownTimer = null;
@@ -181,12 +182,12 @@ let celebrationParticles = [];
 let celebrationLastBurstAt = 0;
 let celebrationLastFrameAt = 0;
 const teamNameAudioCache = new Map();
-const guardedActions = new Set(["toggle_timer", "undo", "advance", "swap_team_names", "ten-second-countdown", "ten_second_countdown", "toggle_music"]);
+const guardedActions = new Set(["toggle_timer", "undo", "advance", "swap_team_names", "ten-second-countdown", "ten_second_countdown"]);
 const guardedActionTimes = new Map();
 const ACTION_GUARD_MS = 800;
-const TIMEOUT_AUDIO_OFFSET_MS = 5500;
+const TIMEOUT_AUDIO_OFFSET_MS = 6000;
 const READY_SPEECH_DELAY_MS = 30000;
-const FINISH_SUMMARY_TAIL_CUT_MS = 800;
+const FINISH_SUMMARY_TAIL_CUT_MS = 500;
 const MATCH_TRANSITION_HOLD_MS = 320;
 const MATCH_TRANSITION_FALLBACK_MS = 45000;
 const ERROR_PROMPT_LEAD_MS = 400;
@@ -1187,19 +1188,6 @@ function stopTenSecondCountdown(shouldNotify = true) {
   }
 }
 
-function scheduleTenSecondCountdownIntro(runId, startedAt) {
-  const countdownBeepOffsets = [0, 1000, 2000, 3000, 4000, 5000];
-  countdownBeepOffsets.forEach((offset) => {
-    const delay = Math.max(0, startedAt + offset - Date.now());
-    const timer = window.setTimeout(() => {
-      if (runId === tenSecondCountdownRunId) {
-        playTenSecondCountdownIntroAudio();
-      }
-    }, delay);
-    tenSecondCountdownIntroTimers.push(timer);
-  });
-}
-
 function startTenSecondCountdown() {
   if (tenSecondCountdownActive) {
     stopTenSecondCountdown();
@@ -1210,24 +1198,20 @@ function startTenSecondCountdown() {
   tenSecondCountdownActive = true;
   clearTenSecondCountdownTimers();
   prepareTenSecondCountdownAudio();
-  speak("倒计时10秒", () => {
+  playTenSecondCountdownIntroAudio();
+  tenSecondCountdownTimer = window.setTimeout(() => {
     if (runId !== tenSecondCountdownRunId) return;
-    const startedAt = Date.now();
-    scheduleTenSecondCountdownIntro(runId, startedAt);
-    tenSecondCountdownTimer = window.setTimeout(() => {
-      if (runId !== tenSecondCountdownRunId) return;
-      tenSecondCountdownTimer = null;
-      playTenSecondCountdownAudio();
-    }, TIMEOUT_AUDIO_OFFSET_MS);
-    window.setTimeout(() => {
-      if (runId === tenSecondCountdownRunId) {
-        tenSecondCountdownActive = false;
-        renderRemote();
-      }
-    }, 10000);
-    sendAction({ action: "ten_second_countdown" }, false).catch((error) => {
-      console.warn("10 second countdown event failed", error);
-    });
+    tenSecondCountdownTimer = null;
+    playTenSecondCountdownAudio();
+  }, TIMEOUT_AUDIO_OFFSET_MS);
+  window.setTimeout(() => {
+    if (runId === tenSecondCountdownRunId) {
+      tenSecondCountdownActive = false;
+      renderRemote();
+    }
+  }, 10000);
+  sendAction({ action: "ten_second_countdown" }, false).catch((error) => {
+    console.warn("10 second countdown event failed", error);
   });
 }
 
@@ -1618,8 +1602,6 @@ function latestSpeakableHistoryEntry() {
       "undo",
       "selection_required",
       "toggle_timer",
-      "ten_second_countdown",
-      "cancel_ten_second_countdown",
       "next_match",
       "timer_warning",
       "time_expired",
@@ -1771,7 +1753,7 @@ function renderNetworkStatus(status) {
     <div><strong>球场：</strong>${escapeHtml(status.courtName || "红星门球场1")}</div>
     <div><strong>热点：</strong>${escapeHtml(status.hotspotSsid || status.courtName || "红星门球场1")}</div>
     <div><strong>固定入口：</strong>${escapeHtml(status.hotspotAddress || "http://menqiu.hongxing")}</div>
-    <div><strong>备用地址：</strong>${escapeHtml(status.fallbackAddress || "http://192.168.50.1:8000")}</div>
+    <div><strong>备用地址：</strong>${escapeHtml(status.fallbackAddress || "http://192.168.1.1:8000")}</div>
     <div><strong>本机地址：</strong>${escapeHtml(local)}</div>
     <div><strong>外部 WiFi：</strong>${escapeHtml(status.activeWifi || "未连接")}</div>
     <div><strong>互联网：</strong>${status.internetOk ? "可用" : "不可用"}</div>
@@ -1851,7 +1833,9 @@ function musicBaseVolumeMultiplier() {
 
 function musicEffectiveVolume() {
   let volume = musicBaseVolumeMultiplier();
-  if (musicDuckDepth > 0 && currentState?.musicDuckDuringSpeech !== false) {
+  const serverDuckUntil = Number(currentState?.musicDuckingUntil || 0);
+  const serverDucking = serverDuckUntil > serverNowSeconds();
+  if ((musicDuckDepth > 0 || serverDucking) && currentState?.musicDuckDuringSpeech !== false) {
     volume *= normalizeMusicDuckPercent(currentState?.musicDuckPercent) / 100;
   }
   return Math.min(1, Math.max(0, volume));
@@ -1898,14 +1882,25 @@ function getMusicAudio() {
 }
 
 function beginSpeechAudio() {
+  if (musicDuckingUpdateTimer) {
+    window.clearTimeout(musicDuckingUpdateTimer);
+    musicDuckingUpdateTimer = null;
+  }
   musicDuckDepth += 1;
   applyMusicVolume();
+  sendAction({ action: "set_music_ducking", active: true, durationMs: 8000 }, false, { noApply: true }).catch(() => {});
 }
 
 function endSpeechAudio() {
   window.setTimeout(() => {
     musicDuckDepth = Math.max(0, musicDuckDepth - 1);
     applyMusicVolume();
+    if (musicDuckDepth <= 0) {
+      if (musicDuckingUpdateTimer) window.clearTimeout(musicDuckingUpdateTimer);
+      musicDuckingUpdateTimer = window.setTimeout(() => {
+        sendAction({ action: "set_music_ducking", active: false }, false, { noApply: true }).catch(() => {});
+      }, 80);
+    }
   }, MUSIC_DUCK_RELEASE_MS);
 }
 
@@ -3263,17 +3258,20 @@ function openFinishDialog() {
     result.textContent = "";
     result.classList.remove("error");
   }
+  sendAction({ action: "begin_finish_dialog" }, false, { noApply: true }).catch(() => {});
   window.setTimeout(() => input?.focus(), 0);
   playFinishPromptSound();
 }
 
 function closeFinishDialog() {
+  const wasOpen = finishDialogOpen;
   finishDialogOpen = false;
   finishPassword = "";
   finishVerifyInFlight = false;
   const input = document.querySelector("[data-finish-password]");
   if (input) input.value = "";
   document.querySelector("[data-finish-dialog]")?.classList.remove("open");
+  if (wasOpen) sendAction({ action: "cancel_finish_dialog" }, false, { noApply: true }).catch(() => {});
 }
 
 function openSettingsDialog() {
@@ -3362,7 +3360,10 @@ function openSettingsSavePasswordDialog(payload) {
     result.classList.remove("error");
   }
   dialog?.classList.add("open");
-  window.setTimeout(() => input?.focus(), 0);
+  window.setTimeout(() => {
+    input?.focus({ preventScroll: true });
+    input?.select?.();
+  }, 120);
 }
 
 function closeSettingsSavePasswordDialog() {
@@ -3523,6 +3524,7 @@ async function tryFinishWithPassword() {
     } else {
       finishVerifyInFlight = false;
       finishPassword = "";
+      closeFinishDialog();
       speakWithError("密码错误");
       const input = document.querySelector("[data-finish-password]");
       if (input) input.value = "";
@@ -3534,6 +3536,7 @@ async function tryFinishWithPassword() {
   } catch (error) {
     finishVerifyInFlight = false;
     finishPassword = "";
+    closeFinishDialog();
     playPromptAudio(getErrorPromptAudio(), "Error prompt");
     const input = document.querySelector("[data-finish-password]");
     if (input) input.value = "";
@@ -3850,6 +3853,10 @@ document.addEventListener("click", (event) => {
   }
   if (action === "confirm-swap-team") return confirmSwapTeam();
   if (action === "toggle_timer" && (currentState?.matchFinished || (currentState?.timeExpired && !currentState?.running))) return;
+  if (action === "swap_team_names") {
+    sendAction({ action: "swap_team_names" });
+    return;
+  }
   if (action === "toggle_music") {
     sendAction({ action: "toggle_music" }, false);
     return;

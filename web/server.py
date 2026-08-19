@@ -145,6 +145,7 @@ DEFAULT_STATE = {
     "musicDuckPercent": 30,
     "selectedMusicTrack": "",
     "musicPlaying": False,
+    "musicDuckingUntil": 0,
     "lastMusicToggleAt": 0,
     "titleColor": "#ffe23a",
     "titleFontScale": 1.0,
@@ -162,9 +163,11 @@ DEFAULT_STATE = {
 def set_system_volume_percent(percent: int) -> bool:
     percent = min(100, max(0, int(percent)))
     commands = [
+        ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{percent / 100:.2f}"],
         ["pactl", "set-sink-volume", "@DEFAULT_SINK@", f"{percent}%"],
         ["amixer", "sset", "Master", f"{percent}%"],
         ["amixer", "-D", "pulse", "sset", "Master", f"{percent}%"],
+        ["amixer", "-D", "default", "sset", "PCM", f"{percent}%"],
     ]
     for command in commands:
         try:
@@ -172,7 +175,17 @@ def set_system_volume_percent(percent: int) -> bool:
         except (OSError, subprocess.SubprocessError):
             continue
         if result.returncode == 0:
-            if command[0] == "pactl":
+            if command[0] == "wpctl":
+                try:
+                    subprocess.run(
+                        ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "1" if percent == 0 else "0"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=2,
+                    )
+                except (OSError, subprocess.SubprocessError):
+                    pass
+            elif command[0] == "pactl":
                 try:
                     subprocess.run(
                         ["pactl", "set-sink-mute", "@DEFAULT_SINK@", "1" if percent == 0 else "0"],
@@ -389,6 +402,7 @@ DEFAULT_STATE.update(
         "rfRemotes": [],
         "rfRemoteSlots": default_rf_remote_slots(),
         "rfLastSignal": None,
+        "rfFinishPasswordPending": False,
         "rfLearning": None,
         "keyboardInputEnabled": True,
     }
@@ -523,6 +537,10 @@ class Store:
             self.state["musicMode"] = "loop"
         if not self.state.get("musicEnabled") or not self.state.get("selectedMusicTrack"):
             self.state["musicPlaying"] = False
+        try:
+            self.state["musicDuckingUntil"] = max(0, float(self.state.get("musicDuckingUntil") or 0))
+        except (TypeError, ValueError):
+            self.state["musicDuckingUntil"] = 0
         if not isinstance(self.state.get("rfRemotes"), list):
             self.state["rfRemotes"] = []
         if self.state.get("rfReceiverType") not in {"gpio", "serial", "keyboard"}:
@@ -531,6 +549,8 @@ class Store:
         self.normalize_rf_remote_slots()
         if not isinstance(self.state.get("rfLastSignal"), dict):
             self.state["rfLastSignal"] = None
+        if not isinstance(self.state.get("rfFinishPasswordPending"), bool):
+            self.state["rfFinishPasswordPending"] = False
         if not isinstance(self.state.get("rfLearning"), dict):
             self.state["rfLearning"] = None
         if "selectedBallAt" not in self.state:
@@ -853,7 +873,10 @@ class Store:
             elif not action_id:
                 status = "unknown_button"
             if action_id == "finish_dialog":
+                self.state["rfFinishPasswordPending"] = True
                 status = "finish_requires_password"
+            elif self.state.get("rfFinishPasswordPending") and re.fullmatch(r"ball_(?:[1-9]|10)", action_id or ""):
+                status = "finish_password_digit"
             elif action_id in RF_ACTION_PAYLOADS:
                 status = "executed"
                 self.action(RF_ACTION_PAYLOADS[action_id])
@@ -862,7 +885,7 @@ class Store:
         self.record_rf_signal(raw=raw, address=address, button=button, remote=remote, action_id=action_id, status=status)
         self.save()
         self.emit()
-        return {"ok": status in {"executed", "finish_requires_password"}, "message": status, "state": self.snapshot()}
+        return {"ok": status in {"executed", "finish_requires_password", "finish_password_digit"}, "message": status, "state": self.snapshot()}
 
     def action(self, payload: dict) -> dict:
         self.tick()
@@ -877,6 +900,31 @@ class Store:
             self.save()
             self.emit()
             return {"ok": True, "message": "RF signal cleared", "state": self.snapshot()}
+
+        if action == "begin_finish_dialog":
+            self.state["rfFinishPasswordPending"] = True
+            self.save()
+            self.emit()
+            return {"ok": True, "message": "finish dialog opened", "state": self.snapshot()}
+
+        if action == "cancel_finish_dialog":
+            self.state["rfFinishPasswordPending"] = False
+            self.save()
+            self.emit()
+            return {"ok": True, "message": "finish dialog cancelled", "state": self.snapshot()}
+
+        if action == "set_music_ducking":
+            active = parse_bool(payload.get("active"))
+            if active:
+                try:
+                    duration_ms = min(30000, max(300, int(float(payload.get("durationMs") or 5000))))
+                except (TypeError, ValueError):
+                    duration_ms = 5000
+                self.state["musicDuckingUntil"] = time.time() + (duration_ms / 1000)
+            else:
+                self.state["musicDuckingUntil"] = 0
+            self.emit()
+            return {"ok": True, "message": "music ducking updated", "state": self.snapshot()}
 
         if action == "begin_rf_learning":
             now = time.time()
@@ -1201,6 +1249,7 @@ class Store:
 
         elif action == "finish":
             if payload.get("password") == self.state["finishPassword"]:
+                self.state["rfFinishPasswordPending"] = False
                 finished_snapshot = self.snapshot()
                 if not self.state.get("matchFinished"):
                     results_store.save_match(finished_snapshot)
@@ -1217,6 +1266,7 @@ class Store:
                     message = self.state.get("lastMessage") or "match finished"
                 return {"ok": True, "message": message, "finishedMatch": finished_snapshot, "state": self.snapshot()}
             else:
+                self.state["rfFinishPasswordPending"] = True
                 message = "密码错误"
                 self.state["lastMessage"] = message
                 self.record("finish_denied", None, message)
@@ -2035,6 +2085,7 @@ class Handler(BaseHTTPRequestHandler):
                 snapshot.get("titleFontScale"),
                 snapshot.get("tableMarkerAutoSize"),
                 snapshot.get("tableMarkerScale"),
+                snapshot.get("musicDuckingUntil"),
             )
             now = time.time()
             should_send = event_key != last_key
