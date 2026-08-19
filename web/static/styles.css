@@ -2831,7 +2831,7 @@ body.scoreboard.finish-summary-active .celebration-canvas {
 
 .rf-action-row {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) 58px 42px;
+  grid-template-columns: 86px minmax(0, 1fr) 58px 42px;
   align-items: center;
   gap: 6px;
   padding: 6px;
@@ -2844,6 +2844,7 @@ body.scoreboard.finish-summary-active .celebration-canvas {
   display: grid;
   place-items: center;
   min-width: 0;
+  min-height: 44px;
 }
 
 .rf-action-text {
@@ -2856,10 +2857,10 @@ body.scoreboard.finish-summary-active .celebration-canvas {
 .rf-ball-label {
   display: grid;
   place-items: center;
-  width: 40px;
+  width: 44px;
   aspect-ratio: 1;
   border-radius: 50%;
-  font-size: 21px;
+  font-size: 23px;
   font-weight: 900;
   box-shadow:
     inset 0 2px 5px rgba(255,255,255,.42),
@@ -2892,6 +2893,77 @@ body.scoreboard.finish-summary-active .celebration-canvas {
   font-size: 14px;
 }
 
+.rf-action-visual {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 255, 255, .32);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.05;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow:
+    inset 0 3px 6px rgba(255,255,255,.22),
+    inset 0 -7px 11px rgba(0,0,0,.2),
+    0 3px 8px rgba(0,0,0,.34);
+  text-shadow: 0 1px 0 rgba(255,255,255,.18);
+}
+
+.rf-action-visual.timer-action,
+.rf-action-visual.music-action {
+  width: 44px;
+  min-height: 0;
+  aspect-ratio: 1;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.rf-action-visual.timer-action {
+  color: #07130a;
+  background:
+    radial-gradient(circle at 34% 24%, rgba(255,255,255,.95) 0 13%, rgba(255,255,255,.45) 14%, transparent 28%),
+    linear-gradient(145deg, #f9fff5 0%, #a7efb5 46%, #21b94b 100%);
+  font-size: 15px;
+}
+
+.rf-action-visual.music-action {
+  color: white;
+  background:
+    radial-gradient(circle at 34% 24%, rgba(255,255,255,.9) 0 12%, rgba(255,255,255,.35) 13%, transparent 28%),
+    linear-gradient(145deg, #8f71ff 0%, #6042d8 52%, #372084 100%);
+  font-size: 28px;
+}
+
+.rf-action-visual.undo-action {
+  color: #111;
+  background: var(--gold);
+}
+
+.rf-action-visual.score-action {
+  color: #061407;
+  background: #36d36a;
+}
+
+.rf-action-visual.swap-team-action {
+  color: white;
+  background: #7a1014;
+}
+
+.rf-action-visual.countdown-action {
+  color: white;
+  background: #1667d8;
+}
+
+.rf-action-visual.danger {
+  color: white;
+  background: #c10b12;
+}
+
 .rf-clear-button {
   display: grid;
   place-items: center;
@@ -2907,6 +2979,16 @@ body.scoreboard.finish-summary-active .celebration-canvas {
     inset 0 -5px 8px rgba(0,0,0,.25);
 }
 
+.trash-icon {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .key-binding-panel.embedded {
   margin: 0;
   padding: 0;
@@ -2916,6 +2998,11 @@ body.scoreboard.finish-summary-active .celebration-canvas {
 
 @media (max-width: 620px) {
   .rf-action-row {
-    grid-template-columns: 50px minmax(0, 1fr) 54px 40px;
+    grid-template-columns: 76px minmax(0, 1fr) 54px 40px;
+  }
+
+  .rf-action-visual {
+    padding: 0 5px;
+    font-size: 12px;
   }
 }

@@ -30,6 +30,14 @@ const api = {
     });
     return res.json();
   },
+  async rfLastSignal() {
+    const res = await fetch("/api/rf/last", { cache: "no-store" });
+    return res.json();
+  },
+  async rfLearning() {
+    const res = await fetch("/api/rf/learning", { cache: "no-store" });
+    return res.json();
+  },
   async weatherSearch(query) {
     const res = await fetch(`/api/weather/search?q=${encodeURIComponent(query)}`, { cache: "no-store" });
     return res.json();
@@ -2097,6 +2105,7 @@ function clearRfLearnTimeout() {
 
 function cancelPendingRfLearn(message = "学习已取消") {
   if (!pendingRfLearn) return;
+  sendAction({ action: "cancel_rf_learning" }, false, { noApply: true }).catch(() => {});
   const row = Array.from(document.querySelectorAll("[data-rf-binding-row]")).find((item) => (
     item.dataset.slotId === pendingRfLearn.slotId && item.dataset.rfActionId === pendingRfLearn.actionId
   ));
@@ -2116,12 +2125,19 @@ function startRfLearnPolling() {
       return;
     }
     try {
-      const state = await api.state();
-      applyState(state, { speakEvents: false, skipTransition: true });
+      const result = await api.rfLearning();
+      const learning = result.learning || null;
+      if (!learning || learning.id !== pendingRfLearn.sessionId) return;
+      currentState = {
+        ...(currentState || {}),
+        serverTime: result.serverTime || serverNowSeconds(),
+        rfLastSignal: learning.signal || null,
+      };
+      consumePendingRfLearn();
     } catch (error) {
       return;
     }
-  }, 500);
+  }, 200);
 }
 
 function startRfLearnTimeout() {
@@ -2139,22 +2155,31 @@ async function beginRfBindingLearn(target) {
   const actionId = target.dataset.rfActionId || row?.dataset.rfActionId || "";
   const value = row?.querySelector("[data-rf-binding-value]");
   if (value) value.textContent = "准备接收...";
-  setRfResult("正在清空旧信号...");
+  let sessionId = "";
   try {
-    const result = await sendAction({ action: "clear_rf_last_signal" }, false);
-    if (result?.state) currentState = result.state;
+    const result = await sendAction({
+      action: "begin_rf_learning",
+      slotId,
+      bindingAction: actionId,
+    }, false, { noApply: true });
+    sessionId = result?.state?.rfLearning?.id || "";
   } catch (error) {
-    setRfResult("清空旧信号失败，请重试", true);
+    setRfResult("启动学习失败，请重试", true);
+    return;
+  }
+  if (!sessionId) {
+    setRfResult("启动学习失败，请重试", true);
     return;
   }
   pendingRfLearn = {
+    sessionId,
     slotId,
     actionId,
-    startedSignalKey: "",
-    acceptAfter: serverNowSeconds() + 0.25,
+    startedSignalKey: rfSignalKey(currentState?.rfLastSignal),
+    startedAt: serverNowSeconds(),
   };
   renderRfDevicePanel();
-  setRfResult("请松开遥控器后再按目标按键，收到新信号后会自动填入");
+  setRfResult("请按目标遥控器按键，收到新解码信号后会自动填入");
   window.setTimeout(() => {
     if (!pendingRfLearn) return;
     const activeRow = Array.from(document.querySelectorAll("[data-rf-binding-row]")).find((item) => (
@@ -2163,6 +2188,7 @@ async function beginRfBindingLearn(target) {
     const activeValue = activeRow?.querySelector("[data-rf-binding-value]");
     if (activeValue) activeValue.textContent = "等待遥控器信号...";
   }, 250);
+  consumePendingRfLearn();
   startRfLearnPolling();
   startRfLearnTimeout();
 }
@@ -2331,13 +2357,45 @@ function renderRfActionLabel(spec) {
   `;
 }
 
+function renderRfActionVisual(spec) {
+  const ballNumber = rfBallNumberFromAction(spec.id);
+  if (ballNumber) return renderRfActionLabel(spec);
+  const visuals = {
+    toggle_timer: { className: "timer-action", text: "▶Ⅱ", label: "开始/暂停" },
+    undo: { className: "undo-action", text: "↩ 撤销", label: "撤销" },
+    advance: { className: "score-action", text: "+ 得分", label: "得分" },
+    swap_team_names: { className: "swap-team-action", text: "🔴⇄⚪ 换名", label: "换队名" },
+    ten_second_countdown: { className: "countdown-action", text: "⏰10秒", label: "10秒倒计时" },
+    finish_dialog: { className: "danger", text: "🏆结束", label: "结束比赛" },
+    toggle_music: { className: "music-action", text: "♪", label: "音乐播放/暂停" },
+  };
+  const visual = visuals[spec.id] || { className: "secondary", text: spec.name, label: spec.name };
+  return `
+    <span class="rf-action-visual ${visual.className}" title="${escapeHtml(visual.label)}" aria-label="${escapeHtml(visual.label)}">
+      <span>${escapeHtml(visual.text)}</span>
+    </span>
+  `;
+}
+
+function trashIconSvg() {
+  return `
+    <svg class="trash-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M3 6h18"></path>
+      <path d="M8 6V4h8v2"></path>
+      <path d="M6 6l1 15h10l1-15"></path>
+      <path d="M10 10v7"></path>
+      <path d="M14 10v7"></path>
+    </svg>
+  `;
+}
+
 function serverNowSeconds() {
   return Number(currentState?.serverTime) || Date.now() / 1000;
 }
 
 function pendingRfLearnText(slotId, actionId) {
   if (!pendingRfLearn || pendingRfLearn.slotId !== slotId || pendingRfLearn.actionId !== actionId) return "";
-  return serverNowSeconds() < pendingRfLearn.acceptAfter ? "准备接收..." : "等待遥控器信号...";
+  return "等待遥控器信号...";
 }
 
 function draftBindingFor(slotId, actionId, savedBinding) {
@@ -2409,10 +2467,10 @@ function renderRfDevicePanel() {
           const learningText = pendingRfLearnText(slot.id, spec.id);
           return `
             <div class="rf-action-row" data-rf-binding-row data-slot-id="${escapeHtml(slot.id)}" data-rf-action-id="${escapeHtml(spec.id)}" ${rfBindingDataAttributes(binding)}>
-              <span class="rf-action-name">${renderRfActionLabel(spec)}</span>
+              <span class="rf-action-name">${renderRfActionVisual(spec)}</span>
               <span class="rf-binding-value" data-rf-binding-value>${escapeHtml(learningText || rfBindingCompactText(binding))}</span>
               <button class="secondary" type="button" data-action="learn-rf-binding" data-slot-id="${escapeHtml(slot.id)}" data-rf-action-id="${escapeHtml(spec.id)}">学习</button>
-              <button class="rf-clear-button" type="button" data-action="clear-rf-binding" data-rf-action-id="${escapeHtml(spec.id)}" aria-label="清除${escapeHtml(spec.name)}" title="清除">🗑</button>
+              <button class="rf-clear-button" type="button" data-action="clear-rf-binding" data-rf-action-id="${escapeHtml(spec.id)}" aria-label="清除${escapeHtml(spec.name)}" title="清除">${trashIconSvg()}</button>
             </div>
           `;
         }).join("")}
@@ -2429,8 +2487,6 @@ function consumePendingRfLearn() {
   const key = rfSignalKey(signal);
   if (!key || key === pendingRfLearn.startedSignalKey) return;
   if (!signal?.address && !signal?.button && !signal?.raw) return;
-  const signalAt = Number.parseFloat(signal.receivedAt ?? signal.id ?? "");
-  if (Number.isFinite(signalAt) && signalAt < pendingRfLearn.acceptAfter) return;
   const signalAddress = rfCodeParts(signal).address;
   const primaryAddress = pendingRfLearn.actionId === "ball_1" ? "" : rfSlotPrimaryAddress(pendingRfLearn.slotId);
   if (primaryAddress && signalAddress && signalAddress !== primaryAddress) {
@@ -2451,6 +2507,7 @@ function consumePendingRfLearn() {
     label: rfCodeDisplay(signal),
   };
   setRfBindingRow(row, binding);
+  sendAction({ action: "cancel_rf_learning" }, false, { noApply: true }).catch(() => {});
   pendingRfLearn = null;
   clearRfLearnPolling();
   clearRfLearnTimeout();

@@ -355,6 +355,7 @@ DEFAULT_STATE.update(
         "rfRemotes": [],
         "rfRemoteSlots": default_rf_remote_slots(),
         "rfLastSignal": None,
+        "rfLearning": None,
         "keyboardInputEnabled": True,
     }
 )
@@ -491,6 +492,8 @@ class Store:
         self.normalize_rf_remote_slots()
         if not isinstance(self.state.get("rfLastSignal"), dict):
             self.state["rfLastSignal"] = None
+        if not isinstance(self.state.get("rfLearning"), dict):
+            self.state["rfLearning"] = None
         if "selectedBallAt" not in self.state:
             self.state["selectedBallAt"] = None
         if self.state.get("finishPassword") in {"0000", "1234"}:
@@ -596,6 +599,9 @@ class Store:
                 "serverTime": time.time(),
                 "history": self.history[-30:],
             }
+
+    def emit(self) -> None:
+        self.state["lastUpdated"] = time.time()
 
     def record(self, action: str, ball: int | None, message: str) -> None:
         self.history.append(
@@ -738,7 +744,7 @@ class Store:
         self.state["rfRemotes"] = normalized
         return normalized
 
-    def record_rf_signal(self, *, raw: str, address: str, button: str, remote: dict | None, action_id: str, status: str) -> None:
+    def record_rf_signal(self, *, raw: str, address: str, button: str, remote: dict | None, action_id: str, status: str) -> dict:
         now = time.time()
         self.state["rfLastSignal"] = {
             "id": f"{now:.6f}",
@@ -754,6 +760,17 @@ class Store:
         }
         if remote:
             remote["lastSeenAt"] = self.state["rfLastSignal"]["time"]
+        return self.state["rfLastSignal"]
+
+    def rf_learning_status(self) -> dict | None:
+        learning = self.state.get("rfLearning")
+        if not isinstance(learning, dict):
+            return None
+        expires_at = float(learning.get("expiresAt") or 0)
+        if expires_at and time.time() > expires_at:
+            self.state["rfLearning"] = None
+            return None
+        return learning
 
     def handle_rf_signal(self, payload: dict) -> dict:
         raw = str(payload.get("raw") or payload.get("code") or "").strip()
@@ -763,6 +780,14 @@ class Store:
             address = raw[:-1] if len(raw) > 1 else raw
         if not button and raw:
             button = raw[-1:]
+        learning = self.rf_learning_status()
+        if learning and not learning.get("signal"):
+            signal = self.record_rf_signal(raw=raw, address=address, button=button, remote=None, action_id="", status="learning")
+            learning["signal"] = signal
+            self.state["rfLearning"] = learning
+            self.save()
+            self.emit()
+            return {"ok": True, "message": "learning", "state": self.snapshot()}
         slots = self.normalize_rf_remote_slots()
         remote = None
         action_id = ""
@@ -813,6 +838,26 @@ class Store:
             self.save()
             self.emit()
             return {"ok": True, "message": "RF signal cleared", "state": self.snapshot()}
+
+        if action == "begin_rf_learning":
+            now = time.time()
+            self.state["rfLearning"] = {
+                "id": f"{now:.6f}",
+                "slotId": str(payload.get("slotId") or ""),
+                "actionId": str(payload.get("bindingAction") or ""),
+                "startedAt": now,
+                "expiresAt": now + 10,
+                "signal": None,
+            }
+            self.save()
+            self.emit()
+            return {"ok": True, "message": "RF learning started", "state": self.snapshot()}
+
+        if action == "cancel_rf_learning":
+            self.state["rfLearning"] = None
+            self.save()
+            self.emit()
+            return {"ok": True, "message": "RF learning cancelled", "state": self.snapshot()}
 
         if action == "update_rf_settings":
             if payload.get("password") != self.state["settingsPassword"]:
@@ -1802,6 +1847,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_events()
         elif path == "/api/state":
             self.send_json(store.snapshot())
+        elif path == "/api/rf/last":
+            self.send_json({"ok": True, "signal": store.state.get("rfLastSignal"), "serverTime": time.time()})
+        elif path == "/api/rf/learning":
+            self.send_json({"ok": True, "learning": store.rf_learning_status(), "serverTime": time.time()})
         elif path == "/api/network/status":
             self.send_json(network_status(store.state))
         elif path == "/api/network/scan":
@@ -1883,10 +1932,12 @@ class Handler(BaseHTTPRequestHandler):
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         try:
             self.wfile.write(data)
+            self.wfile.flush()
         except OSError as exc:
             if is_client_disconnect(exc):
                 return
