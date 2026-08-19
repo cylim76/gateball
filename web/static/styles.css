@@ -1513,8 +1513,48 @@ button {
   filter: brightness(.96);
 }
 
+.remote-score-panel .music-action {
+  align-self: start;
+  justify-self: center;
+  width: clamp(42px, 10.8vw, 47px);
+  min-height: 0;
+  aspect-ratio: 1;
+  margin-top: 6px;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, .62);
+  border-radius: 50%;
+  color: white;
+  background:
+    radial-gradient(circle at 34% 24%, rgba(255,255,255,.9) 0 12%, rgba(255,255,255,.35) 13%, transparent 28%),
+    linear-gradient(145deg, #8f71ff 0%, #6042d8 52%, #372084 100%);
+  box-shadow:
+    inset 0 4px 7px rgba(255,255,255,.34),
+    inset 0 -8px 12px rgba(0,0,0,.32),
+    0 5px 12px rgba(0,0,0,.42);
+  font-size: clamp(25px, 6vw, 32px);
+  line-height: 1;
+}
+
+.remote-score-panel .music-action .music-note {
+  display: inline-grid;
+  place-items: center;
+  transform-origin: 50% 50%;
+}
+
+.remote-score-panel .music-action.playing .music-note {
+  animation: music-note-spin 1s linear infinite;
+}
+
+@keyframes music-note-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .timer-action:disabled,
 .timer-action.disabled,
+.remote-score-panel .music-action:disabled,
+.remote-score-panel .music-action.disabled,
 .remote-actions button.remote-finish-locked,
 .results-link.remote-finish-locked {
   color: #777;
@@ -1579,7 +1619,7 @@ button:disabled {
   background: #1667d8;
 }
 
-.music-action {
+.remote-actions .music-action {
   color: white;
   background: #6b4ce6;
 }
@@ -2211,6 +2251,37 @@ body.scoreboard.finish-summary-active .celebration-canvas {
   color: var(--gold);
   font-size: 18px;
   font-weight: 900;
+}
+
+.music-file-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.settings-form .music-file-control select {
+  min-width: 0;
+}
+
+.settings-form .music-delete-button {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid rgba(255, 80, 80, .82);
+  border-radius: 6px;
+  color: white;
+  background: #b00012;
+  box-shadow:
+    inset 0 2px 4px rgba(255,255,255,.22),
+    inset 0 -5px 8px rgba(0,0,0,.25);
+  font-size: 20px;
+}
+
+.settings-form .music-delete-button:disabled {
+  border-color: #555;
+  background: #2f2f2f;
 }
 
 .title-style-control {

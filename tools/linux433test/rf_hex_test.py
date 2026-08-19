@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import statistics
+import sys
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -194,7 +195,8 @@ def print_decoded_frame(frame: Frame, *, prefix: str, debounce_ms: int, state: d
 def run_rpi_rf(gpio: int, debounce_ms: int) -> bool:
     try:
         from rpi_rf import RFDevice  # type: ignore
-    except ImportError:
+    except ImportError as exc:
+        print(f"rpi-rf import failed in {sys.executable}: {exc}")
         return False
 
     try:
@@ -255,7 +257,8 @@ def summarize_pulse_frame(pulses: list[tuple[int, int]]) -> str:
 def run_lgpio(gpio: int, gap_us: int, min_pulses: int, dump_pulses: int, show_raw: bool) -> bool:
     try:
         import lgpio  # type: ignore
-    except ImportError:
+    except ImportError as exc:
+        print(f"lgpio import failed in {sys.executable}: {exc}")
         return False
 
     try:
@@ -320,7 +323,8 @@ def run_lgpio(gpio: int, gap_us: int, min_pulses: int, dump_pulses: int, show_ra
 def run_rpi_gpio(gpio: int, gap_us: int, min_pulses: int) -> bool:
     try:
         import RPi.GPIO as GPIO  # type: ignore
-    except ImportError:
+    except ImportError as exc:
+        print(f"RPi.GPIO import failed in {sys.executable}: {exc}")
         return False
 
     try:
@@ -360,10 +364,11 @@ def main() -> int:
     args = parse_args()
     print(f"GPIO: BCM {args.gpio}")
     print(f"Backend: {args.backend}")
+    print(f"Python: {sys.executable}")
     print(f"Decimal text hex example: {text_to_hex_bytes(str(args.gpio))}")
-    if args.backend in ("auto", "rpi-rf") and run_rpi_rf(args.gpio, args.debounce_ms):
-        return 0
     if args.backend in ("auto", "lgpio") and run_lgpio(args.gpio, args.gap_us, args.min_pulses, args.dump_pulses, args.show_raw):
+        return 0
+    if args.backend in ("auto", "rpi-rf") and run_rpi_rf(args.gpio, args.debounce_ms):
         return 0
     if args.backend in ("auto", "rpi-gpio") and run_rpi_gpio(args.gpio, args.gap_us, args.min_pulses):
         return 0

@@ -6,6 +6,7 @@ import mimetypes
 import os
 import re
 import select
+import shutil
 import subprocess
 from dataclasses import dataclass
 from threading import RLock, Thread
@@ -110,7 +111,7 @@ DEFAULT_STATE = {
     "matchFinished": False,
     "selectedBall": 1,
     "selectedBallAt": None,
-    "finishPassword": "0000",
+    "finishPassword": "9999",
     "settingsPassword": "1234",
     "allowScoringWhenPaused": False,
     "matchNumber": 1,
@@ -195,11 +196,38 @@ def music_track_id(source: str, relative_path: Path) -> str:
     return f"{source}:{relative_path.as_posix()}"
 
 
-def list_music_tracks() -> list[dict]:
+def music_directory_id(source: str, relative_path: Path) -> str:
+    return f"dir:{source}:{relative_path.as_posix()}"
+
+
+def music_source_label(source: str) -> str:
+    return "external" if source == "external" else "project"
+
+
+def list_music_items() -> tuple[list[dict], list[dict]]:
+    items = []
     tracks = []
     for source, directory in music_directories():
         if not directory.exists() or not directory.is_dir():
             continue
+        for path in sorted(directory.rglob("*")):
+            if not path.is_dir():
+                continue
+            try:
+                relative = path.relative_to(directory)
+            except ValueError:
+                continue
+            if not relative.parts:
+                continue
+            item_id = music_directory_id(source, relative)
+            items.append(
+                {
+                    "id": item_id,
+                    "type": "directory",
+                    "name": relative.as_posix(),
+                    "source": music_source_label(source),
+                }
+            )
         for path in sorted(directory.rglob("*")):
             if not path.is_file() or path.suffix.lower() not in MUSIC_EXTENSIONS:
                 continue
@@ -208,15 +236,22 @@ def list_music_tracks() -> list[dict]:
             except ValueError:
                 continue
             track_id = music_track_id(source, relative)
-            tracks.append(
-                {
-                    "id": track_id,
-                    "name": path.stem,
-                    "fileName": path.name,
-                    "source": source,
-                    "url": f"/api/music/file?id={quote(track_id)}",
-                }
-            )
+            track = {
+                "id": track_id,
+                "type": "track",
+                "name": relative.as_posix(),
+                "displayName": path.stem,
+                "fileName": path.name,
+                "source": music_source_label(source),
+                "url": f"/api/music/file?id={quote(track_id)}",
+            }
+            tracks.append(track)
+            items.append(track)
+    return tracks, items
+
+
+def list_music_tracks() -> list[dict]:
+    tracks, _items = list_music_items()
     return tracks
 
 
@@ -240,6 +275,37 @@ def resolve_music_track(track_id: str) -> Path | None:
             return None
         if target.exists() and target.is_file() and target.suffix.lower() in MUSIC_EXTENSIONS:
             return target
+    return None
+
+
+def resolve_music_item(item_id: str) -> tuple[str, Path] | None:
+    if item_id.startswith("dir:"):
+        rest = item_id[4:]
+        if ":" not in rest:
+            return None
+        source, relative_text = rest.split(":", 1)
+        if not relative_text:
+            return None
+        relative = Path(relative_text)
+        if relative.is_absolute() or ".." in relative.parts:
+            return None
+        for candidate_source, directory in music_directories():
+            if candidate_source != source:
+                continue
+            base = directory.resolve()
+            target = (base / relative).resolve()
+            try:
+                target.relative_to(base)
+            except ValueError:
+                return None
+            if target == base:
+                return None
+            if target.exists() and target.is_dir():
+                return ("directory", target)
+        return None
+    target = resolve_music_track(item_id)
+    if target:
+        return ("track", target)
     return None
 
 
@@ -403,8 +469,8 @@ class Store:
             self.state["rfLastSignal"] = None
         if "selectedBallAt" not in self.state:
             self.state["selectedBallAt"] = None
-        if self.state.get("finishPassword") == "1234":
-            self.state["finishPassword"] = "0000"
+        if self.state.get("finishPassword") in {"0000", "1234"}:
+            self.state["finishPassword"] = "9999"
         if self.state.get("running"):
             self.state["timerStarted"] = True
         if self.state.get("lastTickRemainingSeconds") is None:
@@ -1095,6 +1161,41 @@ class Store:
                 self.state["lastMessage"] = message
                 self.record("settings", None, message)
 
+        elif action == "delete_music_item":
+            if payload.get("password") != self.state.get("settingsPassword"):
+                return {"ok": False, "message": "密码错误", "state": self.snapshot()}
+            item_id = str(payload.get("musicItemId") or "")
+            resolved = resolve_music_item(item_id)
+            if not resolved:
+                return {"ok": False, "message": "音乐项目不存在", "state": self.snapshot()}
+            item_type, target = resolved
+            selected_target = resolve_music_track(str(self.state.get("selectedMusicTrack") or ""))
+            try:
+                if item_type == "directory":
+                    if selected_target:
+                        try:
+                            selected_target.relative_to(target)
+                            self.state["selectedMusicTrack"] = ""
+                            self.state["musicPlaying"] = False
+                        except ValueError:
+                            pass
+                    shutil.rmtree(target)
+                    message = "音乐目录已删除"
+                else:
+                    if selected_target and selected_target == target:
+                        self.state["selectedMusicTrack"] = ""
+                        self.state["musicPlaying"] = False
+                    target.unlink()
+                    message = "音乐文件已删除"
+            except OSError as exc:
+                return {"ok": False, "message": f"删除失败: {exc}", "state": self.snapshot()}
+            self.state["lastMessage"] = message
+            self.state["lastUpdated"] = time.time()
+            self.save()
+            self.emit()
+            self.record("settings", None, message)
+            return {"ok": True, "message": message, "state": self.snapshot()}
+
         elif action == "preview_title_style":
             if "titleColor" in payload:
                 color = str(payload["titleColor"]).strip()
@@ -1649,7 +1750,8 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/network/scan":
             self.send_json(scan_wifi_networks())
         elif path == "/api/music/tracks":
-            self.send_json({"ok": True, "tracks": list_music_tracks()})
+            tracks, items = list_music_items()
+            self.send_json({"ok": True, "tracks": tracks, "items": items})
         elif path == "/api/music/file":
             params = parse_qs(urlparse(self.path).query)
             target = resolve_music_track(params.get("id", [""])[0])

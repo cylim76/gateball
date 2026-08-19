@@ -113,9 +113,12 @@
             </label>
             <label>
               音乐文件
-              <select name="selectedMusicTrack">
-                <option value="">正在读取音乐...</option>
-              </select>
+              <div class="music-file-control">
+                <select name="selectedMusicTrack">
+                  <option value="">正在读取音乐...</option>
+                </select>
+                <button class="music-delete-button" type="button" data-action="delete-music-item" aria-label="删除当前音乐或目录" title="删除当前音乐或目录">🗑</button>
+              </div>
             </label>
             <label>
               播放模式

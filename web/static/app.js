@@ -127,6 +127,7 @@ let voiceManifestCache = {};
 let voiceAudio = null;
 let musicAudio = null;
 let musicTracks = [];
+let musicItems = [];
 let musicTracksLoaded = false;
 let musicDuckDepth = 0;
 let lastMusicTrackId = "";
@@ -1443,9 +1444,12 @@ function renderRemote() {
   const musicAction = document.querySelector("[data-action='toggle_music']");
   if (musicAction) {
     const musicReady = Boolean(currentState.musicEnabled && currentState.selectedMusicTrack);
-    musicAction.textContent = currentState.musicPlaying ? "♪ 暂停音乐" : "♪ 播放音乐";
+    if (!musicAction.querySelector(".music-note")) musicAction.innerHTML = '<span class="music-note">♪</span>';
+    musicAction.title = currentState.musicPlaying ? "暂停音乐" : "播放音乐";
+    musicAction.setAttribute("aria-label", currentState.musicPlaying ? "暂停音乐" : "播放音乐");
     musicAction.disabled = remoteLocked || !musicReady;
     musicAction.classList.toggle("disabled", remoteLocked || !musicReady);
+    musicAction.classList.toggle("playing", Boolean(currentState.musicPlaying));
   }
   setTeamName("[data-remote-status-red-team]", currentState.redTeam);
   setTeamName("[data-remote-status-white-team]", currentState.whiteTeam);
@@ -1461,7 +1465,7 @@ function renderRemote() {
     const badge = button.querySelector(".ball-score-badge");
     if (badge && ball) badge.textContent = String(ball.score);
   });
-  document.querySelectorAll("[data-remote] .remote-actions button").forEach((button) => {
+  document.querySelectorAll("[data-remote] .remote-actions button, [data-remote] .music-action").forEach((button) => {
     const disabled = remoteLocked || (button.dataset.action === "toggle_music" && !(currentState.musicEnabled && currentState.selectedMusicTrack));
     button.disabled = disabled;
     button.classList.toggle("remote-finish-locked", remoteLocked);
@@ -1840,6 +1844,16 @@ function selectedMusicTrack() {
   return musicTracks.find((track) => track.id === trackId) || null;
 }
 
+function musicItemForId(itemId) {
+  return musicItems.find((item) => item.id === itemId) || null;
+}
+
+function musicTrackIdFromForm(form) {
+  const itemId = form?.selectedMusicTrack?.value || "";
+  const item = musicItemForId(itemId);
+  return item?.type === "track" ? item.id : "";
+}
+
 function getMusicAudio() {
   if (!musicAudio) {
     musicAudio = new Audio();
@@ -1866,8 +1880,12 @@ async function loadMusicTracks() {
   try {
     const result = await api.musicTracks();
     musicTracks = Array.isArray(result.tracks) ? result.tracks : [];
+    musicItems = Array.isArray(result.items)
+      ? result.items
+      : musicTracks.map((track) => ({ ...track, type: "track" }));
   } catch (error) {
     musicTracks = [];
+    musicItems = [];
     musicTracksLoaded = false;
   }
   renderMusicSettings();
@@ -1884,12 +1902,15 @@ function renderMusicSettings() {
       form.selectedMusicTrack.replaceChildren();
       const emptyOption = document.createElement("option");
       emptyOption.value = "";
-      emptyOption.textContent = musicTracks.length ? "请选择音乐" : "未找到音乐文件";
+      emptyOption.textContent = musicItems.length ? "请选择音乐或目录" : "未找到音乐文件";
       form.selectedMusicTrack.appendChild(emptyOption);
-      musicTracks.forEach((track) => {
+      musicItems.forEach((item) => {
         const option = document.createElement("option");
-        option.value = track.id;
-        option.textContent = `${track.name} (${track.source === "external" ? "外部" : "项目"})`;
+        option.value = item.id;
+        const sourceText = item.source === "external" ? "外部" : "项目";
+        option.textContent = item.type === "directory"
+          ? `📁 ${item.name}/ (${sourceText})`
+          : `♪ ${item.name || item.displayName || item.fileName} (${sourceText})`;
         form.selectedMusicTrack.appendChild(option);
       });
       form.selectedMusicTrack.value = currentState.selectedMusicTrack || currentValue || "";
@@ -1910,13 +1931,22 @@ function updateMusicOutput(form) {
   const duckOutput = form?.querySelector?.("[data-music-duck-output]");
   if (duckOutput) duckOutput.textContent = `${normalizeMusicDuckPercent(form.musicDuckPercent?.value)}%`;
   const testButton = form?.querySelector?.("[data-action='test-music']");
-  if (testButton) testButton.textContent = musicAudio && !musicAudio.paused ? "停止测试" : "测试播放";
+  if (testButton) {
+    testButton.textContent = musicAudio && !musicAudio.paused ? "停止测试" : "测试播放";
+    testButton.disabled = !musicTrackIdFromForm(form);
+  }
+  const deleteButton = form?.querySelector?.("[data-action='delete-music-item']");
+  if (deleteButton) {
+    const item = musicItemForId(form.selectedMusicTrack?.value || "");
+    deleteButton.disabled = !item;
+    deleteButton.title = item ? `删除当前${item.type === "directory" ? "目录" : "音乐"}` : "请先选择音乐或目录";
+  }
 }
 
 function previewMusicSettings(form) {
   if (!form || !currentState) return;
   currentState.musicEnabled = form.musicEnabled?.checked || false;
-  currentState.selectedMusicTrack = form.selectedMusicTrack?.value || "";
+  currentState.selectedMusicTrack = musicTrackIdFromForm(form);
   currentState.musicMode = form.musicMode?.value || "loop";
   currentState.musicVolumePercent = normalizeMusicVolumePercent(form.musicVolumePercent?.value);
   currentState.musicAutoPlayDuringMatch = form.musicAutoPlayDuringMatch?.checked !== false;
@@ -3004,7 +3034,7 @@ function collectSettingsPayload(form) {
   if (form.voicePlaybackRate) payload.voicePlaybackRate = form.voicePlaybackRate.value || DEFAULT_GAMEPLAY_PLAYBACK_RATE;
   if (form.systemVolumePercent) payload.systemVolumePercent = normalizeSystemVolumePercent(form.systemVolumePercent.value);
   if (form.musicEnabled) payload.musicEnabled = form.musicEnabled.checked;
-  if (form.selectedMusicTrack) payload.selectedMusicTrack = form.selectedMusicTrack.value || "";
+  if (form.selectedMusicTrack) payload.selectedMusicTrack = musicTrackIdFromForm(form);
   if (form.musicMode) payload.musicMode = form.musicMode.value || "loop";
   if (form.musicVolumePercent) payload.musicVolumePercent = normalizeMusicVolumePercent(form.musicVolumePercent.value);
   if (form.musicAutoPlayDuringMatch) payload.musicAutoPlayDuringMatch = form.musicAutoPlayDuringMatch.checked;
@@ -3081,6 +3111,10 @@ async function trySavePendingSettings() {
       if (payload.action === "update_rf_remote_slot" || payload.action === "clear_rf_remote_slot") {
         delete rfDraftBindings[payload.slotId || activeRfTab];
         if (pendingRfLearn?.slotId === (payload.slotId || activeRfTab)) pendingRfLearn = null;
+      }
+      if (payload.action === "delete_music_item") {
+        musicTracksLoaded = false;
+        await loadMusicTracks();
       }
       renderSettings();
       const saveResult = document.querySelector(_resultSelector || "[data-save-result]");
@@ -3513,9 +3547,22 @@ document.addEventListener("click", (event) => {
       stopMusicPlayback();
     } else {
       musicTestPlaying = true;
-      startMusicPlayback(musicTracks.find((track) => track.id === form?.selectedMusicTrack?.value));
+      startMusicPlayback(musicTracks.find((track) => track.id === musicTrackIdFromForm(form)));
     }
     updateMusicOutput(form);
+    return;
+  }
+  if (action === "delete-music-item") {
+    const form = target.closest("[data-settings-form]");
+    const item = musicItemForId(form?.selectedMusicTrack?.value || "");
+    if (!item) return;
+    const itemTypeText = item.type === "directory" ? "目录" : "音乐";
+    if (!window.confirm(`确定删除当前${itemTypeText}：${item.name || item.fileName}？`)) return;
+    openSettingsSavePasswordDialog({
+      action: "delete_music_item",
+      musicItemId: item.id,
+      _resultSelector: "[data-music-save-result]",
+    });
     return;
   }
   if (action === "table-marker-size-down") {

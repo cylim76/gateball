@@ -7,11 +7,11 @@ if [[ "${1:-}" == "" || "${1:-}" == "-decode" || "${1:-}" == "-decoded" ]]; then
   GPIO_PIN="${2:-17}"
   echo "433MHz decode debug mode"
   echo "GPIO: BCM ${GPIO_PIN}"
-  echo "Backend: lgpio"
+  echo "Backend: auto"
   echo "Only decoded codes will be shown. Use -dump if raw pulses are needed."
   exec python3 "$SCRIPT_DIR/rf_hex_test.py" \
     --gpio "$GPIO_PIN" \
-    --backend lgpio \
+    --backend auto \
     --gap-us 20000 \
     --min-pulses 8
 fi

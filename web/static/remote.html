@@ -40,6 +40,7 @@
             <strong class="white-total-mobile" data-remote-white-total>0</strong>
           </div>
           <button class="timer-action" data-action="toggle_timer">开始</button>
+          <button class="music-action compact" data-action="toggle_music" aria-label="播放音乐" title="播放音乐"><span class="music-note">♪</span></button>
         </div>
         <div class="ball-column">
           <button class="white-ball" data-action="select" data-ball="2"><span class="ball-number">2</span><span class="ball-score-badge">0</span></button>
@@ -53,9 +54,8 @@
       <section class="remote-actions">
         <button class="undo-action" data-action="undo">↩️ - 撤销</button>
         <button class="score-action" data-action="advance">✅ + 得分</button>
-        <button class="swap-team-action" data-action="swap_team_names">🔴 ⇄ ⚪ 队名更换</button>
+        <button class="swap-team-action" data-action="swap_team_names">🔴⇄⚪ 换队名</button>
         <button class="countdown-action compact" data-action="ten-second-countdown">⏰ 10秒倒计时</button>
-        <button class="music-action compact" data-action="toggle_music">♪ 音乐</button>
         <div class="finish-results-row">
           <button class="danger" data-action="finish-dialog">🏆 结束比赛</button>
           <a class="results-link" href="/results">📊 成绩</a>
@@ -220,9 +220,12 @@
               </label>
               <label>
                 音乐文件
-                <select name="selectedMusicTrack">
-                  <option value="">正在读取音乐...</option>
-                </select>
+                <div class="music-file-control">
+                  <select name="selectedMusicTrack">
+                    <option value="">正在读取音乐...</option>
+                  </select>
+                  <button class="music-delete-button" type="button" data-action="delete-music-item" aria-label="删除当前音乐或目录" title="删除当前音乐或目录">🗑</button>
+                </div>
               </label>
               <label>
                 播放模式
