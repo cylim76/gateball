@@ -2247,6 +2247,7 @@ function consumePendingRfLearn() {
   const signal = currentState?.rfLastSignal;
   const key = rfSignalKey(signal);
   if (!key || key === pendingRfLearn.startedSignalKey) return;
+  if (!signal?.address && !signal?.button && !signal?.raw) return;
   activeRfTab = pendingRfLearn.slotId;
   renderRfDevicePanel();
   const row = Array.from(document.querySelectorAll("[data-rf-binding-row]")).find((item) => (
@@ -3100,6 +3101,12 @@ async function trySavePendingSettings() {
 async function saveKeyBindingFromEvent(event) {
   const spec = keyBindingSpecById[keyCaptureAction];
   if (!spec) return;
+  if ((currentState?.rfReceiverType || "gpio") !== "keyboard") {
+    keyCaptureAction = "";
+    renderKeyBindings();
+    setRfResult("当前接收方式不是 USB 键盘/HID，已取消小键盘学习");
+    return;
+  }
   const bindingAction = spec.id;
   keyCaptureAction = "";
   const result = await sendAction({
@@ -3381,11 +3388,17 @@ document.addEventListener("click", (event) => {
   if (action === "select-wifi") return selectWifiNetwork(target);
   if (action === "connect-wifi") return connectSelectedWifi();
   if (action === "capture-key-binding") {
+    pendingRfLearn = null;
+    if ((currentState?.rfReceiverType || "gpio") !== "keyboard") {
+      setRfResult("请先把接收方式切换为 USB 键盘/HID，再学习小键盘");
+      return;
+    }
     keyCaptureAction = target.dataset.bindingAction || "";
     renderKeyBindings();
     return;
   }
   if (action === "learn-rf-binding") {
+    keyCaptureAction = "";
     const row = target.closest("[data-rf-binding-row]");
     pendingRfLearn = {
       slotId: target.dataset.slotId || activeRfTab,
