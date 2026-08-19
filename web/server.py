@@ -96,6 +96,7 @@ RF_ACTION_PAYLOADS = {
     "advance": {"action": "advance"},
     "undo": {"action": "undo"},
     "toggle_timer": {"action": "toggle_timer"},
+    "swap_team_names": {"action": "swap_team_names"},
     "ten_second_countdown": {"action": "ten_second_countdown"},
     "toggle_music": {"action": "toggle_music"},
 }
@@ -355,11 +356,27 @@ def default_rf_remote_slots() -> list[dict]:
         {
             "id": slot["id"],
             "name": slot["name"],
-            "enabled": bool(slot.get("enabled")),
+            "enabled": parse_bool(slot.get("enabled")),
             "bindings": {},
         }
         for slot in DEFAULT_RF_REMOTE_SLOTS
     ]
+
+
+def parse_bool(value, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"1", "true", "yes", "on", "enabled"}:
+            return True
+        if text in {"0", "false", "no", "off", "disabled", ""}:
+            return False
+    return default
 
 
 DEFAULT_STATE.update(
@@ -711,7 +728,7 @@ class Store:
                 {
                     "id": default_slot["id"],
                     "name": str(existing.get("name") or default_slot["name"]).strip()[:40] if isinstance(existing, dict) else default_slot["name"],
-                    "enabled": bool(existing.get("enabled", default_slot["enabled"])) if isinstance(existing, dict) else default_slot["enabled"],
+                    "enabled": parse_bool(existing.get("enabled"), default_slot["enabled"]) if isinstance(existing, dict) else default_slot["enabled"],
                     "bindings": bindings,
                 }
             )
@@ -720,7 +737,7 @@ class Store:
             if old_remotes:
                 first = old_remotes[0]
                 normalized[0]["name"] = first.get("name") or normalized[0]["name"]
-                normalized[0]["enabled"] = bool(first.get("enabled", True))
+                normalized[0]["enabled"] = parse_bool(first.get("enabled"), True)
                 model = RF_REMOTE_MODELS.get(first.get("model"), RF_REMOTE_MODELS["gateball-10key"])
                 for button, action_id in model["buttons"].items():
                     if action_id not in RF_ACTION_IDS:
@@ -752,7 +769,7 @@ class Store:
                 {
                     "id": remote_id,
                     "name": str(remote.get("name") or f"Remote {index + 1}").strip()[:40],
-                    "enabled": bool(remote.get("enabled", True)),
+                    "enabled": parse_bool(remote.get("enabled"), True),
                     "model": str(remote.get("model") or self.state.get("rfRemoteModel") or "gateball-10key"),
                     "address": address,
                     "lastSeenAt": remote.get("lastSeenAt"),
@@ -880,7 +897,7 @@ class Store:
             if payload.get("password") != self.state["settingsPassword"]:
                 message = "密码错误"
             else:
-                self.state["rfRemoteEnabled"] = bool(payload.get("rfRemoteEnabled"))
+                self.state["rfRemoteEnabled"] = parse_bool(payload.get("rfRemoteEnabled"))
                 receiver_type = str(payload.get("rfReceiverType") or self.state.get("rfReceiverType") or "gpio")
                 self.state["rfReceiverType"] = receiver_type if receiver_type in {"gpio", "serial", "keyboard"} else "gpio"
                 try:
@@ -908,7 +925,7 @@ class Store:
                     message = "遥控器不存在"
                 else:
                     slot["name"] = str(payload.get("name") or slot["name"]).strip()[:40]
-                    slot["enabled"] = bool(payload.get("enabled"))
+                    slot["enabled"] = parse_bool(payload.get("enabled"))
                     bindings = {}
                     raw_bindings = payload.get("bindings")
                     if isinstance(raw_bindings, dict):
@@ -949,7 +966,7 @@ class Store:
             if payload.get("password") != self.state["settingsPassword"]:
                 message = "密码错误"
             else:
-                self.state["keyboardInputEnabled"] = bool(payload.get("keyboardInputEnabled"))
+                self.state["keyboardInputEnabled"] = parse_bool(payload.get("keyboardInputEnabled"))
                 message = "小键盘设置已保存"
                 self.state["lastMessage"] = message
                 self.record("keyboard_settings", None, message)
@@ -981,14 +998,14 @@ class Store:
                     model = model if model in RF_REMOTE_MODELS else "gateball-10key"
                     if existing:
                         existing["name"] = str(payload.get("name") or existing["name"]).strip()[:40]
-                        existing["enabled"] = bool(payload.get("enabled", True))
+                        existing["enabled"] = parse_bool(payload.get("enabled"), True)
                         existing["model"] = model
                     else:
                         remotes.append(
                             {
                                 "id": f"rf-{int(time.time() * 1000)}",
                                 "name": str(payload.get("name") or f"Remote {len(remotes) + 1}").strip()[:40],
-                                "enabled": bool(payload.get("enabled", True)),
+                                "enabled": parse_bool(payload.get("enabled"), True),
                                 "model": model,
                                 "address": address,
                                 "lastSeenAt": None,
@@ -1011,7 +1028,7 @@ class Store:
                     if "name" in payload:
                         remote["name"] = str(payload.get("name") or remote["name"]).strip()[:40]
                     if "enabled" in payload:
-                        remote["enabled"] = bool(payload.get("enabled"))
+                        remote["enabled"] = parse_bool(payload.get("enabled"))
                     message = "RF remote updated"
                     self.state["lastMessage"] = message
                     self.record("rf_remote", None, message)
