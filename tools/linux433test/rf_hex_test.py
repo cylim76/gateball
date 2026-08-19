@@ -33,6 +33,7 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="Print and clear every N raw pulses even if no frame gap is detected. Useful when decoding fails.",
     )
+    parser.add_argument("--show-raw", action="store_true", help="Show raw pulse frames and dumps. Decoded codes are always shown.")
     return parser.parse_args()
 
 
@@ -251,7 +252,7 @@ def summarize_pulse_frame(pulses: list[tuple[int, int]]) -> str:
     return f"raw-frame pulses={len(pulses)} median_us={median} hex={raw_hex} sample={sample}"
 
 
-def run_lgpio(gpio: int, gap_us: int, min_pulses: int, dump_pulses: int) -> bool:
+def run_lgpio(gpio: int, gap_us: int, min_pulses: int, dump_pulses: int, show_raw: bool) -> bool:
     try:
         import lgpio  # type: ignore
     except ImportError:
@@ -289,19 +290,21 @@ def run_lgpio(gpio: int, gap_us: int, min_pulses: int, dump_pulses: int) -> bool
         if inverted_frame is not None and inverted_repeat_filter.accept(inverted_frame):
             print_decoded_frame(inverted_frame, prefix="decoded-inverted", debounce_ms=300, state=decoded_state)
         if duration >= gap_us:
-            if len(pulses) >= min_pulses:
+            if show_raw and len(pulses) >= min_pulses:
                 print(summarize_pulse_frame(list(pulses)))
             pulses.clear()
         else:
             pulses.append((int(level), duration))
-            if dump_pulses > 0 and len(pulses) >= dump_pulses:
+            if show_raw and dump_pulses > 0 and len(pulses) >= dump_pulses:
                 print("dump " + summarize_pulse_frame(list(pulses)), flush=True)
                 pulses.clear()
 
     callback = lgpio.callback(handle, gpio, lgpio.BOTH_EDGES, on_edge)
     print(f"Listening with lgpio on BCM GPIO {gpio}. Press Ctrl+C to stop.")
-    print("It will print decoded 24-bit PWM codes when possible, plus raw pulse frames for discovery.")
-    if dump_pulses > 0:
+    print("It will print decoded 24-bit PWM codes when possible.")
+    if show_raw:
+        print("Raw pulse output enabled.")
+    if show_raw and dump_pulses > 0:
         print(f"Raw pulse dump enabled: every {dump_pulses} pulses.")
     try:
         while True:
@@ -360,7 +363,7 @@ def main() -> int:
     print(f"Decimal text hex example: {text_to_hex_bytes(str(args.gpio))}")
     if args.backend in ("auto", "rpi-rf") and run_rpi_rf(args.gpio, args.debounce_ms):
         return 0
-    if args.backend in ("auto", "lgpio") and run_lgpio(args.gpio, args.gap_us, args.min_pulses, args.dump_pulses):
+    if args.backend in ("auto", "lgpio") and run_lgpio(args.gpio, args.gap_us, args.min_pulses, args.dump_pulses, args.show_raw):
         return 0
     if args.backend in ("auto", "rpi-gpio") and run_rpi_gpio(args.gpio, args.gap_us, args.min_pulses):
         return 0

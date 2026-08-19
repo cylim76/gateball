@@ -8,16 +8,29 @@ chmod +x start.sh rf_hex_test.py
 ./start.sh
 ```
 
-For the current decode troubleshooting mode, run:
+By default, `start.sh` runs the quiet decode mode on BCM GPIO17:
 
 ```bash
-bash start.sh -decode
+bash start.sh
 ```
 
-This uses BCM GPIO17. To use another BCM GPIO, pass it after `-decode`:
+To use another BCM GPIO, pass it after `-decode`:
 
 ```bash
 bash start.sh -decode 25
+```
+
+`-decode` shows decoded codes only so noise does not scroll the terminal. If
+raw pulse timings are needed, use:
+
+```bash
+bash start.sh -dump 17
+```
+
+To choose GPIO and backend manually, run:
+
+```bash
+bash start.sh -interactive
 ```
 
 When it asks for a pin, enter the **BCM GPIO number**, not the physical pin
@@ -34,7 +47,7 @@ If GPIO activity is visible with `gpiomon` but no code is decoded, dump raw
 pulse timings while pressing a remote button:
 
 ```bash
-python3 rf_hex_test.py --gpio 17 --backend lgpio --dump-pulses 120 --gap-us 20000 --min-pulses 8
+python3 rf_hex_test.py --gpio 17 --backend lgpio --dump-pulses 120 --gap-us 20000 --min-pulses 8 --show-raw
 ```
 
 The preferred output uses `rpi-rf` and looks like:
