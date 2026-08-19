@@ -109,6 +109,7 @@ const keyBindingSpecById = Object.fromEntries(keyBindingSpecs.map((spec) => [spe
 const DEFAULT_TITLE_COLOR = "#ffe23a";
 const DEFAULT_TITLE_FONT_SCALE = 1;
 const DEFAULT_TABLE_MARKER_SCALE = 1;
+const MUSIC_DUCK_RELEASE_MS = 350;
 
 let currentState = null;
 let finishDialogOpen = false;
@@ -160,6 +161,7 @@ let wakeLockWanted = false;
 let stateEventSource = null;
 let refreshTimer = null;
 let stylePreviewTimer = null;
+let lastHandledRfSignalKey = "";
 let resultsYear = new Date().getFullYear();
 let resultsMonth = new Date().getMonth() + 1;
 let selectedResultsDate = "";
@@ -184,7 +186,7 @@ const guardedActionTimes = new Map();
 const ACTION_GUARD_MS = 800;
 const TIMEOUT_AUDIO_OFFSET_MS = 5500;
 const READY_SPEECH_DELAY_MS = 30000;
-const FINISH_SUMMARY_TAIL_CUT_MS = 450;
+const FINISH_SUMMARY_TAIL_CUT_MS = 800;
 const MATCH_TRANSITION_HOLD_MS = 320;
 const MATCH_TRANSITION_FALLBACK_MS = 45000;
 const ERROR_PROMPT_LEAD_MS = 400;
@@ -1871,7 +1873,18 @@ function musicItemForId(itemId) {
 function musicTrackIdFromForm(form) {
   const itemId = form?.selectedMusicTrack?.value || "";
   const item = musicItemForId(itemId);
-  return item?.type === "track" ? item.id : "";
+  if (!item) return "";
+  if (item.type === "track") return item.id;
+  if (item.type !== "directory") return "";
+  const marker = item.id.match(/^dir:([^:]+):(.+)$/);
+  if (!marker) return "";
+  const source = marker[1];
+  const relative = marker[2] === "." ? "" : `${marker[2].replace(/\/+$/, "")}/`;
+  const firstTrack = musicTracks.find((track) => {
+    if (!track.id.startsWith(`${source}:`)) return false;
+    return !relative || track.name?.startsWith(relative);
+  });
+  return firstTrack?.id || "";
 }
 
 function getMusicAudio() {
@@ -1890,8 +1903,10 @@ function beginSpeechAudio() {
 }
 
 function endSpeechAudio() {
-  musicDuckDepth = Math.max(0, musicDuckDepth - 1);
-  applyMusicVolume();
+  window.setTimeout(() => {
+    musicDuckDepth = Math.max(0, musicDuckDepth - 1);
+    applyMusicVolume();
+  }, MUSIC_DUCK_RELEASE_MS);
 }
 
 async function loadMusicTracks() {
@@ -3061,6 +3076,51 @@ function closeResultDetail() {
   document.querySelector("[data-result-detail-dialog]")?.classList.remove("open");
 }
 
+function handleRfSignalEffects(previousState, nextState) {
+  if (!document.querySelector("[data-scoreboard]") && !document.querySelector("[data-remote]")) return;
+  const signal = nextState?.rfLastSignal;
+  const key = rfSignalKey(signal);
+  if (!key || key === lastHandledRfSignalKey) return;
+  if (previousState?.rfLastSignal && key === rfSignalKey(previousState.rfLastSignal)) return;
+  lastHandledRfSignalKey = key;
+  if (signal?.action === "finish_dialog" && signal?.status === "finish_requires_password") {
+    if (finishDialogOpen) {
+      closeFinishDialog();
+      return;
+    }
+    openFinishDialog();
+    return;
+  }
+  if (finishDialogOpen) {
+    const digit = rfPasswordDigitForAction(signal?.action);
+    if (digit !== "") appendFinishPasswordDigit(digit);
+  }
+}
+
+function rfPasswordDigitForAction(actionId) {
+  const match = String(actionId || "").match(/^ball_(\d+)$/);
+  if (!match) return "";
+  const number = Number(match[1]);
+  if (number >= 1 && number <= 9) return String(number);
+  if (number === 10) return "0";
+  return "";
+}
+
+function appendFinishPasswordDigit(digit) {
+  if (!finishDialogOpen || !/^\d$/.test(String(digit))) return;
+  if (finishPassword.length >= finishPasswordLength()) return;
+  finishPassword += String(digit);
+  finishVerifyInFlight = false;
+  const input = document.querySelector("[data-finish-password]");
+  if (input) input.value = finishPassword;
+  const result = document.querySelector("[data-finish-result]");
+  if (result) {
+    result.textContent = "";
+    result.classList.remove("error");
+  }
+  if (finishPassword.length >= finishPasswordLength()) tryFinishWithPassword();
+}
+
 function shouldTransitionBetweenStates(previousState, nextState, options = {}) {
   if (options.skipTransition || matchTransitionInFlight) return false;
   if (!previousState || !nextState) return false;
@@ -3085,6 +3145,7 @@ function renderState(options = {}) {
 
 function applyState(state, options = {}) {
   const previousState = currentState;
+  handleRfSignalEffects(previousState, state);
   if (shouldTransitionBetweenStates(previousState, state, options)) {
     runMatchTransition(() => {
       currentState = state;

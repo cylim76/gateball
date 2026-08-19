@@ -144,6 +144,7 @@ DEFAULT_STATE = {
     "musicDuckPercent": 30,
     "selectedMusicTrack": "",
     "musicPlaying": False,
+    "lastMusicToggleAt": 0,
     "titleColor": "#ffe23a",
     "titleFontScale": 1.0,
     "tableMarkerAutoSize": True,
@@ -277,6 +278,22 @@ def list_music_items() -> tuple[list[dict], list[dict]]:
 def list_music_tracks() -> list[dict]:
     tracks, _items = list_music_items()
     return tracks
+
+
+def next_music_track_id(current_track_id: str, mode: str = "loop") -> str:
+    tracks = list_music_tracks()
+    if not tracks:
+        return ""
+    if len(tracks) == 1:
+        return str(tracks[0].get("id") or "")
+    if mode == "random":
+        choices = [str(track.get("id") or "") for track in tracks if track.get("id") != current_track_id]
+        return random.choice(choices) if choices else str(tracks[0].get("id") or "")
+    current_index = next(
+        (index for index, track in enumerate(tracks) if track.get("id") == current_track_id),
+        -1,
+    )
+    return str(tracks[(current_index + 1) % len(tracks)].get("id") or "")
 
 
 def resolve_music_track(track_id: str) -> Path | None:
@@ -823,7 +840,7 @@ class Store:
         self.record_rf_signal(raw=raw, address=address, button=button, remote=remote, action_id=action_id, status=status)
         self.save()
         self.emit()
-        return {"ok": status == "executed", "message": status, "state": self.snapshot()}
+        return {"ok": status in {"executed", "finish_requires_password"}, "message": status, "state": self.snapshot()}
 
     def action(self, payload: dict) -> dict:
         self.tick()
@@ -1075,21 +1092,51 @@ class Store:
 
         elif action == "toggle_music":
             if self.state.get("musicEnabled") and self.state.get("selectedMusicTrack"):
-                self.state["musicPlaying"] = not bool(self.state.get("musicPlaying"))
-                message = "音乐播放" if self.state["musicPlaying"] else "音乐暂停"
+                now = time.time()
+                try:
+                    double_press = (now - float(self.state.get("lastMusicToggleAt") or 0)) <= 0.9
+                except (TypeError, ValueError):
+                    double_press = False
+                self.state["lastMusicToggleAt"] = now
+                if double_press:
+                    next_track_id = next_music_track_id(
+                        str(self.state.get("selectedMusicTrack") or ""),
+                        str(self.state.get("musicMode") or "loop"),
+                    )
+                    if next_track_id:
+                        self.state["selectedMusicTrack"] = next_track_id
+                    self.state["musicPlaying"] = True
+                    message = "音乐下一首"
+                else:
+                    self.state["musicPlaying"] = not bool(self.state.get("musicPlaying"))
+                    message = "音乐播放" if self.state["musicPlaying"] else "音乐暂停"
             else:
                 self.state["musicPlaying"] = False
+                self.state["lastMusicToggleAt"] = 0
                 message = "未启用背景音乐"
             self.state["lastMessage"] = message
             self.record("toggle_music", None, message)
 
         elif action == "ten_second_countdown":
-            message = "10秒倒计时"
-            event_id = f"{time.time():.6f}"
-            self.state["tenSecondCountdownId"] = event_id
-            self.state["tenSecondCountdownStartedAt"] = time.time()
-            self.state["lastMessage"] = message
-            self.record("ten_second_countdown", None, message)
+            now = time.time()
+            started_at = self.state.get("tenSecondCountdownStartedAt")
+            try:
+                countdown_active = bool(self.state.get("tenSecondCountdownId")) and (now - float(started_at)) < 10
+            except (TypeError, ValueError):
+                countdown_active = False
+            if countdown_active:
+                message = "10秒倒计时已停止"
+                self.state["tenSecondCountdownId"] = None
+                self.state["tenSecondCountdownStartedAt"] = None
+                self.state["lastMessage"] = message
+                self.record("cancel_ten_second_countdown", None, message)
+            else:
+                message = "10秒倒计时"
+                event_id = f"{now:.6f}"
+                self.state["tenSecondCountdownId"] = event_id
+                self.state["tenSecondCountdownStartedAt"] = now
+                self.state["lastMessage"] = message
+                self.record("ten_second_countdown", None, message)
 
         elif action == "cancel_ten_second_countdown":
             message = "10秒倒计时已停止"
