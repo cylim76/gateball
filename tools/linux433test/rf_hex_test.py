@@ -27,6 +27,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--debounce-ms", type=int, default=300, help="Ignore repeated decoded codes in this window")
     parser.add_argument("--gap-us", type=int, default=6000, help="Pulse gap that marks a raw frame boundary")
     parser.add_argument("--min-pulses", type=int, default=24, help="Minimum raw pulses before printing fallback data")
+    parser.add_argument(
+        "--dump-pulses",
+        type=int,
+        default=0,
+        help="Print and clear every N raw pulses even if no frame gap is detected. Useful when decoding fails.",
+    )
     return parser.parse_args()
 
 
@@ -225,7 +231,7 @@ def summarize_pulse_frame(pulses: list[tuple[int, int]]) -> str:
     return f"raw-frame pulses={len(pulses)} median_us={median} hex={raw_hex} sample={sample}"
 
 
-def run_lgpio(gpio: int, gap_us: int, min_pulses: int) -> bool:
+def run_lgpio(gpio: int, gap_us: int, min_pulses: int, dump_pulses: int) -> bool:
     try:
         import lgpio  # type: ignore
     except ImportError:
@@ -268,10 +274,15 @@ def run_lgpio(gpio: int, gap_us: int, min_pulses: int) -> bool:
             pulses.clear()
         else:
             pulses.append((int(level), duration))
+            if dump_pulses > 0 and len(pulses) >= dump_pulses:
+                print("dump " + summarize_pulse_frame(list(pulses)), flush=True)
+                pulses.clear()
 
     callback = lgpio.callback(handle, gpio, lgpio.BOTH_EDGES, on_edge)
     print(f"Listening with lgpio on BCM GPIO {gpio}. Press Ctrl+C to stop.")
     print("It will print decoded 24-bit PWM codes when possible, plus raw pulse frames for discovery.")
+    if dump_pulses > 0:
+        print(f"Raw pulse dump enabled: every {dump_pulses} pulses.")
     try:
         while True:
             time.sleep(1)
@@ -329,7 +340,7 @@ def main() -> int:
     print(f"Decimal text hex example: {text_to_hex_bytes(str(args.gpio))}")
     if args.backend in ("auto", "rpi-rf") and run_rpi_rf(args.gpio, args.debounce_ms):
         return 0
-    if args.backend in ("auto", "lgpio") and run_lgpio(args.gpio, args.gap_us, args.min_pulses):
+    if args.backend in ("auto", "lgpio") and run_lgpio(args.gpio, args.gap_us, args.min_pulses, args.dump_pulses):
         return 0
     if args.backend in ("auto", "rpi-gpio") and run_rpi_gpio(args.gpio, args.gap_us, args.min_pulses):
         return 0

@@ -33,6 +33,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gap-us", type=int, default=6000, help="Pulse gap that marks the end of a fallback frame")
     parser.add_argument("--min-pulses", type=int, default=24, help="Minimum fallback pulses before a frame is printed")
     parser.add_argument(
+        "--dump-pulses",
+        type=int,
+        default=0,
+        help="Print and clear every N raw pulses even if no frame gap is detected. Useful when decoding fails.",
+    )
+    parser.add_argument(
         "--post-url",
         default="",
         help="Optional scoreboard action URL, for example http://127.0.0.1:8000/api/action",
@@ -240,7 +246,7 @@ def summarize_pulses(pulses: list[tuple[int, int]]) -> str:
     return f"pulses={len(pulses)} median_us={median} sample={sample}"
 
 
-def run_lgpio(gpio: int, gap_us: int, min_pulses: int, debounce_ms: int, post_url: str) -> bool:
+def run_lgpio(gpio: int, gap_us: int, min_pulses: int, debounce_ms: int, post_url: str, dump_pulses: int) -> bool:
     try:
         import lgpio  # type: ignore
     except ImportError:
@@ -283,10 +289,15 @@ def run_lgpio(gpio: int, gap_us: int, min_pulses: int, debounce_ms: int, post_ur
             pulses.clear()
         else:
             pulses.append((level, duration))
+            if dump_pulses > 0 and len(pulses) >= dump_pulses:
+                print("dump " + summarize_pulses(list(pulses)), flush=True)
+                pulses.clear()
 
     callback = lgpio.callback(handle, gpio, lgpio.BOTH_EDGES, on_edge)
     print(f"Listening with lgpio edge capture on BCM GPIO {gpio}. Press Ctrl+C to stop.")
     print("It will try normal and inverted 24-bit PWM decode, and also print raw pulse frames.")
+    if dump_pulses > 0:
+        print(f"Raw pulse dump enabled: every {dump_pulses} pulses.")
     try:
         while True:
             time.sleep(1)
@@ -340,7 +351,7 @@ def main() -> int:
     args = parse_args()
     if args.backend in ("auto", "rpi-rf") and run_rpi_rf(args.gpio, args.debounce_ms, args.post_url):
         return 0
-    if args.backend in ("auto", "lgpio") and run_lgpio(args.gpio, args.gap_us, args.min_pulses, args.debounce_ms, args.post_url):
+    if args.backend in ("auto", "lgpio") and run_lgpio(args.gpio, args.gap_us, args.min_pulses, args.debounce_ms, args.post_url, args.dump_pulses):
         return 0
     if args.backend in ("auto", "rpi-gpio") and run_rpi_gpio(args.gpio, args.gap_us, args.min_pulses):
         return 0

@@ -8,6 +8,18 @@ chmod +x start.sh rf_hex_test.py
 ./start.sh
 ```
 
+For the current decode troubleshooting mode, run:
+
+```bash
+bash start.sh -decode
+```
+
+This uses BCM GPIO17. To use another BCM GPIO, pass it after `-decode`:
+
+```bash
+bash start.sh -decode 25
+```
+
 When it asks for a pin, enter the **BCM GPIO number**, not the physical pin
 number. For example, BCM GPIO17 is physical pin 11. When it asks for a backend,
 press Enter to use the default `lgpio` mode.
@@ -16,6 +28,13 @@ You can also run the same test directly:
 
 ```bash
 python3 rf_hex_test.py --gpio 17 --backend lgpio
+```
+
+If GPIO activity is visible with `gpiomon` but no code is decoded, dump raw
+pulse timings while pressing a remote button:
+
+```bash
+python3 rf_hex_test.py --gpio 17 --backend lgpio --dump-pulses 120 --gap-us 20000 --min-pulses 8
 ```
 
 The preferred output uses `rpi-rf` and looks like:
