@@ -230,6 +230,22 @@ body.scoreboard {
   border-color: var(--line-white);
 }
 
+.team-total.score-double-digit {
+  grid-template-columns: minmax(0, 1fr) clamp(174px, 20vh, 288px);
+}
+
+.team-total.white.score-double-digit {
+  grid-template-columns: clamp(174px, 20vh, 288px) minmax(0, 1fr);
+}
+
+.team-total.score-triple-digit {
+  grid-template-columns: minmax(0, 1fr) clamp(214px, 24vh, 346px);
+}
+
+.team-total.white.score-triple-digit {
+  grid-template-columns: clamp(214px, 24vh, 346px) minmax(0, 1fr);
+}
+
 .team-name {
   display: flex;
   flex-direction: column;
@@ -320,7 +336,16 @@ body.scoreboard {
   background: #020202;
   font-family: var(--heavy-number-font);
   font-size: clamp(104px, 17vh, 209px);
+  font-weight: 900;
   color: #ff111a;
+}
+
+.team-total.score-double-digit .total {
+  font-size: clamp(92px, 15vh, 182px);
+}
+
+.team-total.score-triple-digit .total {
+  font-size: clamp(76px, 12.2vh, 148px);
 }
 
 .team-total.white .total {
@@ -718,6 +743,24 @@ tr.selected {
     grid-template-columns: clamp(96px, 13vw, 150px) minmax(0, 1fr);
   }
 
+  .team-total.score-double-digit,
+  .team-total.white.score-double-digit {
+    grid-template-columns: minmax(0, 1fr) clamp(126px, 16vw, 190px);
+  }
+
+  .team-total.white.score-double-digit {
+    grid-template-columns: clamp(126px, 16vw, 190px) minmax(0, 1fr);
+  }
+
+  .team-total.score-triple-digit,
+  .team-total.white.score-triple-digit {
+    grid-template-columns: minmax(0, 1fr) clamp(156px, 19vw, 230px);
+  }
+
+  .team-total.white.score-triple-digit {
+    grid-template-columns: clamp(156px, 19vw, 230px) minmax(0, 1fr);
+  }
+
   .team-name {
     font-size: clamp(22px, 3.6vw, 40px);
   }
@@ -729,6 +772,14 @@ tr.selected {
   .total,
   .time {
     font-size: clamp(70px, 11vw, 126px);
+  }
+
+  .team-total.score-double-digit .total {
+    font-size: clamp(64px, 9.6vw, 108px);
+  }
+
+  .team-total.score-triple-digit .total {
+    font-size: clamp(54px, 8vw, 90px);
   }
 
   .timer {
@@ -871,6 +922,14 @@ tr.selected {
 
   .total {
     font-size: clamp(72px, 18vw, 118px);
+  }
+
+  .team-total.score-double-digit .total {
+    font-size: clamp(66px, 16vw, 104px);
+  }
+
+  .team-total.score-triple-digit .total {
+    font-size: clamp(52px, 12.5vw, 84px);
   }
 
   .timer-label {

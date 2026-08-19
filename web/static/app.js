@@ -1377,8 +1377,18 @@ function renderScoreboard() {
   applyTableMarkerScale(currentState.tableMarkerAutoSize, currentState.tableMarkerScale);
   setTeamName("[data-red-team]", currentState.redTeam);
   setTeamName("[data-white-team]", currentState.whiteTeam);
-  document.querySelector("[data-red-total]").textContent = currentState.redTotal;
-  document.querySelector("[data-white-total]").textContent = currentState.whiteTotal;
+  const redTotal = document.querySelector("[data-red-total]");
+  const whiteTotal = document.querySelector("[data-white-total]");
+  if (redTotal) {
+    redTotal.textContent = currentState.redTotal;
+    redTotal.closest(".team-total")?.classList.toggle("score-double-digit", redScore >= 10 && redScore < 100);
+    redTotal.closest(".team-total")?.classList.toggle("score-triple-digit", redScore >= 100);
+  }
+  if (whiteTotal) {
+    whiteTotal.textContent = currentState.whiteTotal;
+    whiteTotal.closest(".team-total")?.classList.toggle("score-double-digit", whiteScore >= 10 && whiteScore < 100);
+    whiteTotal.closest(".team-total")?.classList.toggle("score-triple-digit", whiteScore >= 100);
+  }
   document.querySelector("[data-time]").textContent = formatTime(currentState.remainingSeconds);
   const timer = document.querySelector("[data-scoreboard-timer]");
   if (timer) {
