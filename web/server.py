@@ -482,6 +482,29 @@ class Store:
         for number in range(1, 11):
             self.balls.setdefault(number, BallState(number))
         self.history = data.get("history", [])
+        self.reset_match_runtime_on_startup()
+
+    def reset_match_runtime_on_startup(self) -> None:
+        duration = int(self.state.get("durationSeconds") or DEFAULT_STATE["durationSeconds"])
+        self.state["remainingSeconds"] = duration
+        self.state["running"] = False
+        self.state["timeExpired"] = False
+        self.state["matchFinished"] = False
+        self.state["selectedBall"] = 1
+        self.state["selectedBallAt"] = None
+        self.state["deadline"] = None
+        self.state["announcedMinuteWarnings"] = []
+        self.state["timerStarted"] = False
+        self.state["matchStartedAt"] = None
+        self.state["lastTickRemainingSeconds"] = duration
+        self.state["tenSecondCountdownId"] = None
+        self.state["tenSecondCountdownStartedAt"] = None
+        self.state["musicPlaying"] = False
+        self.balls = new_balls()
+        self.history = []
+        self.state["lastMessage"] = f"第{self.state['matchNumber']}场，等待开始"
+        self.state["lastUpdated"] = time.time()
+        self.save()
 
     def save(self) -> None:
         DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -693,6 +716,7 @@ class Store:
 
     def record_rf_signal(self, *, raw: str, address: str, button: str, remote: dict | None, action_id: str, status: str) -> None:
         self.state["rfLastSignal"] = {
+            "id": f"{time.time():.6f}",
             "raw": raw,
             "address": address,
             "button": button,
@@ -747,6 +771,7 @@ class Store:
                 status = "unknown_button"
         self.record_rf_signal(raw=raw, address=address, button=button, remote=remote, action_id=action_id, status=status)
         self.save()
+        self.emit()
         return {"ok": status == "executed", "message": status, "state": self.snapshot()}
 
     def action(self, payload: dict) -> dict:

@@ -2158,7 +2158,7 @@ function rfBindingText(binding) {
 
 function rfSignalKey(signal) {
   if (!signal) return "";
-  return [signal.time || "", signal.raw || "", signal.address || "", signal.button || ""].join("|");
+  return [signal.id || signal.time || "", signal.raw || "", signal.address || "", signal.button || ""].join("|");
 }
 
 function rfCodeHex(value) {
