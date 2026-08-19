@@ -67,8 +67,12 @@ def run_rpi_rf(gpio: int, debounce_ms: int, post_url: str) -> bool:
     except ImportError:
         return False
 
-    rfdevice = RFDevice(gpio)
-    rfdevice.enable_rx()
+    try:
+        rfdevice = RFDevice(gpio)
+        rfdevice.enable_rx()
+    except Exception as exc:
+        print(f"rpi-rf cannot start on this Raspberry Pi: {exc}")
+        return False
     last_timestamp = None
     last_code = None
     last_at = 0.0
@@ -117,8 +121,12 @@ def run_lgpio(gpio: int, gap_us: int, min_pulses: int) -> bool:
     except ImportError:
         return False
 
-    handle = lgpio.gpiochip_open(0)
-    lgpio.gpio_claim_input(handle, gpio)
+    try:
+        handle = lgpio.gpiochip_open(0)
+        lgpio.gpio_claim_input(handle, gpio)
+    except Exception as exc:
+        print(f"lgpio cannot open BCM GPIO {gpio}: {exc}")
+        return False
     pulses: deque[tuple[int, int]] = deque(maxlen=256)
     last_tick = None
 
@@ -155,8 +163,12 @@ def run_rpi_gpio(gpio: int, gap_us: int, min_pulses: int) -> bool:
     except ImportError:
         return False
 
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(gpio, GPIO.IN)
+    try:
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(gpio, GPIO.IN)
+    except Exception as exc:
+        print(f"RPi.GPIO cannot start on this Raspberry Pi: {exc}")
+        return False
     pulses: deque[tuple[int, int]] = deque(maxlen=256)
     last_ns = time.monotonic_ns()
     last_level = GPIO.input(gpio)

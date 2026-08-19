@@ -20,9 +20,14 @@ code=1234567 hex=12 D6 87 address=123456 button=7 protocol=1 pulse=350
 If `rpi-rf` is missing, install it:
 
 ```bash
-sudo apt install -y python3-pip python3-rpi.gpio
+sudo apt install -y python3-pip python3-rpi.gpio python3-lgpio
 sudo python3 -m pip install rpi-rf --break-system-packages
 ```
+
+On newer Raspberry Pi boards or OS builds, `rpi-rf` may fail with
+`Cannot determine SOC peripheral base address`. In that case the tool now
+continues with `lgpio` automatically and tries to decode the same 24-bit PWM
+codes from GPIO edge timings.
 
 If the remote protocol cannot be decoded, the tool may fall back to raw pulse
 frames. Raw frames prove that the receiver DATA pin is changing, but they are

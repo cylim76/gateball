@@ -212,15 +212,16 @@ install_rf_support() {
     echo "RF GPIO support install skipped: INSTALL_RF_SUPPORT=$INSTALL_RF_SUPPORT"
     return
   fi
-  if python_has_module rpi_rf; then
-    echo "RF GPIO decoder already installed: rpi-rf"
+
+  echo "Installing RF GPIO decoder dependencies: python3-pip python3-rpi.gpio python3-lgpio rpi-rf"
+  if ! sudo apt-get update || ! sudo apt-get install -y python3-pip python3-rpi.gpio python3-lgpio; then
+    echo "Warning: failed to install RF GPIO apt dependencies. GPIO remote learning may not work yet."
+    echo "Try manually: sudo apt install -y python3-pip python3-rpi.gpio python3-lgpio"
     return
   fi
 
-  echo "Installing RF GPIO decoder dependencies: python3-pip python3-rpi.gpio rpi-rf"
-  if ! sudo apt-get update || ! sudo apt-get install -y python3-pip python3-rpi.gpio; then
-    echo "Warning: failed to install RF GPIO apt dependencies. GPIO remote learning may not work yet."
-    echo "Try manually: sudo apt install -y python3-pip python3-rpi.gpio"
+  if python_has_module rpi_rf; then
+    echo "RF GPIO decoder already installed: rpi-rf"
     return
   fi
 

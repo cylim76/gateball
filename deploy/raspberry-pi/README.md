@@ -37,8 +37,11 @@ installer now falls back to `SUDO_USER` so the service and desktop autostart
 still target the real Raspberry Pi desktop user.
 
 The installer checks GPIO remote support by trying to import `rpi_rf`. If it is
-missing, it installs `python3-pip`, `python3-rpi.gpio`, and `rpi-rf` before the
-service starts. To skip this optional RF dependency step, run
+missing, it installs `python3-pip`, `python3-rpi.gpio`, `python3-lgpio`, and
+`rpi-rf` before the service starts. `python3-lgpio` is kept as a fallback for
+newer Raspberry Pi boards where `RPi.GPIO` may report
+`Cannot determine SOC peripheral base address`. To skip this optional RF
+dependency step, run
 `INSTALL_RF_SUPPORT=0 ./install.sh`.
 
 The installer does not restart the display manager by default, because that can
@@ -149,9 +152,10 @@ signals to the running scoreboard for an end-to-end test:
 python3 tools/rf_433_debug.py --gpio 27 --post-url http://127.0.0.1:8000/api/action
 ```
 
-If `rpi-rf` is not installed, it falls back to `lgpio` or `RPi.GPIO` and prints
-pulse frames for protocol discovery. The main installer installs `rpi-rf` by
-default. On Raspberry Pi OS you can also install a GPIO fallback with:
+If `rpi-rf` is not installed or cannot start on the current Raspberry Pi, it
+falls back to `lgpio` or `RPi.GPIO` and prints pulse frames for protocol
+discovery. The main installer installs `rpi-rf` and `python3-lgpio` by default.
+On Raspberry Pi OS you can also install the GPIO fallback with:
 
 ```bash
 sudo apt install -y python3-lgpio

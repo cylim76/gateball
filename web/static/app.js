@@ -2113,12 +2113,44 @@ function rfSlotById(slotId) {
 
 function rfBindingText(binding) {
   if (!binding) return "未学习";
-  return binding.label || binding.raw || [binding.address, binding.button].filter(Boolean).join(" / ") || "已学习";
+  return rfCodeDisplay(binding);
 }
 
 function rfSignalKey(signal) {
   if (!signal) return "";
   return [signal.time || "", signal.raw || "", signal.address || "", signal.button || ""].join("|");
+}
+
+function rfCodeHex(value) {
+  const text = String(value || "").trim();
+  if (!text) return "-";
+  try {
+    const normalized = text.startsWith("0x") || text.startsWith("0X") ? BigInt(text) : (/^\d+$/.test(text) ? BigInt(text) : null);
+    if (normalized !== null) {
+      const hex = normalized.toString(16).toUpperCase();
+      return hex.padStart(Math.ceil(hex.length / 2) * 2, "0").match(/../g).join(" ");
+    }
+  } catch (error) {
+    return "-";
+  }
+  return Array.from(new TextEncoder().encode(text)).map((byte) => byte.toString(16).toUpperCase().padStart(2, "0")).join(" ");
+}
+
+function rfCodeParts(source) {
+  const raw = String(source?.raw || source?.code || "").trim();
+  let address = String(source?.address || "").trim();
+  let button = String(source?.button || "").trim();
+  if (!address && raw) address = raw.length > 1 ? raw.slice(0, -1) : raw;
+  if (!button && raw) button = raw.slice(-1);
+  return { raw, address, button };
+}
+
+function rfCodeDisplay(source) {
+  const { raw, address, button } = rfCodeParts(source);
+  const remotePart = address ? `遥控器编码 ${address} [${rfCodeHex(address)}]` : "遥控器编码 -";
+  const buttonPart = button ? `按键编码 ${button} [${rfCodeHex(button)}]` : "按键编码 -";
+  const rawPart = raw ? `原始 ${raw} [${rfCodeHex(raw)}]` : "";
+  return [remotePart, buttonPart, rawPart].filter(Boolean).join(" / ");
 }
 
 function draftBindingFor(slotId, actionId, savedBinding) {
@@ -2207,8 +2239,7 @@ function renderRfLastSignal() {
   }
   const action = rfActionLabels[signal.action] || signal.action || "-";
   const status = rfStatusLabels[signal.status] || signal.status || "-";
-  const raw = signal.raw ? ` / 原始 ${signal.raw}` : "";
-  element.textContent = `最近信号：地址 ${signal.address || "-"} / 按键 ${signal.button || "-"}${raw} / 遥控器 ${signal.remoteName || "未识别"} / 动作 ${action} / ${status}`;
+  element.textContent = `最近信号：${rfCodeDisplay(signal)} / 遥控器 ${signal.remoteName || "未识别"} / 动作 ${action} / ${status}`;
 }
 
 function consumePendingRfLearn() {
@@ -2225,7 +2256,7 @@ function consumePendingRfLearn() {
     raw: signal.raw || [signal.address, signal.button].filter(Boolean).join(":"),
     address: signal.address || "",
     button: signal.button || "",
-    label: signal.raw || [signal.address, signal.button].filter(Boolean).join(":"),
+    label: rfCodeDisplay(signal),
   };
   setRfBindingRow(row, binding);
   pendingRfLearn = null;

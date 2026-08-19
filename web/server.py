@@ -1244,8 +1244,17 @@ def rf_listener_loop() -> None:
                     active_serial_device = ""
                 if rfdevice is None or active_mode != "gpio" or active_gpio != gpio:
                     cleanup_rf_device(rfdevice)
-                    rfdevice = rf_device_class(gpio)
-                    rfdevice.enable_rx()
+                    try:
+                        rfdevice = rf_device_class(gpio)
+                        rfdevice.enable_rx()
+                    except Exception as exc:
+                        cleanup_rf_device(rfdevice)
+                        rfdevice = None
+                        active_mode = ""
+                        active_gpio = None
+                        print(f"RF GPIO listener disabled: rpi-rf cannot start on BCM GPIO {gpio}: {exc}")
+                        time.sleep(5.0)
+                        continue
                     active_mode = "gpio"
                     active_gpio = gpio
                     last_timestamp = None

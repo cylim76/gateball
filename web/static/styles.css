@@ -2705,12 +2705,11 @@ body.scoreboard.finish-summary-active .celebration-canvas {
 
 .rf-binding-value {
   min-width: 0;
-  overflow: hidden;
   color: #ffd54a;
   font-size: 13px;
   font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .key-binding-panel.embedded {
