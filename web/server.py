@@ -140,7 +140,7 @@ DEFAULT_STATE = {
     "musicVolumePercent": 35,
     "musicMode": "loop",
     "musicAutoPlayDuringMatch": True,
-    "musicStopWhenMatchEnds": True,
+    "musicStopWhenMatchEnds": False,
     "musicDuckDuringSpeech": True,
     "musicDuckPercent": 30,
     "selectedMusicTrack": "",
@@ -480,6 +480,11 @@ class Store:
         self.balls = new_balls()
         self.history: list[dict] = []
         self.load()
+        self.apply_boot_music_autoplay()
+
+    def apply_boot_music_autoplay(self) -> None:
+        if self.state.get("musicEnabled") and self.state.get("musicAutoPlayDuringMatch") and self.state.get("selectedMusicTrack"):
+            self.state["musicPlaying"] = True
 
     def load(self) -> None:
         if not DATA_FILE.exists():
@@ -1101,8 +1106,6 @@ class Store:
                 message = "比赛开始" if not self.state.get("timerStarted") else "比赛继续"
                 if not self.state.get("timerStarted"):
                     self.state["matchStartedAt"] = time.strftime("%Y-%m-%d %H:%M:%S")
-                    if self.state.get("musicEnabled") and self.state.get("musicAutoPlayDuringMatch") and self.state.get("selectedMusicTrack"):
-                        self.state["musicPlaying"] = True
                 self.state["timerStarted"] = True
             self.state["lastMessage"] = message
             self.record("toggle_timer", None, message)
@@ -1204,7 +1207,7 @@ class Store:
                     self.state["running"] = False
                     self.state["deadline"] = None
                     self.state["matchFinished"] = True
-                    if self.state.get("musicStopWhenMatchEnds", True):
+                    if self.state.get("musicStopWhenMatchEnds", False):
                         self.state["musicPlaying"] = False
                     message = "match finished"
                     self.state["lastMessage"] = message

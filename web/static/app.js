@@ -1953,7 +1953,7 @@ function renderMusicSettings() {
     if (form.musicMode) form.musicMode.value = currentState.musicMode || "loop";
     if (form.musicVolumePercent) form.musicVolumePercent.value = normalizeMusicVolumePercent(currentState.musicVolumePercent);
     if (form.musicAutoPlayDuringMatch) form.musicAutoPlayDuringMatch.checked = currentState.musicAutoPlayDuringMatch !== false;
-    if (form.musicStopWhenMatchEnds) form.musicStopWhenMatchEnds.checked = currentState.musicStopWhenMatchEnds !== false;
+    if (form.musicStopWhenMatchEnds) form.musicStopWhenMatchEnds.checked = Boolean(currentState.musicStopWhenMatchEnds);
     if (form.musicDuckDuringSpeech) form.musicDuckDuringSpeech.checked = currentState.musicDuckDuringSpeech !== false;
     if (form.musicDuckPercent) form.musicDuckPercent.value = normalizeMusicDuckPercent(currentState.musicDuckPercent);
     updateMusicOutput(form);
@@ -1988,7 +1988,7 @@ function previewMusicSettings(form) {
   currentState.musicMode = form.musicMode?.value || "loop";
   currentState.musicVolumePercent = normalizeMusicVolumePercent(form.musicVolumePercent?.value);
   currentState.musicAutoPlayDuringMatch = form.musicAutoPlayDuringMatch?.checked !== false;
-  currentState.musicStopWhenMatchEnds = form.musicStopWhenMatchEnds?.checked !== false;
+  currentState.musicStopWhenMatchEnds = Boolean(form.musicStopWhenMatchEnds?.checked);
   currentState.musicDuckDuringSpeech = form.musicDuckDuringSpeech?.checked !== false;
   currentState.musicDuckPercent = normalizeMusicDuckPercent(form.musicDuckPercent?.value);
   updateMusicOutput(form);
