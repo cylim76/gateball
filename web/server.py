@@ -1172,6 +1172,15 @@ def rf_payload_from_24bit_code(code: int) -> dict:
     return rf_payload_from_code(f"0x{code:06X}", address=f"0x{address:04X}", button=f"0x{button:02X}")
 
 
+def lgpio_tick_delta_us(previous_tick: int, tick: int) -> int:
+    delta = int(tick - previous_tick)
+    if delta < 0:
+        delta = int((tick - previous_tick) & 0xFFFFFFFF)
+    if delta > 100_000:
+        return max(1, int(delta / 1000))
+    return delta
+
+
 def rf_payload_from_serial_line(line: str) -> dict | None:
     text = line.strip()
     if not text:
@@ -1315,7 +1324,7 @@ class LgpioRfReceiver:
             self.last_tick = tick
             self.last_level = int(level)
             return
-        duration = int((tick - self.last_tick) & 0xFFFFFFFF)
+        duration = lgpio_tick_delta_us(self.last_tick, tick)
         finished_level = int(self.last_level if self.last_level is not None else 1 - int(level))
         self.last_tick = tick
         self.last_level = int(level)

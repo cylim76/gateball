@@ -153,6 +153,17 @@ def split_rf_code(code: int) -> tuple[int, int]:
     return (code >> 8) & 0xFFFF, code & 0xFF
 
 
+def lgpio_tick_delta_us(previous_tick: int, tick: int) -> int:
+    delta = int(tick - previous_tick)
+    if delta < 0:
+        delta = int((tick - previous_tick) & 0xFFFFFFFF)
+    # lgpio reports nanosecond timestamps on current Raspberry Pi OS builds.
+    # Older GPIO APIs often use microseconds, so keep small deltas unchanged.
+    if delta > 100_000:
+        return max(1, int(delta / 1000))
+    return delta
+
+
 def print_decoded_frame(frame: Frame, *, prefix: str, debounce_ms: int, state: dict[str, float | int | None]) -> None:
     now = time.monotonic()
     last_code = state.get("last_code")
@@ -258,7 +269,7 @@ def run_lgpio(gpio: int, gap_us: int, min_pulses: int, dump_pulses: int) -> bool
             last_tick = tick
             last_level = int(level)
             return
-        duration = int((tick - last_tick) & 0xFFFFFFFF)
+        duration = lgpio_tick_delta_us(last_tick, tick)
         finished_level = int(last_level if last_level is not None else 1 - int(level))
         last_tick = tick
         last_level = int(level)
