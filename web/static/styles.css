@@ -1578,7 +1578,7 @@ button {
   width: clamp(42px, 10.8vw, 47px);
   min-height: 0;
   aspect-ratio: 1;
-  margin-top: 6px;
+  margin-top: calc(-0.5 * clamp(42px, 10.8vw, 47px));
   padding: 0;
   border: 2px solid rgba(255, 255, 255, .62);
   border-radius: 50%;
@@ -2831,27 +2831,80 @@ body.scoreboard.finish-summary-active .celebration-canvas {
 
 .rf-action-row {
   display: grid;
-  grid-template-columns: minmax(92px, 1fr) minmax(110px, 1.4fr) auto auto;
+  grid-template-columns: 58px minmax(0, 1fr) 58px 42px;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
+  gap: 6px;
+  padding: 6px;
   border: 1px solid #272727;
   border-radius: 6px;
   background: #141414;
 }
 
 .rf-action-name {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+}
+
+.rf-action-text {
   color: #fff;
+  font-size: 14px;
   font-weight: 900;
+  text-align: center;
+}
+
+.rf-ball-label {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  font-size: 21px;
+  font-weight: 900;
+  box-shadow:
+    inset 0 2px 5px rgba(255,255,255,.42),
+    inset 0 -6px 8px rgba(0,0,0,.28),
+    0 2px 7px rgba(0,0,0,.34);
+}
+
+.rf-ball-label.red {
+  color: #fff;
+  background: radial-gradient(circle at 34% 28%, #ff8f8f 0 14%, #f0000a 42%, #9a0005 100%);
+}
+
+.rf-ball-label.white {
+  color: #c90008;
+  background: radial-gradient(circle at 34% 28%, #fff 0 14%, #f2f2f2 42%, #bfbfbf 100%);
 }
 
 .rf-binding-value {
   min-width: 0;
   color: #ffd54a;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
-  line-height: 1.35;
+  line-height: 1.22;
   overflow-wrap: anywhere;
+}
+
+.rf-action-row button {
+  min-height: 36px;
+  padding: 5px 8px;
+  font-size: 14px;
+}
+
+.rf-clear-button {
+  display: grid;
+  place-items: center;
+  min-height: 36px;
+  padding: 0;
+  border: 1px solid rgba(255, 80, 80, .82);
+  border-radius: 6px;
+  color: #fff;
+  background: #b00012;
+  font-size: 17px;
+  box-shadow:
+    inset 0 2px 4px rgba(255,255,255,.22),
+    inset 0 -5px 8px rgba(0,0,0,.25);
 }
 
 .key-binding-panel.embedded {
@@ -2863,10 +2916,6 @@ body.scoreboard.finish-summary-active .celebration-canvas {
 
 @media (max-width: 620px) {
   .rf-action-row {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .rf-binding-value {
-    grid-column: 1 / -1;
+    grid-template-columns: 50px minmax(0, 1fr) 54px 40px;
   }
 }

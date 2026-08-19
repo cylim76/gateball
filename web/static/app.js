@@ -2101,7 +2101,7 @@ function cancelPendingRfLearn(message = "学习已取消") {
     item.dataset.slotId === pendingRfLearn.slotId && item.dataset.rfActionId === pendingRfLearn.actionId
   ));
   const value = row?.querySelector("[data-rf-binding-value]");
-  if (value && row) value.textContent = rfBindingText(draftBindingFor(row.dataset.slotId, row.dataset.rfActionId, null));
+  if (value && row) value.textContent = rfBindingCompactText(draftBindingFor(row.dataset.slotId, row.dataset.rfActionId, null));
   pendingRfLearn = null;
   clearRfLearnPolling();
   clearRfLearnTimeout();
@@ -2271,6 +2271,13 @@ function rfBindingText(binding) {
   return rfCodeDisplay(binding);
 }
 
+function rfBindingCompactText(binding) {
+  if (!binding) return "未学习";
+  const { raw, address, button } = rfCodeParts(binding);
+  if (address || button) return `${address || "-"}--${button || "-"}`;
+  return raw || "未学习";
+}
+
 function rfSignalKey(signal) {
   if (!signal) return "";
   return [signal.id || signal.time || "", signal.raw || "", signal.address || "", signal.button || ""].join("|");
@@ -2308,6 +2315,22 @@ function rfCodeDisplay(source) {
   return [remotePart, buttonPart, rawPart].filter(Boolean).join(" / ");
 }
 
+function rfBallNumberFromAction(actionId) {
+  const match = String(actionId || "").match(/^ball_(\d+)$/);
+  return match ? Number(match[1]) : null;
+}
+
+function renderRfActionLabel(spec) {
+  const ballNumber = rfBallNumberFromAction(spec.id);
+  if (!ballNumber) return `<span class="rf-action-text">${escapeHtml(spec.name)}</span>`;
+  const teamClass = ballNumber % 2 === 1 ? "red" : "white";
+  return `
+    <span class="rf-ball-label ${teamClass}" title="${escapeHtml(spec.name)}" aria-label="${escapeHtml(spec.name)}">
+      <span>${ballNumber}</span>
+    </span>
+  `;
+}
+
 function serverNowSeconds() {
   return Number(currentState?.serverTime) || Date.now() / 1000;
 }
@@ -2321,6 +2344,12 @@ function draftBindingFor(slotId, actionId, savedBinding) {
   const slotDraft = rfDraftBindings[slotId];
   if (!slotDraft || !(actionId in slotDraft)) return savedBinding;
   return slotDraft[actionId];
+}
+
+function rfSlotPrimaryAddress(slotId) {
+  const slot = rfSlotById(slotId);
+  const binding = draftBindingFor(slotId, "ball_1", slot?.bindings?.ball_1);
+  return rfCodeParts(binding).address;
 }
 
 function rememberDraftBinding(slotId, actionId, binding) {
@@ -2380,10 +2409,10 @@ function renderRfDevicePanel() {
           const learningText = pendingRfLearnText(slot.id, spec.id);
           return `
             <div class="rf-action-row" data-rf-binding-row data-slot-id="${escapeHtml(slot.id)}" data-rf-action-id="${escapeHtml(spec.id)}" ${rfBindingDataAttributes(binding)}>
-              <span class="rf-action-name">${escapeHtml(spec.name)}</span>
-              <span class="rf-binding-value" data-rf-binding-value>${escapeHtml(learningText || rfBindingText(binding))}</span>
+              <span class="rf-action-name">${renderRfActionLabel(spec)}</span>
+              <span class="rf-binding-value" data-rf-binding-value>${escapeHtml(learningText || rfBindingCompactText(binding))}</span>
               <button class="secondary" type="button" data-action="learn-rf-binding" data-slot-id="${escapeHtml(slot.id)}" data-rf-action-id="${escapeHtml(spec.id)}">学习</button>
-              <button class="secondary" type="button" data-action="clear-rf-binding" data-rf-action-id="${escapeHtml(spec.id)}">清除</button>
+              <button class="rf-clear-button" type="button" data-action="clear-rf-binding" data-rf-action-id="${escapeHtml(spec.id)}" aria-label="清除${escapeHtml(spec.name)}" title="清除">🗑</button>
             </div>
           `;
         }).join("")}
@@ -2402,6 +2431,13 @@ function consumePendingRfLearn() {
   if (!signal?.address && !signal?.button && !signal?.raw) return;
   const signalAt = Number.parseFloat(signal.receivedAt ?? signal.id ?? "");
   if (Number.isFinite(signalAt) && signalAt < pendingRfLearn.acceptAfter) return;
+  const signalAddress = rfCodeParts(signal).address;
+  const primaryAddress = pendingRfLearn.actionId === "ball_1" ? "" : rfSlotPrimaryAddress(pendingRfLearn.slotId);
+  if (primaryAddress && signalAddress && signalAddress !== primaryAddress) {
+    setRfResult(`遥控器地址不一致，已忽略：${signalAddress}，请使用1号球同一个遥控器`, true);
+    pendingRfLearn.startedSignalKey = key;
+    return;
+  }
   activeRfTab = pendingRfLearn.slotId;
   renderRfDevicePanel();
   const row = Array.from(document.querySelectorAll("[data-rf-binding-row]")).find((item) => (
