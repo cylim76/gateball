@@ -119,6 +119,7 @@ let pendingSettingsPayload = null;
 let settingsSaveInFlight = false;
 let keyCaptureAction = "";
 let pendingRfLearn = null;
+let rfLearnPollTimer = null;
 let rfDraftBindings = {};
 let alertPromptAudio = null;
 let errorPromptAudio = null;
@@ -2078,6 +2079,56 @@ function setRfResult(text, isError = false) {
   element.classList.toggle("error", isError);
 }
 
+function clearRfLearnPolling() {
+  if (!rfLearnPollTimer) return;
+  window.clearInterval(rfLearnPollTimer);
+  rfLearnPollTimer = null;
+}
+
+function startRfLearnPolling() {
+  clearRfLearnPolling();
+  rfLearnPollTimer = window.setInterval(async () => {
+    if (!pendingRfLearn) {
+      clearRfLearnPolling();
+      return;
+    }
+    try {
+      const state = await api.state();
+      applyState(state, { speakEvents: false, skipTransition: true });
+    } catch (error) {
+      return;
+    }
+  }, 500);
+}
+
+function receiverSettingsSavedForLearning() {
+  const form = document.querySelector("[data-rf-settings-form]");
+  if (!form || !currentState) return true;
+  const receiverType = form.rfReceiverType?.value || "gpio";
+  if (!form.rfRemoteEnabled?.checked) {
+    setRfResult("请先启用外部接收，并保存接收设置", true);
+    return false;
+  }
+  if (receiverType === "keyboard") {
+    setRfResult("当前是 USB 键盘/HID 接收方式，请到小键盘页学习", true);
+    return false;
+  }
+  const currentType = currentState.rfReceiverType || "gpio";
+  const currentGpio = String(currentState.rfReceiverGpio || 27);
+  const formGpio = String(form.rfReceiverGpio?.value || 27);
+  const currentSerial = String(currentState.rfReceiverSerialDevice || "").trim();
+  const formSerial = String(form.rfReceiverSerialDevice?.value || "").trim();
+  const changed = Boolean(currentState.rfRemoteEnabled) !== Boolean(form.rfRemoteEnabled.checked)
+    || currentType !== receiverType
+    || (receiverType === "gpio" && currentGpio !== formGpio)
+    || (receiverType === "serial" && currentSerial !== formSerial);
+  if (changed) {
+    setRfResult("接收设置有修改，请先点击“保存接收设置”，再学习按键", true);
+    return false;
+  }
+  return true;
+}
+
 function renderRfSettings() {
   if (!currentState) return;
   const layout = document.querySelector("[data-rf-layout]");
@@ -2301,6 +2352,7 @@ function consumePendingRfLearn() {
   };
   setRfBindingRow(row, binding);
   pendingRfLearn = null;
+  clearRfLearnPolling();
   setRfResult("已学习，点击保存后生效");
 }
 
@@ -3443,6 +3495,7 @@ document.addEventListener("click", (event) => {
   }
   if (action === "learn-rf-binding") {
     keyCaptureAction = "";
+    if (!receiverSettingsSavedForLearning()) return;
     const row = target.closest("[data-rf-binding-row]");
     pendingRfLearn = {
       slotId: target.dataset.slotId || activeRfTab,
@@ -3452,9 +3505,14 @@ document.addEventListener("click", (event) => {
     const value = row?.querySelector("[data-rf-binding-value]");
     if (value) value.textContent = "等待遥控器信号...";
     setRfResult("请按下遥控器按键，收到信号后会自动填入");
+    startRfLearnPolling();
     return;
   }
   if (action === "clear-rf-binding") {
+    if (pendingRfLearn?.slotId === (target.dataset.slotId || activeRfTab)) {
+      pendingRfLearn = null;
+      clearRfLearnPolling();
+    }
     clearRfBindingRow(target.closest("[data-rf-binding-row]"));
     setRfResult("已清除，点击保存后生效");
     return;

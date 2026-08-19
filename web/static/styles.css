@@ -2463,7 +2463,7 @@ body.scoreboard.finish-summary-active .celebration-canvas {
 
 .settings-tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0;
   flex: 0 0 auto;
   margin: 2px 0 0;
@@ -2481,6 +2481,7 @@ body.scoreboard.finish-summary-active .celebration-canvas {
   background: linear-gradient(#202020, #121212);
   font-size: 18px;
   font-weight: 900;
+  white-space: nowrap;
 }
 
 .settings-tab.active {
@@ -2490,6 +2491,18 @@ body.scoreboard.finish-summary-active .celebration-canvas {
   border-color: var(--gold);
   border-bottom-color: #080808;
   background: #080808;
+}
+
+@media (max-width: 520px) {
+  .settings-tabs {
+    padding: 0 4px;
+  }
+
+  .settings-tab {
+    min-height: 42px;
+    padding: 6px 4px;
+    font-size: 15px;
+  }
 }
 
 .settings-tab-panel {

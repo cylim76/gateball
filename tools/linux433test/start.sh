@@ -3,7 +3,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [[ "${1:-}" == "" || "${1:-}" == "-decode" || "${1:-}" == "-decoded" ]]; then
+if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
+  GPIO_PIN="${1}"
+  echo "433MHz decode debug mode"
+  echo "GPIO: BCM ${GPIO_PIN}"
+  echo "Backend: auto"
+  echo "Only decoded codes will be shown. Use -dump if raw pulses are needed."
+  exec python3 "$SCRIPT_DIR/rf_hex_test.py" \
+    --gpio "$GPIO_PIN" \
+    --backend auto \
+    --gap-us 20000 \
+    --min-pulses 8
+fi
+
+if [[ "${1:-}" == "-decode" || "${1:-}" == "-decoded" ]]; then
   GPIO_PIN="${2:-17}"
   echo "433MHz decode debug mode"
   echo "GPIO: BCM ${GPIO_PIN}"
@@ -31,13 +44,14 @@ if [[ "${1:-}" == "-dump" ]]; then
     --show-raw
 fi
 
-if [[ "${1:-}" != "-interactive" ]]; then
+if [[ "${1:-}" != "" && "${1:-}" != "-interactive" ]]; then
   echo "Unknown option: ${1:-}"
   echo "Usage:"
-  echo "  bash start.sh              # decode mode, GPIO17"
+  echo "  bash start.sh              # choose GPIO/backend, default GPIO17"
+  echo "  bash start.sh 18           # decode mode, selected GPIO"
   echo "  bash start.sh -decode 25   # decode mode, selected GPIO"
   echo "  bash start.sh -dump 17     # raw pulse dump mode"
-  echo "  bash start.sh -interactive # choose GPIO/backend manually"
+  echo "  bash start.sh -interactive # choose GPIO/backend"
   exit 2
 fi
 
@@ -49,11 +63,18 @@ read -r -p "Input BCM GPIO number [17]: " GPIO_PIN
 GPIO_PIN="${GPIO_PIN:-17}"
 echo
 echo "Backend options:"
+echo "  auto    - recommended; try available GPIO backends"
 echo "  lgpio   - recommended for this remote test; bypasses rpi-rf"
-echo "  auto    - try rpi-rf first, then fallback"
 echo "  rpi-rf  - use rpi-rf only"
 echo "  rpi-gpio - use RPi.GPIO polling only"
-read -r -p "Input backend [lgpio]: " BACKEND
-BACKEND="${BACKEND:-lgpio}"
+read -r -p "Input backend [auto]: " BACKEND
+BACKEND="${BACKEND:-auto}"
 
-exec python3 "$SCRIPT_DIR/rf_hex_test.py" --gpio "$GPIO_PIN" --backend "$BACKEND"
+echo
+echo "Decode mode: only decoded codes will be shown."
+echo "If no code appears, run: bash start.sh -dump ${GPIO_PIN}"
+exec python3 "$SCRIPT_DIR/rf_hex_test.py" \
+  --gpio "$GPIO_PIN" \
+  --backend "$BACKEND" \
+  --gap-us 20000 \
+  --min-pulses 8
