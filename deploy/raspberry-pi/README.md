@@ -161,6 +161,10 @@ On Raspberry Pi OS you can also install the GPIO fallback with:
 sudo apt install -y python3-lgpio
 ```
 
+The running scoreboard also prefers the `lgpio` GPIO listener when available,
+so RF learning in Settings uses the same 24-bit GPIO edge decoder as the Linux
+test tool instead of relying only on `rpi-rf`.
+
 ## Background Music
 
 For production music on Raspberry Pi, put audio files in:

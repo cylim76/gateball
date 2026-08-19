@@ -36,6 +36,8 @@ On newer Raspberry Pi boards or OS builds, `rpi-rf` may fail with
 continues with `lgpio` automatically and tries to decode the same 24-bit PWM
 codes from GPIO edge timings. If `rpi-rf` starts but does not decode your
 remote, force the Windows-like GPIO edge decoder with `--backend lgpio`.
+The `lgpio` backend tries both normal and inverted signal polarity; inverted
+matches are printed as `decoded-inverted`.
 
 If the remote protocol cannot be decoded, the tool may fall back to raw pulse
 frames. Raw frames prove that the receiver DATA pin is changing, but they are

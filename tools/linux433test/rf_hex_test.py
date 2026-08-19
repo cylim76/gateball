@@ -239,7 +239,9 @@ def run_lgpio(gpio: int, gap_us: int, min_pulses: int) -> bool:
         return False
     pulses: deque[tuple[int, int]] = deque(maxlen=512)
     decoder = PWM24Decoder()
+    inverted_decoder = PWM24Decoder()
     repeat_filter = RepeatFilter()
+    inverted_repeat_filter = RepeatFilter()
     decoded_state: dict[str, float | int | None] = {"last_code": None, "last_at": 0.0}
     last_tick = None
     last_level = None
@@ -257,6 +259,9 @@ def run_lgpio(gpio: int, gap_us: int, min_pulses: int) -> bool:
         frame = decoder.feed_transition(finished_level, duration, int(level))
         if frame is not None and repeat_filter.accept(frame):
             print_decoded_frame(frame, prefix="decoded", debounce_ms=300, state=decoded_state)
+        inverted_frame = inverted_decoder.feed_transition(1 - finished_level, duration, 1 - int(level))
+        if inverted_frame is not None and inverted_repeat_filter.accept(inverted_frame):
+            print_decoded_frame(inverted_frame, prefix="decoded-inverted", debounce_ms=300, state=decoded_state)
         if duration >= gap_us:
             if len(pulses) >= min_pulses:
                 print(summarize_pulse_frame(list(pulses)))

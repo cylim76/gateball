@@ -7,6 +7,7 @@ import os
 import re
 import select
 import subprocess
+from dataclasses import dataclass
 from threading import RLock, Thread
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -1165,6 +1166,12 @@ def rf_payload_from_code(code: object, *, address: str = "", button: str = "") -
     }
 
 
+def rf_payload_from_24bit_code(code: int) -> dict:
+    address = (code >> 8) & 0xFFFF
+    button = code & 0xFF
+    return rf_payload_from_code(f"0x{code:06X}", address=f"0x{address:04X}", button=f"0x{button:02X}")
+
+
 def rf_payload_from_serial_line(line: str) -> dict | None:
     text = line.strip()
     if not text:
@@ -1198,11 +1205,140 @@ def cleanup_rf_device(device: object | None) -> None:
         pass
 
 
+@dataclass(frozen=True)
+class RfPwmFrame:
+    code: int
+    short_us: float
+    long_us: float
+
+
+class RfPwm24Decoder:
+    SYNC_MIN_US = 8_000
+    SYNC_MAX_US = 18_000
+    SHORT_MIN_US = 180
+    SHORT_MAX_US = 700
+    LONG_MIN_US = 800
+    LONG_MAX_US = 1_700
+
+    def __init__(self) -> None:
+        self._collecting = False
+        self._runs: list[tuple[int, float]] = []
+
+    def feed_transition(self, finished_level: int, duration_us: int, new_level: int) -> RfPwmFrame | None:
+        if (
+            finished_level == 0
+            and new_level == 1
+            and self.SYNC_MIN_US <= duration_us <= self.SYNC_MAX_US
+        ):
+            self._collecting = True
+            self._runs = []
+            return None
+        if not self._collecting:
+            return None
+        self._runs.append((finished_level, float(duration_us)))
+        if len(self._runs) < 48:
+            return None
+        runs = self._runs
+        self._collecting = False
+        self._runs = []
+        return self._decode_runs(runs)
+
+    def _decode_runs(self, runs: list[tuple[int, float]]) -> RfPwmFrame | None:
+        bits: list[str] = []
+        shorts: list[float] = []
+        longs: list[float] = []
+        for i in range(0, 48, 2):
+            high_level, high_us = runs[i]
+            low_level, low_us = runs[i + 1]
+            if high_level != 1 or low_level != 0:
+                return None
+            high_short = self.SHORT_MIN_US <= high_us <= self.SHORT_MAX_US
+            low_short = self.SHORT_MIN_US <= low_us <= self.SHORT_MAX_US
+            high_long = self.LONG_MIN_US <= high_us <= self.LONG_MAX_US
+            low_long = self.LONG_MIN_US <= low_us <= self.LONG_MAX_US
+            if high_short and low_long:
+                bits.append("0")
+                shorts.append(high_us)
+                longs.append(low_us)
+            elif high_long and low_short:
+                bits.append("1")
+                longs.append(high_us)
+                shorts.append(low_us)
+            else:
+                return None
+        return RfPwmFrame(code=int("".join(bits), 2), short_us=sum(shorts) / len(shorts), long_us=sum(longs) / len(longs))
+
+
+class RfRepeatFilter:
+    def __init__(self, repeats_required: int = 2, repeat_window_s: float = 0.25):
+        self.repeats_required = repeats_required
+        self.repeat_window_s = repeat_window_s
+        self._candidate: int | None = None
+        self._count = 0
+        self._last_frame_time = 0.0
+        self._emitted = False
+
+    def accept(self, frame: RfPwmFrame) -> bool:
+        now = time.monotonic()
+        same_group = frame.code == self._candidate and now - self._last_frame_time <= self.repeat_window_s
+        if same_group:
+            self._count += 1
+        else:
+            self._candidate = frame.code
+            self._count = 1
+            self._emitted = False
+        self._last_frame_time = now
+        if self._count >= self.repeats_required and not self._emitted:
+            self._emitted = True
+            return True
+        return False
+
+
+class LgpioRfReceiver:
+    def __init__(self, gpio: int, on_code) -> None:
+        import lgpio  # type: ignore
+
+        self.lgpio = lgpio
+        self.handle = lgpio.gpiochip_open(0)
+        lgpio.gpio_claim_input(self.handle, gpio)
+        self.decoder = RfPwm24Decoder()
+        self.inverted_decoder = RfPwm24Decoder()
+        self.repeat_filter = RfRepeatFilter()
+        self.inverted_repeat_filter = RfRepeatFilter()
+        self.last_tick = None
+        self.last_level = None
+        self.on_code = on_code
+        self.callback = lgpio.callback(self.handle, gpio, lgpio.BOTH_EDGES, self._on_edge)
+
+    def _on_edge(self, _chip: int, _gpio: int, level: int, tick: int) -> None:
+        if self.last_tick is None:
+            self.last_tick = tick
+            self.last_level = int(level)
+            return
+        duration = int((tick - self.last_tick) & 0xFFFFFFFF)
+        finished_level = int(self.last_level if self.last_level is not None else 1 - int(level))
+        self.last_tick = tick
+        self.last_level = int(level)
+        frame = self.decoder.feed_transition(finished_level, duration, int(level))
+        if frame is not None and self.repeat_filter.accept(frame):
+            self.on_code(frame.code)
+        inverted_frame = self.inverted_decoder.feed_transition(1 - finished_level, duration, 1 - int(level))
+        if inverted_frame is not None and self.inverted_repeat_filter.accept(inverted_frame):
+            self.on_code(inverted_frame.code)
+
+    def cleanup(self) -> None:
+        try:
+            self.callback.cancel()
+        finally:
+            self.lgpio.gpiochip_close(self.handle)
+
+
 def rf_listener_loop() -> None:
     rfdevice = None
     serial_file = None
     rf_device_class = None
     rpi_rf_missing_logged = False
+    lgpio_missing_logged = False
     active_gpio = None
     active_serial_device = ""
     active_mode = ""
@@ -1228,47 +1364,62 @@ def rf_listener_loop() -> None:
                 time.sleep(1.0)
                 continue
             if receiver_type == "gpio":
-                if rf_device_class is None:
-                    try:
-                        from rpi_rf import RFDevice  # type: ignore
-                        rf_device_class = RFDevice
-                    except ImportError:
-                        if not rpi_rf_missing_logged:
-                            print("RF GPIO listener disabled: rpi-rf is not installed")
-                            rpi_rf_missing_logged = True
-                        time.sleep(5.0)
-                        continue
                 if serial_file:
                     cleanup_rf_device(serial_file)
                     serial_file = None
                     active_serial_device = ""
-                if rfdevice is None or active_mode != "gpio" or active_gpio != gpio:
+                if rfdevice is None or active_mode not in {"gpio", "gpio-rpi-rf"} or active_gpio != gpio:
                     cleanup_rf_device(rfdevice)
                     try:
-                        rfdevice = rf_device_class(gpio)
-                        rfdevice.enable_rx()
+                        rfdevice = LgpioRfReceiver(gpio, lambda code: store.action(rf_payload_from_24bit_code(code)))
+                        active_mode = "gpio"
+                        active_gpio = gpio
+                        last_timestamp = None
+                        print(f"RF GPIO listener active with lgpio on BCM GPIO {gpio}")
                     except Exception as exc:
                         cleanup_rf_device(rfdevice)
                         rfdevice = None
-                        active_mode = ""
-                        active_gpio = None
-                        print(f"RF GPIO listener disabled: rpi-rf cannot start on BCM GPIO {gpio}: {exc}")
-                        time.sleep(5.0)
-                        continue
-                    active_mode = "gpio"
-                    active_gpio = gpio
-                    last_timestamp = None
-                    print(f"RF GPIO listener active on BCM GPIO {gpio}")
-                timestamp = rfdevice.rx_code_timestamp
-                if timestamp and timestamp != last_timestamp:
-                    last_timestamp = timestamp
-                    now = time.monotonic()
-                    code = rfdevice.rx_code
-                    if code != last_code or (now - last_at) >= 0.3:
-                        store.action(rf_payload_from_code(code))
-                        last_code = code
-                        last_at = now
-                time.sleep(0.01)
+                        if not lgpio_missing_logged:
+                            print(f"RF GPIO lgpio listener unavailable on BCM GPIO {gpio}: {exc}")
+                            lgpio_missing_logged = True
+                        if rf_device_class is None:
+                            try:
+                                from rpi_rf import RFDevice  # type: ignore
+                                rf_device_class = RFDevice
+                            except ImportError:
+                                if not rpi_rf_missing_logged:
+                                    print("RF GPIO listener disabled: neither lgpio nor rpi-rf is available")
+                                    rpi_rf_missing_logged = True
+                                time.sleep(5.0)
+                                continue
+                        try:
+                            rfdevice = rf_device_class(gpio)
+                            rfdevice.enable_rx()
+                            active_mode = "gpio-rpi-rf"
+                            active_gpio = gpio
+                            last_timestamp = None
+                            print(f"RF GPIO listener active with rpi-rf on BCM GPIO {gpio}")
+                        except Exception as exc:
+                            cleanup_rf_device(rfdevice)
+                            rfdevice = None
+                            active_mode = ""
+                            active_gpio = None
+                            print(f"RF GPIO listener disabled: rpi-rf cannot start on BCM GPIO {gpio}: {exc}")
+                            time.sleep(5.0)
+                            continue
+                if active_mode == "gpio-rpi-rf":
+                    timestamp = rfdevice.rx_code_timestamp
+                    if timestamp and timestamp != last_timestamp:
+                        last_timestamp = timestamp
+                        now = time.monotonic()
+                        code = rfdevice.rx_code
+                        if code != last_code or (now - last_at) >= 0.3:
+                            store.action(rf_payload_from_code(code))
+                            last_code = code
+                            last_at = now
+                    time.sleep(0.01)
+                else:
+                    time.sleep(1.0)
                 continue
             if receiver_type == "serial":
                 if rfdevice:

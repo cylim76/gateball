@@ -16,6 +16,7 @@ import json
 import statistics
 import time
 from collections import deque
+from dataclasses import dataclass
 from urllib import request
 
 
@@ -44,6 +45,124 @@ def split_address_button(code: int | str) -> tuple[str, str]:
     if len(text) <= 1:
         return text, ""
     return text[:-1], text[-1]
+
+
+@dataclass(frozen=True)
+class Frame:
+    code: int
+    short_us: float
+    long_us: float
+
+
+class PWM24Decoder:
+    SYNC_MIN_US = 8_000
+    SYNC_MAX_US = 18_000
+    SHORT_MIN_US = 180
+    SHORT_MAX_US = 700
+    LONG_MIN_US = 800
+    LONG_MAX_US = 1_700
+
+    def __init__(self) -> None:
+        self._collecting = False
+        self._runs: list[tuple[int, float]] = []
+
+    def feed_transition(self, finished_level: int, duration_us: int, new_level: int) -> Frame | None:
+        if (
+            finished_level == 0
+            and new_level == 1
+            and self.SYNC_MIN_US <= duration_us <= self.SYNC_MAX_US
+        ):
+            self._collecting = True
+            self._runs = []
+            return None
+        if not self._collecting:
+            return None
+        self._runs.append((finished_level, float(duration_us)))
+        if len(self._runs) < 48:
+            return None
+        runs = self._runs
+        self._collecting = False
+        self._runs = []
+        return self._decode_runs(runs)
+
+    def _decode_runs(self, runs: list[tuple[int, float]]) -> Frame | None:
+        bits: list[str] = []
+        shorts: list[float] = []
+        longs: list[float] = []
+        for i in range(0, 48, 2):
+            high_level, high_us = runs[i]
+            low_level, low_us = runs[i + 1]
+            if high_level != 1 or low_level != 0:
+                return None
+            high_short = self.SHORT_MIN_US <= high_us <= self.SHORT_MAX_US
+            low_short = self.SHORT_MIN_US <= low_us <= self.SHORT_MAX_US
+            high_long = self.LONG_MIN_US <= high_us <= self.LONG_MAX_US
+            low_long = self.LONG_MIN_US <= low_us <= self.LONG_MAX_US
+            if high_short and low_long:
+                bits.append("0")
+                shorts.append(high_us)
+                longs.append(low_us)
+            elif high_long and low_short:
+                bits.append("1")
+                longs.append(high_us)
+                shorts.append(low_us)
+            else:
+                return None
+        return Frame(code=int("".join(bits), 2), short_us=sum(shorts) / len(shorts), long_us=sum(longs) / len(longs))
+
+
+class RepeatFilter:
+    def __init__(self, repeats_required: int = 2, repeat_window_s: float = 0.25):
+        self.repeats_required = repeats_required
+        self.repeat_window_s = repeat_window_s
+        self._candidate: int | None = None
+        self._count = 0
+        self._last_frame_time = 0.0
+        self._emitted = False
+
+    def accept(self, frame: Frame) -> bool:
+        now = time.monotonic()
+        same_group = frame.code == self._candidate and now - self._last_frame_time <= self.repeat_window_s
+        if same_group:
+            self._count += 1
+        else:
+            self._candidate = frame.code
+            self._count = 1
+            self._emitted = False
+        self._last_frame_time = now
+        if self._count >= self.repeats_required and not self._emitted:
+            self._emitted = True
+            return True
+        return False
+
+
+def int_to_hex_bytes(value: int) -> str:
+    if value < 0:
+        value = 0
+    width = max(1, (value.bit_length() + 7) // 8)
+    return " ".join(f"{byte:02X}" for byte in value.to_bytes(width, "big"))
+
+
+def split_rf_code(code: int) -> tuple[int, int]:
+    return (code >> 8) & 0xFFFF, code & 0xFF
+
+
+def print_decoded_frame(frame: Frame, *, prefix: str, debounce_ms: int, state: dict[str, float | int | None], post_url: str) -> None:
+    now = time.monotonic()
+    last_code = state.get("last_code")
+    last_at = float(state.get("last_at") or 0.0)
+    if frame.code == last_code and (now - last_at) * 1000 < debounce_ms:
+        return
+    address, button = split_rf_code(frame.code)
+    print(
+        f"{prefix} code=0x{frame.code:06X} hex={int_to_hex_bytes(frame.code)} "
+        f"address=0x{address:04X} button=0x{button:02X} "
+        f"short_us={frame.short_us:.0f} long_us={frame.long_us:.0f}",
+        flush=True,
+    )
+    post_signal(post_url, code=f"0x{frame.code:06X}", address=f"0x{address:04X}", button=f"0x{button:02X}")
+    state["last_code"] = frame.code
+    state["last_at"] = now
 
 
 def post_signal(post_url: str, *, code: int | str, address: str, button: str) -> None:
@@ -121,7 +240,7 @@ def summarize_pulses(pulses: list[tuple[int, int]]) -> str:
     return f"pulses={len(pulses)} median_us={median} sample={sample}"
 
 
-def run_lgpio(gpio: int, gap_us: int, min_pulses: int) -> bool:
+def run_lgpio(gpio: int, gap_us: int, min_pulses: int, debounce_ms: int, post_url: str) -> bool:
     try:
         import lgpio  # type: ignore
     except ImportError:
@@ -134,15 +253,30 @@ def run_lgpio(gpio: int, gap_us: int, min_pulses: int) -> bool:
         print(f"lgpio cannot open BCM GPIO {gpio}: {exc}")
         return False
     pulses: deque[tuple[int, int]] = deque(maxlen=256)
+    decoder = PWM24Decoder()
+    inverted_decoder = PWM24Decoder()
+    repeat_filter = RepeatFilter()
+    inverted_repeat_filter = RepeatFilter()
+    decoded_state: dict[str, float | int | None] = {"last_code": None, "last_at": 0.0}
     last_tick = None
+    last_level = None
 
     def on_edge(_chip: int, _gpio: int, level: int, tick: int) -> None:
-        nonlocal last_tick
+        nonlocal last_tick, last_level
         if last_tick is None:
             last_tick = tick
+            last_level = int(level)
             return
         duration = int((tick - last_tick) & 0xFFFFFFFF)
+        finished_level = int(last_level if last_level is not None else 1 - int(level))
         last_tick = tick
+        last_level = int(level)
+        frame = decoder.feed_transition(finished_level, duration, int(level))
+        if frame is not None and repeat_filter.accept(frame):
+            print_decoded_frame(frame, prefix="decoded", debounce_ms=debounce_ms, state=decoded_state, post_url=post_url)
+        inverted_frame = inverted_decoder.feed_transition(1 - finished_level, duration, 1 - int(level))
+        if inverted_frame is not None and inverted_repeat_filter.accept(inverted_frame):
+            print_decoded_frame(inverted_frame, prefix="decoded-inverted", debounce_ms=debounce_ms, state=decoded_state, post_url=post_url)
         if duration >= gap_us:
             if len(pulses) >= min_pulses:
                 print(summarize_pulses(list(pulses)))
@@ -152,6 +286,7 @@ def run_lgpio(gpio: int, gap_us: int, min_pulses: int) -> bool:
 
     callback = lgpio.callback(handle, gpio, lgpio.BOTH_EDGES, on_edge)
     print(f"Listening with lgpio edge capture on BCM GPIO {gpio}. Press Ctrl+C to stop.")
+    print("It will try normal and inverted 24-bit PWM decode, and also print raw pulse frames.")
     try:
         while True:
             time.sleep(1)
@@ -205,7 +340,7 @@ def main() -> int:
     args = parse_args()
     if args.backend in ("auto", "rpi-rf") and run_rpi_rf(args.gpio, args.debounce_ms, args.post_url):
         return 0
-    if args.backend in ("auto", "lgpio") and run_lgpio(args.gpio, args.gap_us, args.min_pulses):
+    if args.backend in ("auto", "lgpio") and run_lgpio(args.gpio, args.gap_us, args.min_pulses, args.debounce_ms, args.post_url):
         return 0
     if args.backend in ("auto", "rpi-gpio") and run_rpi_gpio(args.gpio, args.gap_us, args.min_pulses):
         return 0
