@@ -164,6 +164,15 @@ def lgpio_tick_delta_us(previous_tick: int, tick: int) -> int:
     return delta
 
 
+def claim_lgpio_alert(lgpio, handle: int, gpio: int) -> None:
+    try:
+        lgpio.gpio_claim_alert(handle, gpio, lgpio.BOTH_EDGES)
+        return
+    except TypeError:
+        pass
+    lgpio.gpio_claim_alert(handle, 0, lgpio.BOTH_EDGES, gpio, -1)
+
+
 def print_decoded_frame(frame: Frame, *, prefix: str, debounce_ms: int, state: dict[str, float | int | None]) -> None:
     now = time.monotonic()
     last_code = state.get("last_code")
@@ -250,7 +259,7 @@ def run_lgpio(gpio: int, gap_us: int, min_pulses: int, dump_pulses: int) -> bool
 
     try:
         handle = lgpio.gpiochip_open(0)
-        lgpio.gpio_claim_input(handle, gpio)
+        claim_lgpio_alert(lgpio, handle, gpio)
     except Exception as exc:
         print(f"lgpio cannot open BCM GPIO {gpio}: {exc}")
         return False

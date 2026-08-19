@@ -1181,6 +1181,15 @@ def lgpio_tick_delta_us(previous_tick: int, tick: int) -> int:
     return delta
 
 
+def claim_lgpio_alert(lgpio, handle: int, gpio: int) -> None:
+    try:
+        lgpio.gpio_claim_alert(handle, gpio, lgpio.BOTH_EDGES)
+        return
+    except TypeError:
+        pass
+    lgpio.gpio_claim_alert(handle, 0, lgpio.BOTH_EDGES, gpio, -1)
+
+
 def rf_payload_from_serial_line(line: str) -> dict | None:
     text = line.strip()
     if not text:
@@ -1309,7 +1318,7 @@ class LgpioRfReceiver:
 
         self.lgpio = lgpio
         self.handle = lgpio.gpiochip_open(0)
-        lgpio.gpio_claim_input(self.handle, gpio)
+        claim_lgpio_alert(lgpio, self.handle, gpio)
         self.decoder = RfPwm24Decoder()
         self.inverted_decoder = RfPwm24Decoder()
         self.repeat_filter = RfRepeatFilter()
