@@ -200,6 +200,11 @@ body.scoreboard {
   text-shadow: 0 3px 4px rgba(0, 0, 0, .5);
 }
 
+.editable-title,
+.editable-team-name {
+  cursor: pointer;
+}
+
 .top {
   display: grid;
   grid-template-columns: 1.22fr 0.95fr 1.22fr;
@@ -1089,22 +1094,19 @@ button {
   cursor: pointer;
 }
 
-.remote-page,
-.settings-page {
+.remote-page {
   min-height: 100vh;
   padding: 14px;
   color: #f7f7f7;
   background: #080808;
 }
 
-.remote-shell,
-.settings-shell {
+.remote-shell {
   width: min(760px, 100%);
   margin: 0 auto;
 }
 
-.remote-title,
-.settings-title {
+.remote-title {
   margin: 0 0 12px;
   color: var(--gold);
   font-size: 24px;
@@ -2963,6 +2965,16 @@ body.scoreboard.finish-summary-active .celebration-canvas {
 .rf-action-visual.danger {
   color: white;
   background: #c10b12;
+}
+
+.rf-action-visual.remote-settings-trigger {
+  position: static;
+  width: 44px;
+  min-height: 0;
+  aspect-ratio: 1;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 24px;
 }
 
 .rf-clear-button {

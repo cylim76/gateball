@@ -88,24 +88,25 @@ const DEFAULT_HOTSPOT_SSID = "HongxingMenqiu1";
 const DEFAULT_HOTSPOT_PASSWORD = "1234567890";
 
 const keyBindingSpecs = [
-  { id: "ball_1", name: "1号球", payload: { action: "select", ball: 1 }, defaults: [{ code: "Digit1", key: "1", label: "1" }, { code: "Numpad1", key: "1", label: "小键盘 1" }] },
-  { id: "ball_2", name: "2号球", payload: { action: "select", ball: 2 }, defaults: [{ code: "Digit2", key: "2", label: "2" }, { code: "Numpad2", key: "2", label: "小键盘 2" }] },
-  { id: "ball_3", name: "3号球", payload: { action: "select", ball: 3 }, defaults: [{ code: "Digit3", key: "3", label: "3" }, { code: "Numpad3", key: "3", label: "小键盘 3" }] },
-  { id: "ball_4", name: "4号球", payload: { action: "select", ball: 4 }, defaults: [{ code: "Digit4", key: "4", label: "4" }, { code: "Numpad4", key: "4", label: "小键盘 4" }] },
-  { id: "ball_5", name: "5号球", payload: { action: "select", ball: 5 }, defaults: [{ code: "Digit5", key: "5", label: "5" }, { code: "Numpad5", key: "5", label: "小键盘 5" }] },
-  { id: "ball_6", name: "6号球", payload: { action: "select", ball: 6 }, defaults: [{ code: "Digit6", key: "6", label: "6" }, { code: "Numpad6", key: "6", label: "小键盘 6" }] },
-  { id: "ball_7", name: "7号球", payload: { action: "select", ball: 7 }, defaults: [{ code: "Digit7", key: "7", label: "7" }, { code: "Numpad7", key: "7", label: "小键盘 7" }] },
-  { id: "ball_8", name: "8号球", payload: { action: "select", ball: 8 }, defaults: [{ code: "Digit8", key: "8", label: "8" }, { code: "Numpad8", key: "8", label: "小键盘 8" }] },
-  { id: "ball_9", name: "9号球", payload: { action: "select", ball: 9 }, defaults: [{ code: "Digit9", key: "9", label: "9" }, { code: "Numpad9", key: "9", label: "小键盘 9" }] },
-  { id: "ball_10", name: "10号球", payload: { action: "select", ball: 10 }, defaults: [{ code: "Digit0", key: "0", label: "0" }, { code: "Numpad0", key: "0", label: "小键盘 0" }] },
-  { id: "toggle_timer", name: "开始/暂停/继续", payload: { action: "toggle_timer" }, defaults: [{ code: "Enter", key: "Enter", label: "Enter" }, { code: "NumpadEnter", key: "Enter", label: "小键盘 Enter" }] },
-  { id: "undo", name: "撤销", payload: { action: "undo" }, defaults: [{ code: "NumpadSubtract", key: "-", label: "小键盘 -" }, { code: "Minus", key: "-", label: "-" }] },
-  { id: "advance", name: "得分", payload: { action: "advance" }, defaults: [{ code: "NumpadAdd", key: "+", label: "小键盘 +" }, { code: "Equal", key: "+", label: "+" }] },
-  { id: "swap_team_names", name: "队名更换", payload: { action: "swap_team_names" }, defaults: [{ code: "Tab", key: "Tab", label: "Tab" }] },
+  { id: "ball_1", name: "1号球", payload: { action: "select", ball: 1 }, defaults: [{ code: "Digit1", key: "1", label: "1" }] },
+  { id: "ball_2", name: "2号球", payload: { action: "select", ball: 2 }, defaults: [{ code: "Digit2", key: "2", label: "2" }] },
+  { id: "ball_3", name: "3号球", payload: { action: "select", ball: 3 }, defaults: [{ code: "Digit3", key: "3", label: "3" }] },
+  { id: "ball_4", name: "4号球", payload: { action: "select", ball: 4 }, defaults: [{ code: "Digit4", key: "4", label: "4" }] },
+  { id: "ball_5", name: "5号球", payload: { action: "select", ball: 5 }, defaults: [{ code: "Digit5", key: "5", label: "5" }] },
+  { id: "ball_6", name: "6号球", payload: { action: "select", ball: 6 }, defaults: [{ code: "Digit6", key: "6", label: "6" }] },
+  { id: "ball_7", name: "7号球", payload: { action: "select", ball: 7 }, defaults: [{ code: "Digit7", key: "7", label: "7" }] },
+  { id: "ball_8", name: "8号球", payload: { action: "select", ball: 8 }, defaults: [{ code: "Digit8", key: "8", label: "8" }] },
+  { id: "ball_9", name: "9号球", payload: { action: "select", ball: 9 }, defaults: [{ code: "Digit9", key: "9", label: "9" }] },
+  { id: "ball_10", name: "10号球", payload: { action: "select", ball: 10 }, defaults: [{ code: "Digit0", key: "0", label: "0" }] },
+  { id: "toggle_timer", name: "开始/暂停/继续", payload: { action: "toggle_timer" }, defaults: [{ code: "Space", key: " ", label: "空格" }] },
+  { id: "undo", name: "撤销", payload: { action: "undo" }, defaults: [{ code: "Minus", key: "-", label: "-" }] },
+  { id: "advance", name: "得分", payload: { action: "advance" }, defaults: [{ code: "Equal", key: "=", label: "=" }] },
+  { id: "swap_team_names", name: "换队名", payload: { action: "swap_team_names" }, defaults: [{ code: "Backquote", key: "`", label: "`" }, { code: "Backquote", key: "·", label: "·" }] },
   { id: "ten_second_countdown", name: "10秒倒计时", special: "ten-second-countdown", defaults: [{ code: "Backspace", key: "Backspace", label: "Backspace" }] },
-  { id: "finish_dialog", name: "结束比赛", special: "finish-dialog", defaults: [{ code: "NumpadMultiply", key: "*", label: "小键盘 *" }] },
-  { id: "finish_cancel", name: "结束取消", special: "finish-cancel", defaults: [{ code: "NumpadMultiply", key: "*", label: "小键盘 *" }, { code: "Escape", key: "Escape", label: "Esc" }] },
+  { id: "finish_dialog", name: "结束比赛", special: "finish-dialog", defaults: [{ code: "Enter", key: "Enter", label: "Enter" }] },
+  { id: "finish_cancel", name: "结束取消", special: "finish-cancel", defaults: [{ code: "Escape", key: "Escape", label: "Esc" }] },
   { id: "toggle_music", name: "音乐播放/暂停", payload: { action: "toggle_music" }, defaults: [{ code: "KeyM", key: "m", label: "M" }] },
+  { id: "remote_settings", name: "设置", special: "remote-settings-dialog", defaults: [{ code: "KeyS", key: "s", label: "S" }] },
 ];
 
 const keyBindingSpecById = Object.fromEntries(keyBindingSpecs.map((spec) => [spec.id, spec]));
@@ -229,9 +230,10 @@ const rfSlotTabs = [
   { id: "rf1", label: "遥控器1" },
   { id: "rf2", label: "遥控器2" },
   { id: "rf3", label: "遥控器3" },
-  { id: "keyboard", label: "小键盘" },
+  { id: "keyboard", label: "键盘" },
 ];
-const rfBindableActions = keyBindingSpecs.filter((spec) => spec.id !== "finish_cancel");
+const keyboardBindableActions = keyBindingSpecs;
+const rfBindableActions = keyBindingSpecs.filter((spec) => !["finish_cancel", "remote_settings"].includes(spec.id));
 let activeRfTab = "rf1";
 const rfReceiverTypeLabels = {
   gpio: "GPIO 接收器",
@@ -240,6 +242,8 @@ const rfReceiverTypeLabels = {
 };
 const VOICE_PROFILES = ["female", "male", "ko-female", "ko-male"];
 const isKioskMode = new URLSearchParams(window.location.search).get("kiosk") === "1";
+const shouldAutoOpenRemoteSettings = new URLSearchParams(window.location.search).get("settings") === "1";
+let autoRemoteSettingsOpened = false;
 
 function two(num) {
   return String(num).padStart(2, "0");
@@ -342,7 +346,7 @@ function keyLabelFromEvent(event) {
       Decimal: ".",
       Enter: "Enter",
     };
-    return `小键盘 ${names[suffix] || suffix}`;
+    return `键盘 ${names[suffix] || suffix}`;
   }
   if (event.key === " ") return "空格";
   if (event.key && event.key.length === 1) return event.key;
@@ -1750,13 +1754,13 @@ function renderNetworkSettings() {
 function renderKeyBindings() {
   document.querySelectorAll("[data-key-binding-list]").forEach((list) => {
     list.replaceChildren();
-    rfBindableActions.forEach((spec) => {
+    keyboardBindableActions.forEach((spec) => {
       const row = document.createElement("div");
       row.className = "key-binding-row";
 
       const name = document.createElement("span");
       name.className = "key-binding-name";
-      name.textContent = spec.name;
+      name.innerHTML = renderRfActionVisual(spec);
 
       const button = document.createElement("button");
       button.type = "button";
@@ -2036,12 +2040,14 @@ function previewMusicSettings(form) {
   applyMusicVolume();
 }
 
-function stopMusicPlayback() {
+function stopMusicPlayback({ reset = true } = {}) {
   musicTestPlaying = false;
   if (!musicAudio) return;
   musicAudio.pause();
-  musicAudio.currentTime = 0;
-  lastMusicTrackId = "";
+  if (reset) {
+    musicAudio.currentTime = 0;
+    lastMusicTrackId = "";
+  }
   updateMusicOutput(document.querySelector("[data-settings-form]"));
 }
 
@@ -2097,9 +2103,14 @@ function syncMusicPlayback() {
     applyMusicVolume();
     return;
   }
-  if (!currentState.musicPlaying || !currentState.musicEnabled || !currentState.selectedMusicTrack) {
+  if (!currentState.musicEnabled || !currentState.selectedMusicTrack) {
     stopMusicPlayback();
     lastSyncedSelectedMusicTrack = currentState?.selectedMusicTrack || "";
+    return;
+  }
+  if (!currentState.musicPlaying) {
+    stopMusicPlayback({ reset: false });
+    lastSyncedSelectedMusicTrack = currentState.selectedMusicTrack || "";
     return;
   }
   if (currentState.selectedMusicTrack !== lastSyncedSelectedMusicTrack) {
@@ -2278,7 +2289,7 @@ function receiverSettingsSavedForLearning() {
     return false;
   }
   if (receiverType === "keyboard") {
-    setRfResult("当前是 USB 键盘/HID 接收方式，请到小键盘页学习", true);
+    setRfResult("当前是 USB 键盘/HID 接收方式，请到键盘页学习", true);
     return false;
   }
   const currentType = currentState.rfReceiverType || "gpio";
@@ -2324,7 +2335,7 @@ function renderRfSettings() {
           <input name="rfReceiverSerialDevice" autocomplete="off" placeholder="/dev/ttyUSB0 或 /dev/serial/by-id/..." value="${escapeHtml(currentState.rfReceiverSerialDevice || "")}">
         </label>
         <div class="rf-receiver-note ${receiverType === "keyboard" ? "" : "hidden"}" data-rf-receiver-field="keyboard">
-          USB 键盘/HID 接收器会被系统当成键盘，按键请在“小键盘”页签里映射。
+          USB 键盘/HID 接收器会被系统当成键盘，按键请在“键盘”页签里映射。
         </div>
         <button class="primary" type="submit">保存接收设置</button>
       </div>
@@ -2444,6 +2455,7 @@ function renderRfActionVisual(spec) {
     ten_second_countdown: { className: "countdown-action", text: "⏰10秒", label: "10秒倒计时" },
     finish_dialog: { className: "danger", text: "🏆结束", label: "结束比赛" },
     toggle_music: { className: "music-action", text: "♪", label: "音乐播放/暂停" },
+    remote_settings: { className: "remote-settings-trigger", text: "⚙", label: "设置" },
   };
   const visual = visuals[spec.id] || { className: "secondary", text: spec.name, label: spec.name };
   return `
@@ -2509,7 +2521,7 @@ function renderRfDevicePanel() {
     panel.innerHTML = `
       <form class="settings-form keyboard-settings-form" data-keyboard-settings-form>
         <div class="rf-slot-head">
-          ${renderSwitchControl("keyboardInputEnabled", currentState.keyboardInputEnabled !== false, "启用小键盘")}
+          ${renderSwitchControl("keyboardInputEnabled", currentState.keyboardInputEnabled !== false, "启用键盘")}
           <button class="secondary" type="button" data-action="clear-key-bindings">恢复默认映射</button>
         </div>
         <div class="key-binding-panel embedded">
@@ -2519,7 +2531,7 @@ function renderRfDevicePanel() {
           </div>
           <div class="key-binding-list" data-key-binding-list></div>
         </div>
-        <button class="primary" type="submit">保存小键盘设置</button>
+        <button class="primary" type="submit">保存键盘设置</button>
         <strong data-keyboard-save-result></strong>
       </form>
     `;
@@ -3236,6 +3248,10 @@ function renderState(options = {}) {
   currentStateReceivedAt = Date.now();
   if (document.querySelector("[data-scoreboard]")) renderScoreboard();
   if (document.querySelector("[data-remote]")) renderRemote();
+  if (shouldAutoOpenRemoteSettings && !autoRemoteSettingsOpened && document.querySelector("[data-remote-settings-dialog]")) {
+    autoRemoteSettingsOpened = true;
+    openRemoteSettingsDialog();
+  }
   if (document.querySelector("[data-settings-form]")) renderSettings();
   renderKeyBindings();
   loadMusicTracks();
@@ -3528,7 +3544,7 @@ async function saveKeyBindingFromEvent(event) {
   if ((currentState?.rfReceiverType || "gpio") !== "keyboard") {
     keyCaptureAction = "";
     renderKeyBindings();
-    setRfResult("当前接收方式不是 USB 键盘/HID，已取消小键盘学习");
+    setRfResult("当前接收方式不是 USB 键盘/HID，已取消键盘学习");
     return;
   }
   const bindingAction = spec.id;
@@ -3817,7 +3833,7 @@ document.addEventListener("click", (event) => {
   if (action === "capture-key-binding") {
     cancelPendingRfLearn("学习已取消");
     if ((currentState?.rfReceiverType || "gpio") !== "keyboard") {
-      setRfResult("请先把接收方式切换为 USB 键盘/HID，再学习小键盘");
+      setRfResult("请先把接收方式切换为 USB 键盘/HID，再学习键盘");
       return;
     }
     keyCaptureAction = target.dataset.bindingAction || "";
@@ -3846,7 +3862,7 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (action === "clear-key-bindings") {
-    if (!window.confirm("恢复小键盘默认映射？")) return;
+    if (!window.confirm("恢复键盘默认映射？")) return;
     openSettingsSavePasswordDialog({
       action: "clear_key_bindings",
       _resultSelector: "[data-keyboard-save-result]",

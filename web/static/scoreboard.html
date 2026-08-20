@@ -13,7 +13,7 @@
           <span data-clock-date></span>
           <span data-clock-time></span>
         </div>
-        <h1 class="title" data-title>红星村老年会门球比赛</h1>
+        <h1 class="title editable-title" data-title data-action="edit-title-dialog">红星村老年会门球比赛</h1>
         <div class="header-info header-right">
           <span class="court-name" data-court-name>红星门球场1</span>
           <span class="weather-chip" data-weather>天气 --/--℃</span>
@@ -21,7 +21,7 @@
       </div>
       <section class="top">
         <div class="team-total red">
-          <div class="team-name" data-red-team>红队</div>
+          <div class="team-name editable-team-name" data-red-team data-action="edit-team-dialog" data-team="red">红队</div>
           <div class="total" data-red-total>0</div>
         </div>
         <div class="timer" data-scoreboard-timer>
@@ -34,7 +34,7 @@
         </div>
         <div class="team-total white">
           <div class="total" data-white-total>0</div>
-          <div class="team-name" data-white-team>白队</div>
+          <div class="team-name editable-team-name" data-white-team data-action="edit-team-dialog" data-team="white">白队</div>
         </div>
       </section>
 
@@ -96,6 +96,28 @@
           <button data-action="close-settings">再按 / 取消</button>
         </div>
       </div>
+    </div>
+
+    <div class="dialog" data-edit-team-dialog>
+      <form class="dialog-box" data-edit-team-form>
+        <h2 class="dialog-title" data-edit-team-title>修改队名</h2>
+        <input class="dialog-input" name="teamName" data-edit-team-input autocomplete="off" maxlength="24">
+        <div class="dialog-actions">
+          <button class="finish-confirm" type="submit">保存</button>
+          <button class="finish-cancel" type="button" data-action="close-edit-team">取消</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="dialog" data-edit-title-dialog>
+      <form class="dialog-box" data-edit-title-form>
+        <h2 class="dialog-title">修改比赛标题</h2>
+        <input class="dialog-input" name="matchTitle" data-edit-title-input autocomplete="off" maxlength="40">
+        <div class="dialog-actions">
+          <button class="finish-confirm" type="submit">保存</button>
+          <button class="finish-cancel" type="button" data-action="close-edit-title">取消</button>
+        </div>
+      </form>
     </div>
 
     <div class="countdown-overlay" data-countdown-overlay aria-hidden="true">

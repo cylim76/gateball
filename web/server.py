@@ -511,6 +511,8 @@ class Store:
         self.preview_state: dict = {}
         self.balls = new_balls()
         self.history: list[dict] = []
+        self.last_rf_music_raw = ""
+        self.last_rf_music_at = 0.0
         self.load()
         self.apply_boot_music_autoplay()
         self.record_boot_wifi_info()
@@ -916,7 +918,17 @@ class Store:
                 status = "unknown_remote"
             elif not action_id:
                 status = "unknown_button"
-            if action_id == "finish_dialog":
+            if action_id == "toggle_music":
+                now = time.time()
+                duplicate_music_signal = raw and raw == self.last_rf_music_raw and (now - self.last_rf_music_at) < 0.7
+                if duplicate_music_signal:
+                    status = "duplicate"
+                else:
+                    self.last_rf_music_raw = raw
+                    self.last_rf_music_at = now
+                    status = "executed"
+                    self.action(RF_ACTION_PAYLOADS[action_id])
+            elif action_id == "finish_dialog":
                 self.state["rfFinishPasswordPending"] = True
                 status = "finish_requires_password"
             elif self.state.get("rfFinishPasswordPending") and re.fullmatch(r"ball_(?:[1-9]|10)", action_id or ""):
@@ -1064,22 +1076,22 @@ class Store:
                 message = "密码错误"
             else:
                 self.state["keyboardInputEnabled"] = parse_bool(payload.get("keyboardInputEnabled"))
-                message = "小键盘设置已保存"
+                message = "键盘设置已保存"
                 self.state["lastMessage"] = message
                 self.record("keyboard_settings", None, message)
             self.save()
-            return {"ok": message == "小键盘设置已保存", "message": message, "state": self.snapshot()}
+            return {"ok": message == "键盘设置已保存", "message": message, "state": self.snapshot()}
 
         if action == "clear_key_bindings":
             if payload.get("password") != self.state["settingsPassword"]:
                 message = "密码错误"
             else:
                 self.state["keyBindings"] = {}
-                message = "小键盘映射已恢复默认"
+                message = "键盘映射已恢复默认"
                 self.state["lastMessage"] = message
                 self.record("keyboard_settings", None, message)
             self.save()
-            return {"ok": message == "小键盘映射已恢复默认", "message": message, "state": self.snapshot()}
+            return {"ok": message == "键盘映射已恢复默认", "message": message, "state": self.snapshot()}
 
         if action == "add_rf_remote":
             if payload.get("password") != self.state["settingsPassword"]:
@@ -2046,7 +2058,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/results":
             self.serve_file(STATIC_DIR / "results.html")
         elif path == "/set":
-            self.serve_file(STATIC_DIR / "settings.html")
+            self.send_response(302)
+            self.send_header("Location", "/remote?settings=1")
+            self.end_headers()
         elif path == "/api/events":
             self.send_events()
         elif path == "/api/state":

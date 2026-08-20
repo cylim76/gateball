@@ -22,8 +22,10 @@ echo Scoreboard: http://127.0.0.1:8000/scoreboard
 echo Remote:     http://127.0.0.1:8000/remote
 echo Settings:   http://127.0.0.1:8000/set
 echo.
+echo Opening scoreboard in full-screen browser...
+start "" powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "$url='http://127.0.0.1:8000/scoreboard'; for ($i=0; $i -lt 30; $i++) { try { Invoke-WebRequest 'http://127.0.0.1:8000/api/state' -UseBasicParsing -TimeoutSec 1 | Out-Null; break } catch { Start-Sleep -Milliseconds 500 } }; $browsers=@($env:ProgramFiles+'\Microsoft\Edge\Application\msedge.exe', ${env:ProgramFiles(x86)}+'\Microsoft\Edge\Application\msedge.exe', $env:ProgramFiles+'\Google\Chrome\Application\chrome.exe', ${env:ProgramFiles(x86)}+'\Google\Chrome\Application\chrome.exe'); foreach ($browser in $browsers) { if (Test-Path $browser) { Start-Process $browser -ArgumentList @('--start-fullscreen','--new-window',$url); exit } }; Start-Process $url"
+echo.
 echo Press Ctrl+C to stop.
 echo.
 
 python web\server.py
-
