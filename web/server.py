@@ -591,6 +591,7 @@ class Store:
             self.state["musicDuckingUntil"] = 0
         if not isinstance(self.state.get("rfRemotes"), list):
             self.state["rfRemotes"] = []
+        self.state["rfRemoteEnabled"] = True
         if self.state.get("rfReceiverType") not in {"gpio", "serial", "keyboard"}:
             self.state["rfReceiverType"] = "gpio"
         self.state["rfReceiverSerialDevice"] = str(self.state.get("rfReceiverSerialDevice") or "").strip()[:160]
@@ -898,49 +899,47 @@ class Store:
         remote = None
         action_id = ""
         status = "ignored"
-        if not self.state.get("rfRemoteEnabled"):
-            self.state["rfRemoteEnabled"] = True
-        if self.state.get("rfRemoteEnabled"):
-            for slot in slots:
-                if not slot.get("enabled"):
-                    continue
-                for candidate_action, binding in slot.get("bindings", {}).items():
-                    if raw and binding.get("raw") == raw:
-                        remote = slot
-                        action_id = candidate_action
-                        break
-                    if address and button and binding.get("address") == address and binding.get("button") == button:
-                        remote = slot
-                        action_id = candidate_action
-                        break
-                if remote:
+        self.state["rfRemoteEnabled"] = True
+        for slot in slots:
+            if not slot.get("enabled"):
+                continue
+            for candidate_action, binding in slot.get("bindings", {}).items():
+                if raw and binding.get("raw") == raw:
+                    remote = slot
+                    action_id = candidate_action
                     break
-            if not remote:
-                status = "unknown_remote"
-            elif not action_id:
-                status = "unknown_button"
-            if action_id == "finish_dialog":
-                self.state["rfFinishPasswordPending"] = True
-                status = "finish_requires_password"
-            elif self.state.get("rfFinishPasswordPending") and (
-                re.fullmatch(r"ball_(?:[1-9]|10)", action_id or "") or action_id == "toggle_music"
-            ):
-                status = "finish_password_digit"
-            elif action_id == "toggle_music":
-                now = time.time()
-                duplicate_music_signal = raw and raw == self.last_rf_music_raw and (now - self.last_rf_music_at) < 0.7
-                if duplicate_music_signal:
-                    status = "duplicate"
-                else:
-                    self.last_rf_music_raw = raw
-                    self.last_rf_music_at = now
-                    status = "executed"
-                    self.action(RF_ACTION_PAYLOADS[action_id])
-            elif action_id in RF_ACTION_PAYLOADS:
+                if address and button and binding.get("address") == address and binding.get("button") == button:
+                    remote = slot
+                    action_id = candidate_action
+                    break
+            if remote:
+                break
+        if not remote:
+            status = "unknown_remote"
+        elif not action_id:
+            status = "unknown_button"
+        if action_id == "finish_dialog":
+            self.state["rfFinishPasswordPending"] = True
+            status = "finish_requires_password"
+        elif self.state.get("rfFinishPasswordPending") and (
+            re.fullmatch(r"ball_(?:[1-9]|10)", action_id or "") or action_id == "toggle_music"
+        ):
+            status = "finish_password_digit"
+        elif action_id == "toggle_music":
+            now = time.time()
+            duplicate_music_signal = raw and raw == self.last_rf_music_raw and (now - self.last_rf_music_at) < 0.7
+            if duplicate_music_signal:
+                status = "duplicate"
+            else:
+                self.last_rf_music_raw = raw
+                self.last_rf_music_at = now
                 status = "executed"
                 self.action(RF_ACTION_PAYLOADS[action_id])
-            elif action_id:
-                status = "unknown_button"
+        elif action_id in RF_ACTION_PAYLOADS:
+            status = "executed"
+            self.action(RF_ACTION_PAYLOADS[action_id])
+        elif action_id:
+            status = "unknown_button"
         self.record_rf_signal(raw=raw, address=address, button=button, remote=remote, action_id=action_id, status=status)
         self.save()
         self.emit()
@@ -1009,7 +1008,7 @@ class Store:
             if payload.get("password") != self.state["settingsPassword"]:
                 message = "密码错误"
             else:
-                self.state["rfRemoteEnabled"] = parse_bool(payload.get("rfRemoteEnabled"))
+                self.state["rfRemoteEnabled"] = True
                 receiver_type = str(payload.get("rfReceiverType") or self.state.get("rfReceiverType") or "gpio")
                 self.state["rfReceiverType"] = receiver_type if receiver_type in {"gpio", "serial", "keyboard"} else "gpio"
                 try:
@@ -1793,11 +1792,11 @@ def rf_listener_loop() -> None:
     last_at = 0.0
     while True:
         try:
-            enabled = bool(store.state.get("rfRemoteEnabled"))
+            store.state["rfRemoteEnabled"] = True
             receiver_type = str(store.state.get("rfReceiverType") or "gpio")
             gpio = int(store.state.get("rfReceiverGpio", 27))
             serial_device = str(store.state.get("rfReceiverSerialDevice") or "").strip()
-            if not enabled or receiver_type == "keyboard":
+            if receiver_type == "keyboard":
                 if rfdevice or serial_file:
                     cleanup_rf_device(rfdevice)
                     cleanup_rf_device(serial_file)

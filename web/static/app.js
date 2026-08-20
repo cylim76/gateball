@@ -2421,10 +2421,6 @@ function receiverSettingsSavedForLearning() {
   const form = document.querySelector("[data-rf-settings-form]");
   if (!form || !currentState) return true;
   const receiverType = form.rfReceiverType?.value || "gpio";
-  if (!form.rfRemoteEnabled?.checked) {
-    setRfResult("请先启用外部接收，并保存接收设置", true);
-    return false;
-  }
   if (receiverType === "keyboard") {
     setRfResult("当前是 USB 键盘/HID 接收方式，请到键盘页学习", true);
     return false;
@@ -2434,8 +2430,7 @@ function receiverSettingsSavedForLearning() {
   const formGpio = String(form.rfReceiverGpio?.value || 27);
   const currentSerial = String(currentState.rfReceiverSerialDevice || "").trim();
   const formSerial = String(form.rfReceiverSerialDevice?.value || "").trim();
-  const changed = Boolean(currentState.rfRemoteEnabled) !== Boolean(form.rfRemoteEnabled.checked)
-    || currentType !== receiverType
+  const changed = currentType !== receiverType
     || (receiverType === "gpio" && currentGpio !== formGpio)
     || (receiverType === "serial" && currentSerial !== formSerial);
   if (changed) {
