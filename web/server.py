@@ -22,7 +22,14 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from common.gateball_rules import BallState, new_balls, team_for_ball
-from common.network_manager import connect_wifi, network_status, scan_wifi_networks
+from common.network_manager import (
+    DEFAULT_HOTSPOT_PASSWORD,
+    DEFAULT_HOTSPOT_SSID,
+    configure_hotspot,
+    connect_wifi,
+    network_status,
+    scan_wifi_networks,
+)
 from common.results_store import ResultsStore
 
 
@@ -155,8 +162,9 @@ DEFAULT_STATE = {
     "weatherLatitude": 44.488144,
     "weatherLongitude": 129.5093059,
     "courtName": "红星门球场1",
-    "hotspotSsid": "红星门球场1",
-    "hotspotPassword": "12345678",
+    "hotspotSsid": DEFAULT_HOTSPOT_SSID,
+    "hotspotPassword": DEFAULT_HOTSPOT_PASSWORD,
+    "showBootWifiInfo": True,
 }
 
 
@@ -495,10 +503,20 @@ class Store:
         self.history: list[dict] = []
         self.load()
         self.apply_boot_music_autoplay()
+        self.record_boot_wifi_info()
 
     def apply_boot_music_autoplay(self) -> None:
         if self.state.get("musicEnabled") and self.state.get("musicAutoPlayDuringMatch") and self.state.get("selectedMusicTrack"):
             self.state["musicPlaying"] = True
+
+    def record_boot_wifi_info(self) -> None:
+        if not self.state.get("showBootWifiInfo", True):
+            return
+        ssid = str(self.state.get("hotspotSsid") or DEFAULT_HOTSPOT_SSID).strip() or DEFAULT_HOTSPOT_SSID
+        password = str(self.state.get("hotspotPassword") or DEFAULT_HOTSPOT_PASSWORD).strip() or DEFAULT_HOTSPOT_PASSWORD
+        self.record("boot_wifi_info", None, f"WiFi：{ssid} / {password}    http://gateball")
+        self.state["lastMessage"] = self.history[-1]["message"]
+        self.save()
 
     def load(self) -> None:
         if not DATA_FILE.exists():
@@ -524,6 +542,12 @@ class Store:
             self.state["keyBindings"] = {}
         if not isinstance(self.state.get("keyboardInputEnabled"), bool):
             self.state["keyboardInputEnabled"] = True
+        if not str(self.state.get("hotspotSsid") or "").strip():
+            self.state["hotspotSsid"] = DEFAULT_HOTSPOT_SSID
+        if not str(self.state.get("hotspotPassword") or "").strip():
+            self.state["hotspotPassword"] = DEFAULT_HOTSPOT_PASSWORD
+        if not isinstance(self.state.get("showBootWifiInfo"), bool):
+            self.state["showBootWifiInfo"] = parse_bool(self.state.get("showBootWifiInfo"), True)
         try:
             self.state["systemVolumePercent"] = min(100, max(0, int(round(float(self.state.get("systemVolumePercent", 100))))))
         except (TypeError, ValueError):
@@ -1283,6 +1307,7 @@ class Store:
             if payload.get("password") != self.state["settingsPassword"]:
                 message = "密码错误"
             else:
+                hotspot_changed = "hotspotSsid" in payload or "hotspotPassword" in payload
                 for key in ["allowScoringWhenPaused", "weatherLocation", "courtName", "hotspotSsid"]:
                     if key in payload:
                         self.state[key] = str(payload[key]).strip() if key != "allowScoringWhenPaused" else payload[key]
@@ -1291,12 +1316,12 @@ class Store:
                 if "titleColor" in payload:
                     color = str(payload["titleColor"]).strip()
                     self.state["titleColor"] = color if re.fullmatch(r"#[0-9a-fA-F]{6}", color) else DEFAULT_STATE["titleColor"]
-                if "courtName" in payload and "hotspotSsid" not in payload:
-                    self.state["hotspotSsid"] = str(payload["courtName"]).strip()
                 if "hotspotPassword" in payload:
                     password = str(payload["hotspotPassword"]).strip()
                     if len(password) >= 8:
                         self.state["hotspotPassword"] = password[:63]
+                if "showBootWifiInfo" in payload:
+                    self.state["showBootWifiInfo"] = parse_bool(payload.get("showBootWifiInfo"), True)
                 if "weatherLatitude" in payload and "weatherLongitude" in payload:
                     try:
                         self.state["weatherLatitude"] = float(payload["weatherLatitude"]) if str(payload["weatherLatitude"]).strip() else None
@@ -1378,7 +1403,14 @@ class Store:
                     password = "".join(ch for ch in str(payload["settingsPassword"]) if ch.isdigit())[:6]
                     if password:
                         self.state["settingsPassword"] = password
-                message = "设置已保存"
+                network_message = ""
+                if hotspot_changed:
+                    hotspot_result = configure_hotspot(self.state.get("hotspotSsid", ""), self.state.get("hotspotPassword", ""))
+                    if not hotspot_result.get("ok"):
+                        network_message = f"；{hotspot_result.get('message') or '热点同步失败'}"
+                    elif hotspot_result.get("supported") is False:
+                        network_message = "；热点配置已保存，当前系统未自动应用"
+                message = f"设置已保存{network_message}"
                 self.state["lastMessage"] = message
                 self.record("settings", None, message)
 

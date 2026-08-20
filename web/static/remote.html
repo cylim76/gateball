@@ -279,13 +279,22 @@
             <div class="network-status" data-network-status>正在读取网络状态...</div>
             <form class="settings-form" data-network-settings-form>
               <label>
-                球场名称/热点名称
+                球场名称
                 <input name="courtName" autocomplete="off" maxlength="24">
+              </label>
+              <label>
+                热点名称
+                <input name="hotspotSsid" autocomplete="off" maxlength="32">
               </label>
               <label>
                 热点密码
                 <input name="hotspotPassword" autocomplete="off" minlength="8" maxlength="63">
               </label>
+              <label class="checkbox-row">
+                <input name="showBootWifiInfo" type="checkbox">
+                <span>开机日志显示 WiFi 信息</span>
+              </label>
+              <button class="secondary danger-button" type="button" data-action="reset-hotspot-defaults">恢复热点默认设置</button>
               <button class="primary" type="submit">保存热点设置</button>
               <strong data-network-save-result></strong>
             </form>

@@ -20,6 +20,14 @@ DIRECT_X_SERVICE_FILE="/etc/systemd/system/$DIRECT_X_SERVICE_NAME"
 XWRAPPER_CONFIG="/etc/X11/Xwrapper.config"
 REMOVE_KIOSK_PACKAGES="${REMOVE_KIOSK_PACKAGES:-0}"
 RESTART_DISPLAY_MANAGER="${RESTART_DISPLAY_MANAGER:-0}"
+REMOVE_NETWORK_SUPPORT="${REMOVE_NETWORK_SUPPORT:-1}"
+GATEBALL_HOTSPOT_CONNECTION="${GATEBALL_HOTSPOT_CONNECTION:-gateball-ap}"
+NGINX_GATEBALL_SITE="/etc/nginx/sites-available/gateball"
+NGINX_GATEBALL_SITE_ENABLED="/etc/nginx/sites-enabled/gateball"
+NM_DNSMASQ_CONF="/etc/NetworkManager/dnsmasq.d/gateball.conf"
+NM_DNSMASQ_SHARED_CONF="/etc/NetworkManager/dnsmasq-shared.d/gateball.conf"
+NETWORK_APPLY_HELPER="/usr/local/bin/gateball-network-apply"
+NETWORK_SUDOERS_FILE="/etc/sudoers.d/gateball-network"
 
 enable_display_manager() {
   sudo systemctl set-default graphical.target
@@ -68,6 +76,25 @@ restore_boot_file() {
   fi
 }
 
+remove_network_support() {
+  if [ "$REMOVE_NETWORK_SUPPORT" != "1" ]; then
+    echo "Gateball network cleanup skipped: REMOVE_NETWORK_SUPPORT=$REMOVE_NETWORK_SUPPORT"
+    return
+  fi
+
+  if command -v nmcli >/dev/null 2>&1; then
+    sudo nmcli connection delete "$GATEBALL_HOTSPOT_CONNECTION" >/dev/null 2>&1 || true
+  fi
+  sudo rm -f "$NGINX_GATEBALL_SITE_ENABLED" "$NGINX_GATEBALL_SITE"
+  sudo rm -f "$NM_DNSMASQ_CONF" "$NM_DNSMASQ_SHARED_CONF"
+  sudo rm -f "$NETWORK_APPLY_HELPER" "$NETWORK_SUDOERS_FILE"
+  if command -v nginx >/dev/null 2>&1; then
+    sudo nginx -t >/dev/null 2>&1 && sudo systemctl reload nginx >/dev/null 2>&1 || true
+  fi
+  sudo systemctl restart NetworkManager >/dev/null 2>&1 || true
+  echo "Removed Gateball hotspot, nginx site, and local DNS name configuration."
+}
+
 sudo systemctl disable --now "$SERVICE_NAME" 2>/dev/null || true
 sudo systemctl disable --now "$DIRECT_X_SERVICE_NAME" 2>/dev/null || true
 sudo rm -f "/etc/systemd/system/$SERVICE_NAME"
@@ -76,6 +103,7 @@ sudo systemctl daemon-reload
 
 rm -f "$AUTOSTART_FILE"
 sudo rm -f "$KIOSK_SESSION_RUNNER" "$KIOSK_XSESSION_FILE" "$LIGHTDM_KIOSK_CONF"
+remove_network_support
 enable_display_manager
 restore_desktop_shell
 

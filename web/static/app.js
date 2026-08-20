@@ -84,6 +84,9 @@ const api = {
   },
 };
 
+const DEFAULT_HOTSPOT_SSID = "HongxingMenqiu1";
+const DEFAULT_HOTSPOT_PASSWORD = "1234567890";
+
 const keyBindingSpecs = [
   { id: "ball_1", name: "1号球", payload: { action: "select", ball: 1 }, defaults: [{ code: "Digit1", key: "1", label: "1" }, { code: "Numpad1", key: "1", label: "小键盘 1" }] },
   { id: "ball_2", name: "2号球", payload: { action: "select", ball: 2 }, defaults: [{ code: "Digit2", key: "2", label: "2" }, { code: "Numpad2", key: "2", label: "小键盘 2" }] },
@@ -1698,7 +1701,9 @@ function renderNetworkSettings() {
   const form = document.querySelector("[data-network-settings-form]");
   if (!form || !currentState || settingsHydrated) return;
   form.courtName.value = currentState.courtName || "红星门球场1";
-  form.hotspotPassword.value = currentState.hotspotPassword || "12345678";
+  if (form.hotspotSsid) form.hotspotSsid.value = currentState.hotspotSsid || DEFAULT_HOTSPOT_SSID;
+  form.hotspotPassword.value = currentState.hotspotPassword || DEFAULT_HOTSPOT_PASSWORD;
+  if (form.showBootWifiInfo) form.showBootWifiInfo.checked = currentState.showBootWifiInfo !== false;
 }
 
 function renderKeyBindings() {
@@ -1751,8 +1756,8 @@ function renderNetworkStatus(status) {
   const local = (status.localAddresses || []).map((address) => `http://${address}:8000`).join(" / ") || "未检测到";
   box.innerHTML = `
     <div><strong>球场：</strong>${escapeHtml(status.courtName || "红星门球场1")}</div>
-    <div><strong>热点：</strong>${escapeHtml(status.hotspotSsid || status.courtName || "红星门球场1")}</div>
-    <div><strong>固定入口：</strong>${escapeHtml(status.hotspotAddress || "http://menqiu.hongxing")}</div>
+    <div><strong>热点：</strong>${escapeHtml(status.hotspotSsid || DEFAULT_HOTSPOT_SSID)} / ${escapeHtml(status.hotspotPassword || DEFAULT_HOTSPOT_PASSWORD)}</div>
+    <div><strong>固定入口：</strong>${escapeHtml(status.hotspotAddress || "http://gateball")} / ${escapeHtml(status.secondaryHotspotAddress || "http://menqiu")}</div>
     <div><strong>备用地址：</strong>${escapeHtml(status.fallbackAddress || "http://192.168.1.1:8000")}</div>
     <div><strong>本机地址：</strong>${escapeHtml(local)}</div>
     <div><strong>外部 WiFi：</strong>${escapeHtml(status.activeWifi || "未连接")}</div>
@@ -2802,8 +2807,10 @@ function collectNetworkSettingsPayload(form) {
   return {
     action: "update_settings",
     courtName,
-    hotspotSsid: courtName,
-    hotspotPassword: form.hotspotPassword?.value || "",
+    hotspotSsid: form.hotspotSsid?.value.trim() || DEFAULT_HOTSPOT_SSID,
+    hotspotPassword: form.hotspotPassword?.value.trim() || DEFAULT_HOTSPOT_PASSWORD,
+    showBootWifiInfo: form.showBootWifiInfo ? form.showBootWifiInfo.checked : true,
+    _resultSelector: "[data-network-save-result]",
   };
 }
 
@@ -2813,16 +2820,43 @@ function validateNetworkSettings(form) {
     result.textContent = "";
     result.classList.remove("error");
   }
-  const password = form.hotspotPassword?.value.trim() || "";
-  if (password.length < 8) {
+  const ssid = form.hotspotSsid?.value.trim() || "";
+  if (!ssid) {
     if (result) {
-      result.textContent = "热点密码至少 8 位";
+      result.textContent = "热点名称不能为空";
+      result.classList.add("error");
+    }
+    form.hotspotSsid?.focus();
+    return false;
+  }
+  if (ssid.length > 32) {
+    if (result) {
+      result.textContent = "热点名称最多 32 个字符";
+      result.classList.add("error");
+    }
+    form.hotspotSsid?.focus();
+    return false;
+  }
+  const password = form.hotspotPassword?.value.trim() || "";
+  if (password.length < 8 || password.length > 63) {
+    if (result) {
+      result.textContent = "热点密码需要 8-63 位";
       result.classList.add("error");
     }
     form.hotspotPassword?.focus();
     return false;
   }
   return true;
+}
+
+function resetHotspotDefaults(button) {
+  const form = button.closest("[data-network-settings-form]");
+  if (!form) return;
+  if (form.hotspotSsid) form.hotspotSsid.value = DEFAULT_HOTSPOT_SSID;
+  if (form.hotspotPassword) form.hotspotPassword.value = DEFAULT_HOTSPOT_PASSWORD;
+  if (form.showBootWifiInfo) form.showBootWifiInfo.checked = true;
+  if (!validateNetworkSettings(form)) return;
+  openSettingsSavePasswordDialog(collectNetworkSettingsPayload(form));
 }
 
 async function connectSelectedWifi() {
@@ -3705,6 +3739,7 @@ document.addEventListener("click", (event) => {
   if (action === "scan-wifi") return scanWifiNetworks();
   if (action === "select-wifi") return selectWifiNetwork(target);
   if (action === "connect-wifi") return connectSelectedWifi();
+  if (action === "reset-hotspot-defaults") return resetHotspotDefaults(target);
   if (action === "capture-key-binding") {
     cancelPendingRfLearn("学习已取消");
     if ((currentState?.rfReceiverType || "gpio") !== "keyboard") {

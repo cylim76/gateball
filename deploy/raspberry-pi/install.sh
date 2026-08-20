@@ -22,6 +22,12 @@ INSTALL_DIRECT_X_KIOSK="${INSTALL_DIRECT_X_KIOSK:-0}"
 CONFIGURE_QUIET_BOOT="${CONFIGURE_QUIET_BOOT:-1}"
 RESTART_DISPLAY_MANAGER="${RESTART_DISPLAY_MANAGER:-0}"
 INSTALL_RF_SUPPORT="${INSTALL_RF_SUPPORT:-1}"
+INSTALL_NETWORK_SUPPORT="${INSTALL_NETWORK_SUPPORT:-1}"
+GATEBALL_HOTSPOT_SSID="${GATEBALL_HOTSPOT_SSID:-HongxingMenqiu1}"
+GATEBALL_HOTSPOT_PASSWORD="${GATEBALL_HOTSPOT_PASSWORD:-1234567890}"
+GATEBALL_HOTSPOT_CONNECTION="${GATEBALL_HOTSPOT_CONNECTION:-gateball-ap}"
+GATEBALL_HOTSPOT_IFNAME="${GATEBALL_HOTSPOT_IFNAME:-wlan0_ap}"
+GATEBALL_HOTSPOT_ADDRESS="${GATEBALL_HOTSPOT_ADDRESS:-192.168.1.1}"
 SERVICE_NAME="${SERVICE_NAME:-gateball.service}"
 DIRECT_X_SERVICE_NAME="${DIRECT_X_SERVICE_NAME:-gateball-x-kiosk.service}"
 AUTOSTART_FILE="$GATEBALL_HOME/.config/autostart/gateball-kiosk.desktop"
@@ -31,6 +37,12 @@ LIGHTDM_KIOSK_CONF="/etc/lightdm/lightdm.conf.d/99-gateball-kiosk.conf"
 DIRECT_X_SERVICE_FILE="/etc/systemd/system/$DIRECT_X_SERVICE_NAME"
 XWRAPPER_CONFIG="/etc/X11/Xwrapper.config"
 DIRECT_X_PACKAGES=(xserver-xorg xinit openbox)
+NGINX_GATEBALL_SITE="/etc/nginx/sites-available/gateball"
+NGINX_GATEBALL_SITE_ENABLED="/etc/nginx/sites-enabled/gateball"
+NM_DNSMASQ_CONF="/etc/NetworkManager/dnsmasq.d/gateball.conf"
+NM_DNSMASQ_SHARED_CONF="/etc/NetworkManager/dnsmasq-shared.d/gateball.conf"
+NETWORK_APPLY_HELPER="/usr/local/bin/gateball-network-apply"
+NETWORK_SUDOERS_FILE="/etc/sudoers.d/gateball-network"
 
 enable_display_manager() {
   sudo systemctl set-default graphical.target
@@ -243,6 +255,131 @@ install_rf_support() {
   fi
 }
 
+install_network_support() {
+  if [ "$INSTALL_NETWORK_SUPPORT" != "1" ]; then
+    echo "Gateball network support skipped: INSTALL_NETWORK_SUPPORT=$INSTALL_NETWORK_SUPPORT"
+    return
+  fi
+
+  if [ "${#GATEBALL_HOTSPOT_PASSWORD}" -lt 8 ] || [ "${#GATEBALL_HOTSPOT_PASSWORD}" -gt 63 ]; then
+    echo "Warning: hotspot password must be 8-63 characters. Network support skipped."
+    return
+  fi
+
+  echo "Installing Gateball network support: NetworkManager hotspot, nginx, local DNS names"
+  if ! sudo apt-get update || ! sudo apt-get install -y network-manager nginx dnsmasq-base; then
+    echo "Warning: failed to install network packages. Short names and hotspot may not work yet."
+    return
+  fi
+
+  sudo tee "$NETWORK_APPLY_HELPER" >/dev/null <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+SSID="\${1:-$GATEBALL_HOTSPOT_SSID}"
+PASSWORD="\${2:-$GATEBALL_HOTSPOT_PASSWORD}"
+if [ -z "\$SSID" ] || [ "\${#SSID}" -gt 32 ]; then
+  echo "Invalid hotspot SSID" >&2
+  exit 2
+fi
+if [ "\${#PASSWORD}" -lt 8 ] || [ "\${#PASSWORD}" -gt 63 ]; then
+  echo "Invalid hotspot password" >&2
+  exit 2
+fi
+if ! nmcli connection show "$GATEBALL_HOTSPOT_CONNECTION" >/dev/null 2>&1; then
+  nmcli device wifi hotspot ifname "$GATEBALL_HOTSPOT_IFNAME" con-name "$GATEBALL_HOTSPOT_CONNECTION" ssid "\$SSID" password "\$PASSWORD" >/dev/null 2>&1 || true
+fi
+nmcli connection modify "$GATEBALL_HOTSPOT_CONNECTION" \\
+  connection.autoconnect yes \\
+  802-11-wireless.mode ap \\
+  802-11-wireless.ssid "\$SSID" \\
+  ipv4.method shared \\
+  ipv4.addresses "$GATEBALL_HOTSPOT_ADDRESS/24" \\
+  ipv6.method ignore \\
+  wifi-sec.key-mgmt wpa-psk \\
+  wifi-sec.psk "\$PASSWORD"
+nmcli connection up "$GATEBALL_HOTSPOT_CONNECTION" >/dev/null
+echo "Hotspot updated: \$SSID"
+EOF
+  sudo chmod 755 "$NETWORK_APPLY_HELPER"
+  echo "$GATEBALL_USER ALL=(root) NOPASSWD: $NETWORK_APPLY_HELPER" | sudo tee "$NETWORK_SUDOERS_FILE" >/dev/null
+  sudo chmod 440 "$NETWORK_SUDOERS_FILE"
+  if ! sudo visudo -cf "$NETWORK_SUDOERS_FILE" >/dev/null 2>&1; then
+    sudo rm -f "$NETWORK_SUDOERS_FILE"
+    echo "Warning: sudoers check failed. Network settings may need manual sudo."
+  fi
+
+  sudo install -d /etc/NetworkManager/dnsmasq.d /etc/NetworkManager/dnsmasq-shared.d
+  {
+    echo "address=/gateball/$GATEBALL_HOTSPOT_ADDRESS"
+    echo "address=/menqiu/$GATEBALL_HOTSPOT_ADDRESS"
+  } | sudo tee "$NM_DNSMASQ_CONF" >/dev/null
+  sudo cp "$NM_DNSMASQ_CONF" "$NM_DNSMASQ_SHARED_CONF"
+
+  sudo install -d /etc/nginx/sites-available /etc/nginx/sites-enabled
+  sudo tee "$NGINX_GATEBALL_SITE" >/dev/null <<EOF
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name gateball menqiu $GATEBALL_HOTSPOT_ADDRESS _;
+
+    location = / {
+        return 302 /remote;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+  sudo ln -sf "$NGINX_GATEBALL_SITE" "$NGINX_GATEBALL_SITE_ENABLED"
+  sudo rm -f /etc/nginx/sites-enabled/default
+  if sudo nginx -t >/dev/null 2>&1; then
+    sudo systemctl enable nginx >/dev/null 2>&1 || true
+    sudo systemctl restart nginx >/dev/null 2>&1 || true
+  else
+    echo "Warning: nginx configuration test failed. Check: sudo nginx -t"
+  fi
+
+  sudo systemctl restart NetworkManager >/dev/null 2>&1 || true
+
+  if command -v nmcli >/dev/null 2>&1; then
+    if ! sudo nmcli connection show "$GATEBALL_HOTSPOT_CONNECTION" >/dev/null 2>&1; then
+      sudo nmcli device wifi hotspot \
+        ifname "$GATEBALL_HOTSPOT_IFNAME" \
+        con-name "$GATEBALL_HOTSPOT_CONNECTION" \
+        ssid "$GATEBALL_HOTSPOT_SSID" \
+        password "$GATEBALL_HOTSPOT_PASSWORD" >/dev/null 2>&1 || true
+    fi
+    if sudo nmcli connection show "$GATEBALL_HOTSPOT_CONNECTION" >/dev/null 2>&1; then
+      sudo nmcli connection modify "$GATEBALL_HOTSPOT_CONNECTION" \
+        connection.autoconnect yes \
+        802-11-wireless.mode ap \
+        802-11-wireless.ssid "$GATEBALL_HOTSPOT_SSID" \
+        ipv4.method shared \
+        ipv4.addresses "$GATEBALL_HOTSPOT_ADDRESS/24" \
+        ipv6.method ignore \
+        wifi-sec.key-mgmt wpa-psk \
+        wifi-sec.psk "$GATEBALL_HOTSPOT_PASSWORD" >/dev/null 2>&1 || true
+      sudo nmcli connection up "$GATEBALL_HOTSPOT_CONNECTION" >/dev/null 2>&1 || \
+        echo "Warning: hotspot saved, but could not be started now. Reboot and check nmcli connection up $GATEBALL_HOTSPOT_CONNECTION"
+    else
+      echo "Warning: hotspot connection was not created. Check WiFi/AP interface: $GATEBALL_HOTSPOT_IFNAME"
+    fi
+  else
+    echo "Warning: nmcli not found. Hotspot was not configured."
+  fi
+
+  echo "Gateball network entries:"
+  echo "  Hotspot: $GATEBALL_HOTSPOT_SSID / $GATEBALL_HOTSPOT_PASSWORD"
+  echo "  Remote:  http://gateball or http://menqiu"
+  echo "  Backup:  http://$GATEBALL_HOTSPOT_ADDRESS:8000/remote"
+}
+
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required."
   exit 1
@@ -259,6 +396,7 @@ echo "User:    $GATEBALL_USER"
 echo "Home:    $GATEBALL_HOME"
 
 install_rf_support
+install_network_support
 
 sudo install -d /etc/systemd/system
 sed \
