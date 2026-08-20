@@ -1129,6 +1129,8 @@ class Store:
                 message = self.state.get("lastMessage", "")
             elif not self.require_selected_ball():
                 message = self.state["lastMessage"]
+            elif not self.state["running"] and not self.state["allowScoringWhenPaused"] and not self.state["timeExpired"]:
+                message = "暂停期间不能计分"
             else:
                 number = int(self.state["selectedBall"])
                 message = self.balls[number].undo()
