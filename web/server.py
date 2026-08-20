@@ -148,7 +148,7 @@ DEFAULT_STATE = {
     "systemVolumePercent": 100,
     "musicEnabled": False,
     "musicVolumePercent": 35,
-    "musicMode": "loop",
+    "musicMode": "random",
     "musicAutoPlayDuringMatch": True,
     "musicStopWhenMatchEnds": False,
     "musicDuckDuringSpeech": True,
@@ -159,6 +159,7 @@ DEFAULT_STATE = {
     "lastMusicToggleAt": 0,
     "titleColor": "#ffe23a",
     "titleFontScale": 1.0,
+    "teamNameAutoSize": True,
     "teamNameScale": 1.0,
     "tableMarkerAutoSize": True,
     "tableMarkerScale": 1.0,
@@ -412,7 +413,7 @@ def parse_bool(value, default: bool = False) -> bool:
 
 DEFAULT_STATE.update(
     {
-        "rfRemoteEnabled": False,
+        "rfRemoteEnabled": True,
         "rfReceiverType": "gpio",
         "rfReceiverGpio": 27,
         "rfReceiverSerialDevice": "",
@@ -574,13 +575,15 @@ class Store:
             self.state["teamNameScale"] = min(1.6, max(0.6, round(float(self.state.get("teamNameScale", 1.0)), 2)))
         except (TypeError, ValueError):
             self.state["teamNameScale"] = 1.0
+        if not isinstance(self.state.get("teamNameAutoSize"), bool):
+            self.state["teamNameAutoSize"] = parse_bool(self.state.get("teamNameAutoSize"), True)
         for key, fallback in [("musicVolumePercent", 35), ("musicDuckPercent", 30)]:
             try:
                 self.state[key] = min(100, max(0, int(round(float(self.state.get(key, fallback))))))
             except (TypeError, ValueError):
                 self.state[key] = fallback
         if self.state.get("musicMode") not in {"loop", "sequence", "random"}:
-            self.state["musicMode"] = "loop"
+            self.state["musicMode"] = "random"
         if not self.state.get("musicEnabled") or not self.state.get("selectedMusicTrack"):
             self.state["musicPlaying"] = False
         try:
@@ -897,8 +900,8 @@ class Store:
         action_id = ""
         status = "ignored"
         if not self.state.get("rfRemoteEnabled"):
-            status = "rf_disabled"
-        else:
+            self.state["rfRemoteEnabled"] = True
+        if self.state.get("rfRemoteEnabled"):
             for slot in slots:
                 if not slot.get("enabled"):
                     continue
@@ -1398,8 +1401,8 @@ class Store:
                     track_id = str(payload.get("selectedMusicTrack") or "")
                     self.state["selectedMusicTrack"] = track_id if not track_id or resolve_music_track(track_id) else ""
                 if "musicMode" in payload:
-                    mode = str(payload.get("musicMode") or "loop")
-                    self.state["musicMode"] = mode if mode in {"loop", "sequence", "random"} else "loop"
+                    mode = str(payload.get("musicMode") or "random")
+                    self.state["musicMode"] = mode if mode in {"loop", "sequence", "random"} else "random"
                 if "musicVolumePercent" in payload:
                     try:
                         volume = int(round(float(payload["musicVolumePercent"])))
@@ -1426,6 +1429,8 @@ class Store:
                         self.state["teamNameScale"] = min(1.6, max(0.6, scale))
                     except (TypeError, ValueError):
                         pass
+                if "teamNameAutoSize" in payload:
+                    self.state["teamNameAutoSize"] = bool(payload["teamNameAutoSize"])
                 if "tableMarkerAutoSize" in payload:
                     self.state["tableMarkerAutoSize"] = bool(payload["tableMarkerAutoSize"])
                 if "tableMarkerScale" in payload:
@@ -1514,6 +1519,8 @@ class Store:
                     self.preview_state["teamNameScale"] = min(1.6, max(0.6, scale))
                 except (TypeError, ValueError):
                     pass
+            if "teamNameAutoSize" in payload:
+                self.preview_state["teamNameAutoSize"] = bool(payload["teamNameAutoSize"])
             if "tableMarkerAutoSize" in payload:
                 self.preview_state["tableMarkerAutoSize"] = bool(payload["tableMarkerAutoSize"])
             if "tableMarkerScale" in payload:

@@ -1424,7 +1424,7 @@ function renderScoreboard() {
   title.classList.toggle("has-hangul", hasHangul(currentState.title));
   applyTitleColor(currentState.titleColor);
   applyTitleFontScale(currentState.titleFontScale);
-  applyTeamNameScale(currentState.teamNameScale);
+  applyTeamNameScale(currentState.teamNameScale, currentState.teamNameAutoSize);
   applyTableMarkerScale(currentState.tableMarkerAutoSize, currentState.tableMarkerScale);
   setTeamName("[data-red-team]", currentState.redTeam);
   setTeamName("[data-white-team]", currentState.whiteTeam);
@@ -1719,6 +1719,7 @@ function renderSettings() {
   if (!currentState) return;
   loadMusicTracks();
   const forms = document.querySelectorAll("[data-settings-form]");
+  forms.forEach((form) => enhanceSettingsForm(form));
   if (!settingsHydrated) {
     forms.forEach((form) => {
     if (form.durationMinutes) form.durationMinutes.value = Math.round(currentState.durationSeconds / 60);
@@ -1727,14 +1728,17 @@ function renderSettings() {
     if (form.systemVolumePercent) form.systemVolumePercent.value = normalizeSystemVolumePercent(currentState.systemVolumePercent);
     if (form.titleColor) form.titleColor.value = normalizeHexColor(currentState.titleColor);
     if (form.titleFontScale) form.titleFontScale.value = normalizeTitleFontScale(currentState.titleFontScale).toFixed(2);
+    if (form.teamNameAutoSize) form.teamNameAutoSize.checked = currentState.teamNameAutoSize !== false;
     if (form.teamNameScale) form.teamNameScale.value = normalizeTeamNameScale(currentState.teamNameScale).toFixed(2);
     if (form.tableMarkerAutoSize) form.tableMarkerAutoSize.checked = currentState.tableMarkerAutoSize !== false;
     if (form.tableMarkerScale) form.tableMarkerScale.value = normalizeTableMarkerScale(currentState.tableMarkerScale).toFixed(2);
+    syncMusicModeRadios(form);
     updateVoicePlaybackRateOutput(form);
     updateSystemVolumeOutput(form);
     renderMusicSettings();
     updateTitleFontScaleOutput(form);
     updateTeamNameScaleOutput(form);
+    updateTeamNameControls(form);
     updateTableMarkerScaleOutput(form);
     updateTableMarkerControls(form);
     if (form.weatherLocation) form.weatherLocation.value = currentState.weatherLocation || "";
@@ -1745,16 +1749,139 @@ function renderSettings() {
   }
   applyTitleColor(currentState.titleColor);
   applyTitleFontScale(currentState.titleFontScale);
-  applyTeamNameScale(currentState.teamNameScale);
+  applyTeamNameScale(currentState.teamNameScale, currentState.teamNameAutoSize);
   applyTableMarkerScale(currentState.tableMarkerAutoSize, currentState.tableMarkerScale);
   renderNetworkSettings();
   if (!settingsHydrated || document.querySelector("[data-settings-panel='rf'].active")) renderRfSettings();
   settingsHydrated = true;
 }
 
+function setFirstTextNode(element, text) {
+  if (!element) return;
+  const node = Array.from(element.childNodes).find((item) => item.nodeType === Node.TEXT_NODE && item.textContent.trim());
+  if (node) {
+    node.textContent = text;
+  } else {
+    element.insertBefore(document.createTextNode(text), element.firstChild);
+  }
+}
+
+function enhanceSettingsForm(form) {
+  if (!form || form.dataset.compactEnhanced === "1") return;
+  form.dataset.compactEnhanced = "1";
+  form.querySelectorAll("label").forEach((label) => label.classList.add("settings-field"));
+  [
+    "durationMinutes",
+    "voiceProfile",
+    "voicePlaybackRate",
+    "systemVolumePercent",
+    "weatherLocation",
+    "finishPassword",
+    "settingsPassword",
+    "courtName",
+    "hotspotSsid",
+    "hotspotPassword",
+  ].forEach((name) => {
+    const label = form.querySelector(`[name='${name}']`)?.closest("label");
+    label?.classList.add("settings-row");
+  });
+  ["voicePlaybackRate", "systemVolumePercent"].forEach((name) => {
+    form.querySelector(`[name='${name}']`)?.closest("label")?.classList.add("range-row");
+  });
+  enhanceTeamAndMarkerControls(form);
+  enhanceMusicModeControl(form);
+  enhanceNetworkForm(form);
+}
+
+function enhanceTeamAndMarkerControls(form) {
+  const teamLabel = form.teamNameScale?.closest("label");
+  const markerLabel = form.tableMarkerScale?.closest("label");
+  if (!teamLabel || !markerLabel || teamLabel.dataset.sizeEnhanced === "1") return;
+  const titleGroup = teamLabel.closest(".title-style-control");
+  const wrapper = document.createElement("div");
+  wrapper.className = "compact-settings-grid size-settings-grid";
+  titleGroup?.after(wrapper);
+  [teamLabel, markerLabel].forEach((label) => {
+    label.classList.add("size-setting-card");
+    Array.from(label.childNodes).forEach((node) => {
+      if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) node.remove();
+    });
+    const title = document.createElement("span");
+    title.className = "size-setting-title";
+    title.textContent = label === teamLabel ? "队名大小" : "球号/球标大小";
+    label.insertBefore(title, label.firstChild);
+    label.querySelector(".stepper-control")?.classList.add("compact-stepper");
+    wrapper.appendChild(label);
+  });
+  const teamAuto = document.createElement("span");
+  teamAuto.className = "check compact-check";
+  teamAuto.innerHTML = '<input name="teamNameAutoSize" type="checkbox">自动';
+  teamLabel.insertBefore(teamAuto, teamLabel.querySelector(".stepper-control"));
+  const markerAutoLabel = form.tableMarkerAutoSize?.closest("label");
+  if (markerAutoLabel && form.tableMarkerAutoSize) {
+    const markerAuto = document.createElement("span");
+    markerAuto.className = "check compact-check";
+    markerAuto.appendChild(form.tableMarkerAutoSize);
+    markerAuto.appendChild(document.createTextNode("自动"));
+    markerLabel.insertBefore(markerAuto, markerLabel.querySelector(".stepper-control"));
+    markerAutoLabel.remove();
+  }
+  teamLabel.dataset.sizeEnhanced = "1";
+}
+
+function enhanceMusicModeControl(form) {
+  const select = form.querySelector("select[name='musicMode']");
+  if (!select || select.dataset.radioEnhanced === "1") return;
+  select.dataset.radioEnhanced = "1";
+  select.classList.add("visually-hidden-control");
+  const group = document.createElement("div");
+  group.className = "segmented-radio music-mode-radio";
+  [
+    ["random", "随机播放"],
+    ["sequence", "顺序播放"],
+    ["loop", "单曲循环"],
+  ].forEach(([value, label]) => {
+    const item = document.createElement("label");
+    item.innerHTML = `<input type="radio" name="musicModeChoice" value="${value}" data-music-mode-choice><span>${label}</span>`;
+    group.appendChild(item);
+  });
+  select.after(group);
+  group.addEventListener("change", (event) => {
+    const input = event.target.closest("[data-music-mode-choice]");
+    if (!input) return;
+    select.value = input.value;
+    previewMusicSettings(form);
+  });
+}
+
+function syncMusicModeRadios(form) {
+  const select = form?.querySelector?.("select[name='musicMode']");
+  if (!select) return;
+  form.querySelectorAll("[data-music-mode-choice]").forEach((input) => {
+    input.checked = input.value === select.value;
+  });
+}
+
+function enhanceNetworkForm(form) {
+  if (!form.matches("[data-network-settings-form]")) return;
+  setFirstTextNode(form.courtName?.closest("label"), "球场名称");
+  setFirstTextNode(form.hotspotSsid?.closest("label"), "热点名称");
+  setFirstTextNode(form.hotspotPassword?.closest("label"), "热点密码");
+  const bootLabel = form.showBootWifiInfo?.closest("label");
+  bootLabel?.classList.add("check", "compact-check");
+  bootLabel?.querySelector("span") && (bootLabel.querySelector("span").textContent = "开机显示 WiFi 信息");
+  const resetButton = form.querySelector("[data-action='reset-hotspot-defaults']");
+  if (resetButton) resetButton.textContent = "恢复默认";
+  form.querySelector("button[type='submit']") && (form.querySelector("button[type='submit']").textContent = "保存");
+  form.classList.add("network-settings-form");
+  document.querySelector("[data-action='scan-wifi']") && (document.querySelector("[data-action='scan-wifi']").textContent = "刷新");
+  document.querySelector("[data-action='connect-wifi']") && (document.querySelector("[data-action='connect-wifi']").textContent = "连接");
+}
+
 function renderNetworkSettings() {
   const form = document.querySelector("[data-network-settings-form]");
   if (!form || !currentState || settingsHydrated) return;
+  enhanceNetworkForm(form);
   form.courtName.value = currentState.courtName || "红星门球场1";
   if (form.hotspotSsid) form.hotspotSsid.value = currentState.hotspotSsid || DEFAULT_HOTSPOT_SSID;
   form.hotspotPassword.value = currentState.hotspotPassword || DEFAULT_HOTSPOT_PASSWORD;
@@ -2005,7 +2132,8 @@ function renderMusicSettings() {
       });
       form.selectedMusicTrack.value = currentState.selectedMusicTrack || currentValue || "";
     }
-    if (form.musicMode) form.musicMode.value = currentState.musicMode || "loop";
+    if (form.musicMode) form.musicMode.value = currentState.musicMode || "random";
+    syncMusicModeRadios(form);
     if (form.musicVolumePercent) form.musicVolumePercent.value = normalizeMusicVolumePercent(currentState.musicVolumePercent);
     if (form.musicAutoPlayDuringMatch) form.musicAutoPlayDuringMatch.checked = currentState.musicAutoPlayDuringMatch !== false;
     if (form.musicStopWhenMatchEnds) form.musicStopWhenMatchEnds.checked = Boolean(currentState.musicStopWhenMatchEnds);
@@ -2040,7 +2168,7 @@ function previewMusicSettings(form) {
   if (!form || !currentState) return;
   currentState.musicEnabled = form.musicEnabled?.checked || false;
   currentState.selectedMusicTrack = musicTrackIdFromForm(form);
-  currentState.musicMode = form.musicMode?.value || "loop";
+  currentState.musicMode = form.musicMode?.value || "random";
   currentState.musicVolumePercent = normalizeMusicVolumePercent(form.musicVolumePercent?.value);
   currentState.musicAutoPlayDuringMatch = form.musicAutoPlayDuringMatch?.checked !== false;
   currentState.musicStopWhenMatchEnds = Boolean(form.musicStopWhenMatchEnds?.checked);
@@ -2171,8 +2299,8 @@ function updateTeamNameScaleOutput(form) {
   output.textContent = `${Math.round(scale * 100)}%`;
 }
 
-function applyTeamNameScale(value) {
-  const scale = normalizeTeamNameScale(value);
+function applyTeamNameScale(value, autoSize = currentState?.teamNameAutoSize) {
+  const scale = autoSize === false ? normalizeTeamNameScale(value) : DEFAULT_TEAM_NAME_SCALE;
   document.documentElement.style.setProperty("--team-name-scale", scale.toFixed(2));
   requestAnimationFrame(() => syncTeamNameAutoSize());
 }
@@ -2327,7 +2455,6 @@ function renderRfSettings() {
   layout.innerHTML = `
     <form class="settings-form rf-settings-form rf-receiver-form" data-rf-settings-form>
       <div class="rf-receiver-row">
-        ${renderSwitchControl("rfRemoteEnabled", Boolean(currentState.rfRemoteEnabled), "启用外部接收")}
         <label>
           接收方式
           <select name="rfReceiverType" data-rf-receiver-type>
@@ -2347,11 +2474,11 @@ function renderRfSettings() {
         <div class="rf-receiver-note ${receiverType === "keyboard" ? "" : "hidden"}" data-rf-receiver-field="keyboard">
           USB 键盘/HID 接收器会被系统当成键盘，按键请在“键盘”页签里映射。
         </div>
-        <button class="primary" type="submit">保存接收设置</button>
+        <button class="primary icon-save-button" type="submit" aria-label="保存接收设置" title="保存接收设置">💾</button>
       </div>
       <strong data-rf-save-result></strong>
     </form>
-    <div class="rf-device-tabs">
+    <div class="rf-device-tabs" data-active-rf-tab="${escapeHtml(activeRfTab)}">
       ${rfSlotTabs.map((tab) => `
         <button class="rf-device-tab ${activeRfTab === tab.id ? "active" : ""}" type="button" data-action="rf-device-tab" data-rf-tab="${tab.id}">${escapeHtml(tab.label)}</button>
       `).join("")}
@@ -2367,7 +2494,7 @@ function renderSwitchControl(name, checked, label) {
     <label class="switch-control">
       <input name="${escapeHtml(name)}" type="checkbox" ${checked ? "checked" : ""}>
       <span aria-hidden="true"></span>
-      <strong>${escapeHtml(label)}</strong>
+      ${label ? `<strong>${escapeHtml(label)}</strong>` : ""}
     </label>
   `;
 }
@@ -2531,7 +2658,7 @@ function renderRfDevicePanel() {
     panel.innerHTML = `
       <form class="settings-form keyboard-settings-form" data-keyboard-settings-form>
         <div class="rf-slot-head">
-          ${renderSwitchControl("keyboardInputEnabled", currentState.keyboardInputEnabled !== false, "启用键盘")}
+          ${renderSwitchControl("keyboardInputEnabled", currentState.keyboardInputEnabled !== false, "")}
           <button class="secondary" type="button" data-action="clear-key-bindings">恢复默认映射</button>
         </div>
         <div class="key-binding-panel embedded">
@@ -2556,7 +2683,7 @@ function renderRfDevicePanel() {
           遥控器名称
           <input name="rfSlotName" autocomplete="off" maxlength="40" value="${escapeHtml(slot.name)}">
         </label>
-        ${renderSwitchControl("rfSlotEnabled", Boolean(slot.enabled), "启用")}
+        ${renderSwitchControl("rfSlotEnabled", Boolean(slot.enabled), "")}
         <button class="secondary danger" type="button" data-action="clear-rf-slot" data-slot-id="${escapeHtml(slot.id)}">全部清除</button>
       </div>
       <div class="rf-action-list">
@@ -2615,7 +2742,7 @@ function consumePendingRfLearn() {
 function collectRfSettingsPayload(form) {
   return {
     action: "update_rf_settings",
-    rfRemoteEnabled: form.rfRemoteEnabled.checked,
+    rfRemoteEnabled: true,
     rfReceiverType: form.rfReceiverType.value || "gpio",
     rfReceiverGpio: form.rfReceiverGpio.value,
     rfReceiverSerialDevice: form.rfReceiverSerialDevice.value.trim(),
@@ -2700,7 +2827,8 @@ function previewScoreboardStyle(form) {
   if (!form) return;
   applyTitleColor(form.titleColor?.value);
   applyTitleFontScale(form.titleFontScale?.value);
-  applyTeamNameScale(form.teamNameScale?.value);
+  const teamAutoSize = form.teamNameAutoSize?.checked !== false;
+  applyTeamNameScale(form.teamNameScale?.value, teamAutoSize);
   const autoSize = form.tableMarkerAutoSize?.checked !== false;
   const markerScale = normalizeTableMarkerScale(form.tableMarkerScale?.value);
   applyTableMarkerScale(autoSize, markerScale);
@@ -2709,6 +2837,7 @@ function previewScoreboardStyle(form) {
     action: "preview_title_style",
     titleColor: normalizeHexColor(form.titleColor?.value),
     titleFontScale: normalizeTitleFontScale(form.titleFontScale?.value),
+    teamNameAutoSize: teamAutoSize,
     teamNameScale: normalizeTeamNameScale(form.teamNameScale?.value),
     tableMarkerAutoSize: autoSize,
     tableMarkerScale: markerScale,
@@ -2731,10 +2860,20 @@ function stepTitleFontScale(form, delta) {
 function stepTeamNameScale(form, delta) {
   const input = form?.teamNameScale;
   if (!input) return;
+  if (form.teamNameAutoSize) form.teamNameAutoSize.checked = false;
   const next = normalizeTeamNameScale(normalizeTeamNameScale(input.value) + delta);
   input.value = next.toFixed(2);
   updateTeamNameScaleOutput(form);
+  updateTeamNameControls(form);
   previewScoreboardStyle(form);
+}
+
+function updateTeamNameControls(form) {
+  const auto = form?.teamNameAutoSize?.checked !== false;
+  form?.querySelectorAll?.("[data-action='team-name-size-down'], [data-action='team-name-size-up']").forEach((button) => {
+    button.classList.toggle("auto-will-disable", auto);
+    button.setAttribute("aria-pressed", auto ? "false" : "true");
+  });
 }
 
 function normalizeTableMarkerScale(value) {
@@ -3311,6 +3450,7 @@ function startStylePreviewPolling() {
       }
       const changed = state.titleColor !== currentState.titleColor
         || state.titleFontScale !== currentState.titleFontScale
+        || state.teamNameAutoSize !== currentState.teamNameAutoSize
         || state.teamNameScale !== currentState.teamNameScale
         || state.tableMarkerAutoSize !== currentState.tableMarkerAutoSize
         || state.tableMarkerScale !== currentState.tableMarkerScale;
@@ -3452,7 +3592,7 @@ function collectSettingsPayload(form) {
   if (form.systemVolumePercent) payload.systemVolumePercent = normalizeSystemVolumePercent(form.systemVolumePercent.value);
   if (form.musicEnabled) payload.musicEnabled = form.musicEnabled.checked;
   if (form.selectedMusicTrack) payload.selectedMusicTrack = musicTrackIdFromForm(form);
-  if (form.musicMode) payload.musicMode = form.musicMode.value || "loop";
+  if (form.musicMode) payload.musicMode = form.musicMode.value || "random";
   if (form.musicVolumePercent) payload.musicVolumePercent = normalizeMusicVolumePercent(form.musicVolumePercent.value);
   if (form.musicAutoPlayDuringMatch) payload.musicAutoPlayDuringMatch = form.musicAutoPlayDuringMatch.checked;
   if (form.musicStopWhenMatchEnds) payload.musicStopWhenMatchEnds = form.musicStopWhenMatchEnds.checked;
@@ -3460,6 +3600,7 @@ function collectSettingsPayload(form) {
   if (form.musicDuckPercent) payload.musicDuckPercent = normalizeMusicDuckPercent(form.musicDuckPercent.value);
   if (form.titleColor) payload.titleColor = normalizeHexColor(form.titleColor.value);
   if (form.titleFontScale) payload.titleFontScale = normalizeTitleFontScale(form.titleFontScale.value);
+  if (form.teamNameAutoSize) payload.teamNameAutoSize = form.teamNameAutoSize.checked;
   if (form.teamNameScale) payload.teamNameScale = normalizeTeamNameScale(form.teamNameScale.value);
   if (form.tableMarkerAutoSize) payload.tableMarkerAutoSize = form.tableMarkerAutoSize.checked;
   if (form.tableMarkerScale) payload.tableMarkerScale = normalizeTableMarkerScale(form.tableMarkerScale.value);
@@ -3733,6 +3874,7 @@ function handlePasswordKey(event) {
     return true;
   }
   if (settingsDialogOpen) {
+    if (event.key === "Escape") return closeSettingsDialog();
     if (event.key === "/") return closeSettingsDialog();
     if (digit && settingsPassword.length < settingsPasswordLength()) settingsPassword += digit;
     if (event.key === "Backspace") settingsPassword = settingsPassword.slice(0, -1);
@@ -4026,11 +4168,17 @@ document.addEventListener("input", (event) => {
   const systemVolumeInput = event.target.closest("input[name='systemVolumePercent']");
   if (systemVolumeInput) previewSystemVolume(systemVolumeInput.form);
 
-  const musicControl = event.target.closest("input[name='musicVolumePercent'], input[name='musicDuckPercent'], input[name='musicEnabled'], input[name='musicAutoPlayDuringMatch'], input[name='musicStopWhenMatchEnds'], input[name='musicDuckDuringSpeech'], select[name='selectedMusicTrack'], select[name='musicMode']");
+  const musicControl = event.target.closest("input[name='musicVolumePercent'], input[name='musicDuckPercent'], input[name='musicEnabled'], input[name='musicAutoPlayDuringMatch'], input[name='musicStopWhenMatchEnds'], input[name='musicDuckDuringSpeech'], input[name='musicMode'], select[name='selectedMusicTrack']");
   if (musicControl) previewMusicSettings(musicControl.form);
 
   const titleColorInput = event.target.closest("input[name='titleColor']");
   if (titleColorInput) previewTitleStyle(titleColorInput.form);
+
+  const teamNameAutoInput = event.target.closest("input[name='teamNameAutoSize']");
+  if (teamNameAutoInput) {
+    updateTeamNameControls(teamNameAutoInput.form);
+    previewScoreboardStyle(teamNameAutoInput.form);
+  }
 
   const tableMarkerAutoInput = event.target.closest("input[name='tableMarkerAutoSize']");
   if (tableMarkerAutoInput) {
@@ -4070,7 +4218,7 @@ document.addEventListener("input", (event) => {
 });
 
 document.addEventListener("change", (event) => {
-  const musicControl = event.target.closest("input[name='musicEnabled'], input[name='musicAutoPlayDuringMatch'], input[name='musicStopWhenMatchEnds'], input[name='musicDuckDuringSpeech'], select[name='selectedMusicTrack'], select[name='musicMode']");
+  const musicControl = event.target.closest("input[name='musicEnabled'], input[name='musicAutoPlayDuringMatch'], input[name='musicStopWhenMatchEnds'], input[name='musicDuckDuringSpeech'], input[name='musicMode'], select[name='selectedMusicTrack']");
   if (musicControl) {
     previewMusicSettings(musicControl.form);
     return;
@@ -4161,7 +4309,7 @@ document.addEventListener("submit", async (event) => {
 
 window.addEventListener("resize", () => {
   if (currentState?.titleFontScale) applyTitleFontScale(currentState.titleFontScale);
-  applyTeamNameScale(currentState?.teamNameScale);
+  applyTeamNameScale(currentState?.teamNameScale, currentState?.teamNameAutoSize);
   syncTableMarkerAutoSize(currentState?.tableMarkerAutoSize, currentState?.tableMarkerScale);
 });
 
