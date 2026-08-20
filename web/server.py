@@ -9,6 +9,7 @@ import select
 import shutil
 import subprocess
 from dataclasses import dataclass
+from queue import SimpleQueue
 from threading import RLock, Thread
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -49,6 +50,8 @@ EXTERNAL_MUSIC_DIRS = [
     Path.home() / "音乐",
 ]
 MUSIC_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a"}
+MUSIC_TRACKS_CACHE: dict[str, object] = {"timestamp": 0.0, "tracks": []}
+MUSIC_TRACKS_CACHE_TTL = 15.0
 WEATHER_CACHE: dict = {"timestamp": 0.0, "payload": {"ok": False}}
 SELECTION_TIMEOUT_SECONDS = 30
 CLIENT_DISCONNECT_ERRNOS = {
@@ -156,6 +159,7 @@ DEFAULT_STATE = {
     "lastMusicToggleAt": 0,
     "titleColor": "#ffe23a",
     "titleFontScale": 1.0,
+    "teamNameScale": 1.0,
     "tableMarkerAutoSize": True,
     "tableMarkerScale": 1.0,
     "weatherLocation": "西安区, 牡丹江市, 黑龙江省, 157000, 中国",
@@ -298,7 +302,13 @@ def list_music_items() -> tuple[list[dict], list[dict]]:
 
 
 def list_music_tracks() -> list[dict]:
+    cached_at = float(MUSIC_TRACKS_CACHE.get("timestamp") or 0)
+    cached_tracks = MUSIC_TRACKS_CACHE.get("tracks")
+    if isinstance(cached_tracks, list) and cached_tracks and time.time() - cached_at < MUSIC_TRACKS_CACHE_TTL:
+        return [dict(track) for track in cached_tracks if isinstance(track, dict)]
     tracks, _items = list_music_items()
+    MUSIC_TRACKS_CACHE["timestamp"] = time.time()
+    MUSIC_TRACKS_CACHE["tracks"] = tracks
     return tracks
 
 
@@ -546,12 +556,22 @@ class Store:
             self.state["hotspotSsid"] = DEFAULT_HOTSPOT_SSID
         if not str(self.state.get("hotspotPassword") or "").strip():
             self.state["hotspotPassword"] = DEFAULT_HOTSPOT_PASSWORD
+        if (
+            str(self.state.get("hotspotPassword") or "") == "12345678"
+            and str(self.state.get("hotspotSsid") or "").strip() == str(self.state.get("courtName") or "").strip()
+        ):
+            self.state["hotspotSsid"] = DEFAULT_HOTSPOT_SSID
+            self.state["hotspotPassword"] = DEFAULT_HOTSPOT_PASSWORD
         if not isinstance(self.state.get("showBootWifiInfo"), bool):
             self.state["showBootWifiInfo"] = parse_bool(self.state.get("showBootWifiInfo"), True)
         try:
             self.state["systemVolumePercent"] = min(100, max(0, int(round(float(self.state.get("systemVolumePercent", 100))))))
         except (TypeError, ValueError):
             self.state["systemVolumePercent"] = 100
+        try:
+            self.state["teamNameScale"] = min(1.6, max(0.6, round(float(self.state.get("teamNameScale", 1.0)), 2)))
+        except (TypeError, ValueError):
+            self.state["teamNameScale"] = 1.0
         for key, fallback in [("musicVolumePercent", 35), ("musicDuckPercent", 30)]:
             try:
                 self.state[key] = min(100, max(0, int(round(float(self.state.get(key, fallback))))))
@@ -1188,11 +1208,14 @@ class Store:
             if self.state.get("musicEnabled") and self.state.get("selectedMusicTrack"):
                 now = time.time()
                 try:
-                    double_press = (now - float(self.state.get("lastMusicToggleAt") or 0)) <= 0.9
+                    resume_to_next = (now - float(self.state.get("lastMusicToggleAt") or 0)) <= 5.0
                 except (TypeError, ValueError):
-                    double_press = False
-                self.state["lastMusicToggleAt"] = now
-                if double_press:
+                    resume_to_next = False
+                if self.state.get("musicPlaying"):
+                    self.state["musicPlaying"] = False
+                    self.state["lastMusicToggleAt"] = now
+                    message = "音乐暂停"
+                elif resume_to_next:
                     next_track_id = next_music_track_id(
                         str(self.state.get("selectedMusicTrack") or ""),
                         str(self.state.get("musicMode") or "loop"),
@@ -1200,10 +1223,12 @@ class Store:
                     if next_track_id:
                         self.state["selectedMusicTrack"] = next_track_id
                     self.state["musicPlaying"] = True
+                    self.state["lastMusicToggleAt"] = 0
                     message = "音乐下一首"
                 else:
-                    self.state["musicPlaying"] = not bool(self.state.get("musicPlaying"))
-                    message = "音乐播放" if self.state["musicPlaying"] else "音乐暂停"
+                    self.state["musicPlaying"] = True
+                    self.state["lastMusicToggleAt"] = 0
+                    message = "音乐播放"
             else:
                 self.state["musicPlaying"] = False
                 self.state["lastMusicToggleAt"] = 0
@@ -1379,6 +1404,12 @@ class Store:
                         self.state["titleFontScale"] = min(1.4, max(0.7, scale))
                     except (TypeError, ValueError):
                         pass
+                if "teamNameScale" in payload:
+                    try:
+                        scale = round(float(payload["teamNameScale"]), 2)
+                        self.state["teamNameScale"] = min(1.6, max(0.6, scale))
+                    except (TypeError, ValueError):
+                        pass
                 if "tableMarkerAutoSize" in payload:
                     self.state["tableMarkerAutoSize"] = bool(payload["tableMarkerAutoSize"])
                 if "tableMarkerScale" in payload:
@@ -1442,6 +1473,8 @@ class Store:
                     message = "音乐文件已删除"
             except OSError as exc:
                 return {"ok": False, "message": f"删除失败: {exc}", "state": self.snapshot()}
+            MUSIC_TRACKS_CACHE["timestamp"] = 0.0
+            MUSIC_TRACKS_CACHE["tracks"] = []
             self.state["lastMessage"] = message
             self.state["lastUpdated"] = time.time()
             self.save()
@@ -1457,6 +1490,12 @@ class Store:
                 try:
                     scale = round(float(payload["titleFontScale"]), 2)
                     self.preview_state["titleFontScale"] = min(1.4, max(0.7, scale))
+                except (TypeError, ValueError):
+                    pass
+            if "teamNameScale" in payload:
+                try:
+                    scale = round(float(payload["teamNameScale"]), 2)
+                    self.preview_state["teamNameScale"] = min(1.6, max(0.6, scale))
                 except (TypeError, ValueError):
                     pass
             if "tableMarkerAutoSize" in payload:
@@ -1499,6 +1538,19 @@ class Store:
 results_store = ResultsStore(RESULTS_DB_FILE)
 store = Store()
 rf_listener_started = False
+rf_signal_queue: SimpleQueue[dict] = SimpleQueue()
+
+
+def enqueue_rf_signal(payload: dict) -> None:
+    rf_signal_queue.put(payload)
+
+
+def rf_signal_worker_loop() -> None:
+    while True:
+        try:
+            store.action(rf_signal_queue.get())
+        except Exception as exc:
+            print(f"RF action error: {exc}")
 
 
 def split_rf_code(code: object) -> tuple[str, str]:
@@ -1743,7 +1795,7 @@ def rf_listener_loop() -> None:
                 if rfdevice is None or active_mode not in {"gpio", "gpio-rpi-rf"} or active_gpio != gpio:
                     cleanup_rf_device(rfdevice)
                     try:
-                        rfdevice = LgpioRfReceiver(gpio, lambda code: store.action(rf_payload_from_24bit_code(code)))
+                        rfdevice = LgpioRfReceiver(gpio, lambda code: enqueue_rf_signal(rf_payload_from_24bit_code(code)))
                         active_mode = "gpio"
                         active_gpio = gpio
                         last_timestamp = None
@@ -1786,7 +1838,7 @@ def rf_listener_loop() -> None:
                         now = time.monotonic()
                         code = rfdevice.rx_code
                         if code != last_code or (now - last_at) >= 0.3:
-                            store.action(rf_payload_from_code(code))
+                            enqueue_rf_signal(rf_payload_from_code(code))
                             last_code = code
                             last_at = now
                     time.sleep(0.01)
@@ -1814,7 +1866,7 @@ def rf_listener_loop() -> None:
                 if readable:
                     payload = rf_payload_from_serial_line(serial_file.readline())
                     if payload:
-                        store.action(payload)
+                        enqueue_rf_signal(payload)
                 continue
             time.sleep(1.0)
         except Exception as exc:
@@ -1834,6 +1886,7 @@ def start_rf_listener() -> None:
     if rf_listener_started:
         return
     rf_listener_started = True
+    Thread(target=rf_signal_worker_loop, name="gateball-rf-worker", daemon=True).start()
     Thread(target=rf_listener_loop, name="gateball-rf-listener", daemon=True).start()
 
 
@@ -2117,6 +2170,7 @@ class Handler(BaseHTTPRequestHandler):
                 snapshot.get("tenSecondCountdownId"),
                 snapshot.get("titleColor"),
                 snapshot.get("titleFontScale"),
+                snapshot.get("teamNameScale"),
                 snapshot.get("tableMarkerAutoSize"),
                 snapshot.get("tableMarkerScale"),
                 snapshot.get("musicDuckingUntil"),

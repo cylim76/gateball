@@ -38,6 +38,7 @@
   --title-glow-wide: rgba(255, 226, 58, .42);
   --title-font-scale: 1;
   --title-base-font-size: clamp(34px, 4.4vw, 76px);
+  --team-name-scale: 1;
   --green: #36d36a;
   --ink: #050505;
   --body-font: "Gateball LG Hangul", "Gateball Noto Sans SC", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "WenQuanYi Micro Hei", Arial, sans-serif;

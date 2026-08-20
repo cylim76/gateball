@@ -28,6 +28,8 @@ NM_DNSMASQ_CONF="/etc/NetworkManager/dnsmasq.d/gateball.conf"
 NM_DNSMASQ_SHARED_CONF="/etc/NetworkManager/dnsmasq-shared.d/gateball.conf"
 NETWORK_APPLY_HELPER="/usr/local/bin/gateball-network-apply"
 NETWORK_SUDOERS_FILE="/etc/sudoers.d/gateball-network"
+AP_INTERFACE_SERVICE_NAME="gateball-wlan-ap.service"
+AP_INTERFACE_SERVICE_FILE="/etc/systemd/system/$AP_INTERFACE_SERVICE_NAME"
 
 enable_display_manager() {
   sudo systemctl set-default graphical.target
@@ -85,6 +87,8 @@ remove_network_support() {
   if command -v nmcli >/dev/null 2>&1; then
     sudo nmcli connection delete "$GATEBALL_HOTSPOT_CONNECTION" >/dev/null 2>&1 || true
   fi
+  sudo systemctl disable --now "$AP_INTERFACE_SERVICE_NAME" >/dev/null 2>&1 || true
+  sudo rm -f "$AP_INTERFACE_SERVICE_FILE"
   sudo rm -f "$NGINX_GATEBALL_SITE_ENABLED" "$NGINX_GATEBALL_SITE"
   sudo rm -f "$NM_DNSMASQ_CONF" "$NM_DNSMASQ_SHARED_CONF"
   sudo rm -f "$NETWORK_APPLY_HELPER" "$NETWORK_SUDOERS_FILE"
@@ -92,6 +96,7 @@ remove_network_support() {
     sudo nginx -t >/dev/null 2>&1 && sudo systemctl reload nginx >/dev/null 2>&1 || true
   fi
   sudo systemctl restart NetworkManager >/dev/null 2>&1 || true
+  sudo systemctl daemon-reload >/dev/null 2>&1 || true
   echo "Removed Gateball hotspot, nginx site, and local DNS name configuration."
 }
 

@@ -111,6 +111,7 @@ const keyBindingSpecs = [
 const keyBindingSpecById = Object.fromEntries(keyBindingSpecs.map((spec) => [spec.id, spec]));
 const DEFAULT_TITLE_COLOR = "#ffe23a";
 const DEFAULT_TITLE_FONT_SCALE = 1;
+const DEFAULT_TEAM_NAME_SCALE = 1;
 const DEFAULT_TABLE_MARKER_SCALE = 1;
 const MUSIC_DUCK_RELEASE_MS = 350;
 
@@ -450,6 +451,7 @@ function setTeamName(selector, name) {
   element.classList.remove("multi-line-team-name");
   element.classList.toggle("has-hangul", hasHangul(text));
   element.classList.toggle("default-team-name", !text);
+  element.style.removeProperty("font-size");
   element.style.removeProperty("--team-scroll-distance");
 
   if (!text) {
@@ -476,16 +478,51 @@ function setTeamName(selector, name) {
   });
 
   requestAnimationFrame(() => {
+    syncTeamNameAutoSize(element);
+  });
+}
+
+function updateTeamNameScrolling(element) {
+  element.querySelectorAll(".team-name-line").forEach((lineBox) => {
+    const scrollText = lineBox.querySelector(".team-name-scroll");
+    if (!scrollText) return;
+    const distance = Math.ceil(scrollText.scrollWidth - lineBox.clientWidth);
+    lineBox.classList.toggle("scrolling", distance > 4);
+    if (distance > 4) {
+      lineBox.style.setProperty("--team-scroll-distance", `${distance}px`);
+    } else {
+      lineBox.style.removeProperty("--team-scroll-distance");
+    }
+  });
+}
+
+function syncTeamNameAutoSize(target) {
+  const elements = target ? [target] : Array.from(document.querySelectorAll(".team-total .team-name"));
+  const manualScale = normalizeTeamNameScale(window.getComputedStyle(document.documentElement).getPropertyValue("--team-name-scale") || DEFAULT_TEAM_NAME_SCALE);
+  elements.forEach((element) => {
+    if (!element.isConnected || element.clientWidth <= 0 || element.clientHeight <= 0) return;
+    element.style.removeProperty("font-size");
+    updateTeamNameScrolling(element);
+    const baseSize = parseFloat(window.getComputedStyle(element).fontSize);
+    if (!Number.isFinite(baseSize) || baseSize <= 0) return;
+    element.style.fontSize = `${Math.round(baseSize * manualScale)}px`;
+    updateTeamNameScrolling(element);
+    let fit = 1;
     element.querySelectorAll(".team-name-line").forEach((lineBox) => {
       const scrollText = lineBox.querySelector(".team-name-scroll");
-      const distance = Math.ceil(scrollText.scrollWidth - lineBox.clientWidth);
-      lineBox.classList.toggle("scrolling", distance > 4);
-      if (distance > 4) {
-        lineBox.style.setProperty("--team-scroll-distance", `${distance}px`);
-      } else {
-        lineBox.style.removeProperty("--team-scroll-distance");
-      }
+      if (!scrollText || scrollText.scrollWidth <= 0) return;
+      fit = Math.max(fit, Math.min(1.35, (lineBox.clientWidth - 12) / scrollText.scrollWidth));
     });
+    if (!element.querySelector(".team-name-line")) {
+      const widthFit = (element.clientWidth - 16) / Math.max(1, element.scrollWidth);
+      const heightFit = (element.clientHeight - 8) / Math.max(1, element.scrollHeight);
+      fit = Math.max(1, Math.min(1.35, widthFit, heightFit));
+    } else {
+      const heightFit = (element.clientHeight - 8) / Math.max(1, element.scrollHeight);
+      fit = Math.min(fit, Math.max(1, heightFit), 1.35);
+    }
+    element.style.fontSize = `${Math.round(baseSize * manualScale * fit)}px`;
+    updateTeamNameScrolling(element);
   });
 }
 
@@ -1373,6 +1410,7 @@ function renderScoreboard() {
   title.classList.toggle("has-hangul", hasHangul(currentState.title));
   applyTitleColor(currentState.titleColor);
   applyTitleFontScale(currentState.titleFontScale);
+  applyTeamNameScale(currentState.teamNameScale);
   applyTableMarkerScale(currentState.tableMarkerAutoSize, currentState.tableMarkerScale);
   setTeamName("[data-red-team]", currentState.redTeam);
   setTeamName("[data-white-team]", currentState.whiteTeam);
@@ -1675,12 +1713,14 @@ function renderSettings() {
     if (form.systemVolumePercent) form.systemVolumePercent.value = normalizeSystemVolumePercent(currentState.systemVolumePercent);
     if (form.titleColor) form.titleColor.value = normalizeHexColor(currentState.titleColor);
     if (form.titleFontScale) form.titleFontScale.value = normalizeTitleFontScale(currentState.titleFontScale).toFixed(2);
+    if (form.teamNameScale) form.teamNameScale.value = normalizeTeamNameScale(currentState.teamNameScale).toFixed(2);
     if (form.tableMarkerAutoSize) form.tableMarkerAutoSize.checked = currentState.tableMarkerAutoSize !== false;
     if (form.tableMarkerScale) form.tableMarkerScale.value = normalizeTableMarkerScale(currentState.tableMarkerScale).toFixed(2);
     updateVoicePlaybackRateOutput(form);
     updateSystemVolumeOutput(form);
     renderMusicSettings();
     updateTitleFontScaleOutput(form);
+    updateTeamNameScaleOutput(form);
     updateTableMarkerScaleOutput(form);
     updateTableMarkerControls(form);
     if (form.weatherLocation) form.weatherLocation.value = currentState.weatherLocation || "";
@@ -1691,6 +1731,7 @@ function renderSettings() {
   }
   applyTitleColor(currentState.titleColor);
   applyTitleFontScale(currentState.titleFontScale);
+  applyTeamNameScale(currentState.teamNameScale);
   applyTableMarkerScale(currentState.tableMarkerAutoSize, currentState.tableMarkerScale);
   renderNetworkSettings();
   if (!settingsHydrated || document.querySelector("[data-settings-panel='rf'].active")) renderRfSettings();
@@ -2077,6 +2118,12 @@ function normalizeTitleFontScale(value) {
   return Math.min(1.4, Math.max(0.7, scale));
 }
 
+function normalizeTeamNameScale(value) {
+  const scale = Number(value);
+  if (!Number.isFinite(scale)) return DEFAULT_TEAM_NAME_SCALE;
+  return Math.min(1.6, Math.max(0.6, scale));
+}
+
 function updateTitleFontScaleOutput(form) {
   const input = form?.titleFontScale;
   const output = form?.querySelector?.("[data-title-font-scale-output]");
@@ -2093,6 +2140,20 @@ function applyTitleFontScale(value) {
     const baseSize = parseFloat(window.getComputedStyle(title).fontSize);
     if (Number.isFinite(baseSize)) title.style.fontSize = `${Math.round(baseSize * scale)}px`;
   });
+}
+
+function updateTeamNameScaleOutput(form) {
+  const input = form?.teamNameScale;
+  const output = form?.querySelector?.("[data-team-name-scale-output]");
+  if (!input || !output) return;
+  const scale = normalizeTeamNameScale(input.value);
+  output.textContent = `${Math.round(scale * 100)}%`;
+}
+
+function applyTeamNameScale(value) {
+  const scale = normalizeTeamNameScale(value);
+  document.documentElement.style.setProperty("--team-name-scale", scale.toFixed(2));
+  requestAnimationFrame(() => syncTeamNameAutoSize());
 }
 
 function rfResultElement() {
@@ -2617,6 +2678,7 @@ function previewScoreboardStyle(form) {
   if (!form) return;
   applyTitleColor(form.titleColor?.value);
   applyTitleFontScale(form.titleFontScale?.value);
+  applyTeamNameScale(form.teamNameScale?.value);
   const autoSize = form.tableMarkerAutoSize?.checked !== false;
   const markerScale = normalizeTableMarkerScale(form.tableMarkerScale?.value);
   applyTableMarkerScale(autoSize, markerScale);
@@ -2625,6 +2687,7 @@ function previewScoreboardStyle(form) {
     action: "preview_title_style",
     titleColor: normalizeHexColor(form.titleColor?.value),
     titleFontScale: normalizeTitleFontScale(form.titleFontScale?.value),
+    teamNameScale: normalizeTeamNameScale(form.teamNameScale?.value),
     tableMarkerAutoSize: autoSize,
     tableMarkerScale: markerScale,
   }, false).catch(() => {});
@@ -2641,6 +2704,15 @@ function stepTitleFontScale(form, delta) {
   input.value = next.toFixed(2);
   updateTitleFontScaleOutput(form);
   previewTitleStyle(form);
+}
+
+function stepTeamNameScale(form, delta) {
+  const input = form?.teamNameScale;
+  if (!input) return;
+  const next = normalizeTeamNameScale(normalizeTeamNameScale(input.value) + delta);
+  input.value = next.toFixed(2);
+  updateTeamNameScaleOutput(form);
+  previewScoreboardStyle(form);
 }
 
 function normalizeTableMarkerScale(value) {
@@ -3211,6 +3283,7 @@ function startStylePreviewPolling() {
       }
       const changed = state.titleColor !== currentState.titleColor
         || state.titleFontScale !== currentState.titleFontScale
+        || state.teamNameScale !== currentState.teamNameScale
         || state.tableMarkerAutoSize !== currentState.tableMarkerAutoSize
         || state.tableMarkerScale !== currentState.tableMarkerScale;
       if (changed) applyState(state, { speakEvents: false, skipTransition: true });
@@ -3356,6 +3429,7 @@ function collectSettingsPayload(form) {
   if (form.musicDuckPercent) payload.musicDuckPercent = normalizeMusicDuckPercent(form.musicDuckPercent.value);
   if (form.titleColor) payload.titleColor = normalizeHexColor(form.titleColor.value);
   if (form.titleFontScale) payload.titleFontScale = normalizeTitleFontScale(form.titleFontScale.value);
+  if (form.teamNameScale) payload.teamNameScale = normalizeTeamNameScale(form.teamNameScale.value);
   if (form.tableMarkerAutoSize) payload.tableMarkerAutoSize = form.tableMarkerAutoSize.checked;
   if (form.tableMarkerScale) payload.tableMarkerScale = normalizeTableMarkerScale(form.tableMarkerScale.value);
   if (form.weatherLocation) payload.weatherLocation = form.weatherLocation.value || "";
@@ -3840,6 +3914,14 @@ document.addEventListener("click", (event) => {
     stepTitleFontScale(target.closest("[data-settings-form]"), 0.05);
     return;
   }
+  if (action === "team-name-size-down") {
+    stepTeamNameScale(target.closest("[data-settings-form]"), -0.05);
+    return;
+  }
+  if (action === "team-name-size-up") {
+    stepTeamNameScale(target.closest("[data-settings-form]"), 0.05);
+    return;
+  }
   if (action === "system-volume-down") {
     stepSystemVolume(target.closest("[data-settings-form]"), -5);
     return;
@@ -4043,6 +4125,7 @@ document.addEventListener("submit", async (event) => {
 
 window.addEventListener("resize", () => {
   if (currentState?.titleFontScale) applyTitleFontScale(currentState.titleFontScale);
+  applyTeamNameScale(currentState?.teamNameScale);
   syncTableMarkerAutoSize(currentState?.tableMarkerAutoSize, currentState?.tableMarkerScale);
 });
 

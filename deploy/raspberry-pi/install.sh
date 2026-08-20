@@ -43,6 +43,8 @@ NM_DNSMASQ_CONF="/etc/NetworkManager/dnsmasq.d/gateball.conf"
 NM_DNSMASQ_SHARED_CONF="/etc/NetworkManager/dnsmasq-shared.d/gateball.conf"
 NETWORK_APPLY_HELPER="/usr/local/bin/gateball-network-apply"
 NETWORK_SUDOERS_FILE="/etc/sudoers.d/gateball-network"
+AP_INTERFACE_SERVICE_NAME="gateball-wlan-ap.service"
+AP_INTERFACE_SERVICE_FILE="/etc/systemd/system/$AP_INTERFACE_SERVICE_NAME"
 
 enable_display_manager() {
   sudo systemctl set-default graphical.target
@@ -272,11 +274,53 @@ install_network_support() {
     return
   fi
 
+  local base_wifi_ifname=""
+  if nmcli -t -f DEVICE,TYPE device status 2>/dev/null | grep -Fxq "wlan0:wifi"; then
+    base_wifi_ifname="wlan0"
+  else
+    base_wifi_ifname="$(nmcli -t -f DEVICE,TYPE device status 2>/dev/null | awk -F: '$2=="wifi"{print $1; exit}')"
+  fi
+  if [ -z "$base_wifi_ifname" ] && ip link show wlan0 >/dev/null 2>&1; then
+    base_wifi_ifname="wlan0"
+  fi
+  if [ -z "$base_wifi_ifname" ]; then
+    echo "Warning: no WiFi interface found. Network support installed, but hotspot was not configured."
+    return
+  fi
+
+  if [ "$GATEBALL_HOTSPOT_IFNAME" != "$base_wifi_ifname" ]; then
+    sudo apt-get install -y iw >/dev/null 2>&1 || true
+    sudo tee "$AP_INTERFACE_SERVICE_FILE" >/dev/null <<EOF
+[Unit]
+Description=Create Gateball WiFi AP interface
+Before=NetworkManager.service
+After=sys-subsystem-net-devices-$base_wifi_ifname.device
+Wants=sys-subsystem-net-devices-$base_wifi_ifname.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'ip link show "$GATEBALL_HOTSPOT_IFNAME" >/dev/null 2>&1 || iw dev "$base_wifi_ifname" interface add "$GATEBALL_HOTSPOT_IFNAME" type __ap'
+ExecStop=/bin/sh -c 'ip link show "$GATEBALL_HOTSPOT_IFNAME" >/dev/null 2>&1 && iw dev "$GATEBALL_HOTSPOT_IFNAME" del || true'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    sudo systemctl daemon-reload
+    sudo systemctl enable "$AP_INTERFACE_SERVICE_NAME" >/dev/null 2>&1 || true
+    sudo systemctl start "$AP_INTERFACE_SERVICE_NAME" >/dev/null 2>&1 || true
+    if ! ip link show "$GATEBALL_HOTSPOT_IFNAME" >/dev/null 2>&1; then
+      echo "Warning: could not create $GATEBALL_HOTSPOT_IFNAME; falling back to $base_wifi_ifname"
+      GATEBALL_HOTSPOT_IFNAME="$base_wifi_ifname"
+    fi
+  fi
+
   sudo tee "$NETWORK_APPLY_HELPER" >/dev/null <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 SSID="\${1:-$GATEBALL_HOTSPOT_SSID}"
 PASSWORD="\${2:-$GATEBALL_HOTSPOT_PASSWORD}"
+HOTSPOT_IFNAME="$GATEBALL_HOTSPOT_IFNAME"
 if [ -z "\$SSID" ] || [ "\${#SSID}" -gt 32 ]; then
   echo "Invalid hotspot SSID" >&2
   exit 2
@@ -286,10 +330,11 @@ if [ "\${#PASSWORD}" -lt 8 ] || [ "\${#PASSWORD}" -gt 63 ]; then
   exit 2
 fi
 if ! nmcli connection show "$GATEBALL_HOTSPOT_CONNECTION" >/dev/null 2>&1; then
-  nmcli device wifi hotspot ifname "$GATEBALL_HOTSPOT_IFNAME" con-name "$GATEBALL_HOTSPOT_CONNECTION" ssid "\$SSID" password "\$PASSWORD" >/dev/null 2>&1 || true
+  nmcli device wifi hotspot ifname "\$HOTSPOT_IFNAME" con-name "$GATEBALL_HOTSPOT_CONNECTION" ssid "\$SSID" password "\$PASSWORD" >/dev/null 2>&1 || true
 fi
 nmcli connection modify "$GATEBALL_HOTSPOT_CONNECTION" \\
   connection.autoconnect yes \\
+  connection.interface-name "\$HOTSPOT_IFNAME" \\
   802-11-wireless.mode ap \\
   802-11-wireless.ssid "\$SSID" \\
   ipv4.method shared \\
@@ -358,6 +403,7 @@ EOF
     if sudo nmcli connection show "$GATEBALL_HOTSPOT_CONNECTION" >/dev/null 2>&1; then
       sudo nmcli connection modify "$GATEBALL_HOTSPOT_CONNECTION" \
         connection.autoconnect yes \
+        connection.interface-name "$GATEBALL_HOTSPOT_IFNAME" \
         802-11-wireless.mode ap \
         802-11-wireless.ssid "$GATEBALL_HOTSPOT_SSID" \
         ipv4.method shared \
@@ -376,6 +422,7 @@ EOF
 
   echo "Gateball network entries:"
   echo "  Hotspot: $GATEBALL_HOTSPOT_SSID / $GATEBALL_HOTSPOT_PASSWORD"
+  echo "  Interface: $GATEBALL_HOTSPOT_IFNAME"
   echo "  Remote:  http://gateball or http://menqiu"
   echo "  Backup:  http://$GATEBALL_HOTSPOT_ADDRESS:8000/remote"
 }
