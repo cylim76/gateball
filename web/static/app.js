@@ -357,7 +357,6 @@ function keyLabelFromEvent(event) {
 }
 
 function keyboardActionForEvent(event) {
-  if (currentState?.keyboardInputEnabled === false) return null;
   for (const spec of keyBindingSpecs) {
     if (eventMatchesBindingSpec(event, spec)) return spec;
   }
@@ -2657,8 +2656,7 @@ function renderRfDevicePanel() {
   if (activeRfTab === "keyboard") {
     panel.innerHTML = `
       <form class="settings-form keyboard-settings-form" data-keyboard-settings-form>
-        <div class="rf-slot-head">
-          ${renderSwitchControl("keyboardInputEnabled", currentState.keyboardInputEnabled !== false, "")}
+        <div class="rf-slot-head keyboard-slot-head">
           <button class="secondary" type="button" data-action="clear-key-bindings">恢复默认映射</button>
         </div>
         <div class="key-binding-panel embedded">
@@ -2774,7 +2772,7 @@ function collectRfSlotPayload(form) {
 function collectKeyboardSettingsPayload(form) {
   return {
     action: "update_keyboard_settings",
-    keyboardInputEnabled: form.keyboardInputEnabled.checked,
+    keyboardInputEnabled: true,
     _resultSelector: "[data-keyboard-save-result]",
   };
 }

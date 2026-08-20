@@ -2918,6 +2918,14 @@ body.scoreboard.finish-summary-active .celebration-canvas {
   grid-template-columns: minmax(0, 1fr) 58px auto;
 }
 
+.keyboard-slot-head {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.keyboard-slot-head .secondary {
+  justify-self: start;
+}
+
 .rf-receiver-field.hidden,
 .rf-receiver-note.hidden {
   display: none;

@@ -553,8 +553,7 @@ class Store:
             self.state["matchStartedAt"] = None
         if not isinstance(self.state.get("keyBindings"), dict):
             self.state["keyBindings"] = {}
-        if not isinstance(self.state.get("keyboardInputEnabled"), bool):
-            self.state["keyboardInputEnabled"] = True
+        self.state["keyboardInputEnabled"] = True
         if not str(self.state.get("hotspotSsid") or "").strip():
             self.state["hotspotSsid"] = DEFAULT_HOTSPOT_SSID
         if not str(self.state.get("hotspotPassword") or "").strip():
@@ -1079,7 +1078,7 @@ class Store:
             if payload.get("password") != self.state["settingsPassword"]:
                 message = "密码错误"
             else:
-                self.state["keyboardInputEnabled"] = parse_bool(payload.get("keyboardInputEnabled"))
+                self.state["keyboardInputEnabled"] = True
                 message = "键盘设置已保存"
                 self.state["lastMessage"] = message
                 self.record("keyboard_settings", None, message)
