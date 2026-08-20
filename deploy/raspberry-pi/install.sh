@@ -339,6 +339,8 @@ nmcli connection modify "$GATEBALL_HOTSPOT_CONNECTION" \\
   802-11-wireless.ssid "\$SSID" \\
   ipv4.method shared \\
   ipv4.addresses "$GATEBALL_HOTSPOT_ADDRESS/24" \\
+  ipv4.dns "$GATEBALL_HOTSPOT_ADDRESS" \\
+  ipv4.ignore-auto-dns yes \\
   ipv6.method ignore \\
   wifi-sec.key-mgmt wpa-psk \\
   wifi-sec.psk "\$PASSWORD"
@@ -408,6 +410,8 @@ EOF
         802-11-wireless.ssid "$GATEBALL_HOTSPOT_SSID" \
         ipv4.method shared \
         ipv4.addresses "$GATEBALL_HOTSPOT_ADDRESS/24" \
+        ipv4.dns "$GATEBALL_HOTSPOT_ADDRESS" \
+        ipv4.ignore-auto-dns yes \
         ipv6.method ignore \
         wifi-sec.key-mgmt wpa-psk \
         wifi-sec.psk "$GATEBALL_HOTSPOT_PASSWORD" >/dev/null 2>&1 || true

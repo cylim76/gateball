@@ -735,7 +735,6 @@ class Store:
         self.state["lastTickRemainingSeconds"] = self.state["remainingSeconds"]
         self.state["selectedBall"] = 1
         self.state["selectedBallAt"] = None
-        self.state["musicPlaying"] = False
         self.state["lastMessage"] = f"第{self.state['matchNumber']}场，等待开始"
         self.record("next_match", None, self.state["lastMessage"])
         self.save()
@@ -918,7 +917,14 @@ class Store:
                 status = "unknown_remote"
             elif not action_id:
                 status = "unknown_button"
-            if action_id == "toggle_music":
+            if action_id == "finish_dialog":
+                self.state["rfFinishPasswordPending"] = True
+                status = "finish_requires_password"
+            elif self.state.get("rfFinishPasswordPending") and (
+                re.fullmatch(r"ball_(?:[1-9]|10)", action_id or "") or action_id == "toggle_music"
+            ):
+                status = "finish_password_digit"
+            elif action_id == "toggle_music":
                 now = time.time()
                 duplicate_music_signal = raw and raw == self.last_rf_music_raw and (now - self.last_rf_music_at) < 0.7
                 if duplicate_music_signal:
@@ -928,11 +934,6 @@ class Store:
                     self.last_rf_music_at = now
                     status = "executed"
                     self.action(RF_ACTION_PAYLOADS[action_id])
-            elif action_id == "finish_dialog":
-                self.state["rfFinishPasswordPending"] = True
-                status = "finish_requires_password"
-            elif self.state.get("rfFinishPasswordPending") and re.fullmatch(r"ball_(?:[1-9]|10)", action_id or ""):
-                status = "finish_password_digit"
             elif action_id in RF_ACTION_PAYLOADS:
                 status = "executed"
                 self.action(RF_ACTION_PAYLOADS[action_id])
@@ -1194,6 +1195,9 @@ class Store:
                 self.record("undo", number, message)
 
         elif action == "toggle_timer":
+            if self.state.get("matchFinished"):
+                message = self.reset_match()
+                return {"ok": True, "message": message, "state": self.snapshot()}
             if self.state["running"]:
                 self.tick()
                 self.state["running"] = False
@@ -2058,8 +2062,13 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/results":
             self.serve_file(STATIC_DIR / "results.html")
         elif path == "/set":
+            params = parse_qs(urlparse(self.path).query)
+            return_target = params.get("return", [""])[0]
+            location = "/remote?settings=1"
+            if return_target == "scoreboard":
+                location += "&return=scoreboard"
             self.send_response(302)
-            self.send_header("Location", "/remote?settings=1")
+            self.send_header("Location", location)
             self.end_headers()
         elif path == "/api/events":
             self.send_events()

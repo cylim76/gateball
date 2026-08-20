@@ -181,6 +181,7 @@ let wifiConnectInFlight = false;
 let readySpeechTimer = null;
 let matchTransitionInFlight = false;
 let finishAdvanceInFlight = false;
+let finishAutoAdvanceTimer = null;
 let remoteFinishPlaybackLocked = false;
 let celebrationAnimationFrame = null;
 let celebrationParticles = [];
@@ -195,6 +196,7 @@ const READY_SPEECH_DELAY_MS = 30000;
 const FINISH_SUMMARY_TAIL_CUT_MS = 500;
 const MATCH_TRANSITION_HOLD_MS = 320;
 const MATCH_TRANSITION_FALLBACK_MS = 45000;
+const FINISH_AUTO_ADVANCE_MS = 5 * 60 * 1000;
 const ERROR_PROMPT_LEAD_MS = 400;
 const ERROR_PROMPT_FALLBACK_START_MS = 800;
 const DEFAULT_GAMEPLAY_PLAYBACK_RATE = 1.2;
@@ -243,6 +245,7 @@ const rfReceiverTypeLabels = {
 const VOICE_PROFILES = ["female", "male", "ko-female", "ko-male"];
 const isKioskMode = new URLSearchParams(window.location.search).get("kiosk") === "1";
 const shouldAutoOpenRemoteSettings = new URLSearchParams(window.location.search).get("settings") === "1";
+const settingsReturnTarget = new URLSearchParams(window.location.search).get("return") || "";
 let autoRemoteSettingsOpened = false;
 
 function two(num) {
@@ -386,7 +389,8 @@ function runKeyboardAction(spec) {
   if (!spec) return;
   if (remoteFinishPlaybackLocked && document.querySelector("[data-remote]")) return;
   if (shouldIgnoreGuardedAction(spec.id)) return;
-  if (spec.id === "toggle_timer" && (currentState?.matchFinished || (currentState?.timeExpired && !currentState?.running))) return;
+  if (spec.id === "toggle_timer" && currentState?.timeExpired && !currentState?.running && !currentState?.matchFinished) return;
+  if (spec.id === "toggle_timer" && currentState?.matchFinished) return advanceToNextMatchWithTransition();
   if (spec.special === "ten-second-countdown") return startTenSecondCountdown();
   if (spec.special === "finish-dialog") return openFinishDialog();
   if (spec.special === "finish-cancel") return closeFinishDialog();
@@ -901,6 +905,7 @@ async function runMatchTransition(updateState) {
 
 async function advanceToNextMatchWithTransition() {
   if (finishAdvanceInFlight) return;
+  cancelFinishAutoAdvance();
   finishAdvanceInFlight = true;
   try {
     await runMatchTransition(async () => {
@@ -914,27 +919,32 @@ async function advanceToNextMatchWithTransition() {
   }
 }
 
+function cancelFinishAutoAdvance() {
+  if (!finishAutoAdvanceTimer) return;
+  window.clearTimeout(finishAutoAdvanceTimer);
+  finishAutoAdvanceTimer = null;
+}
+
+function scheduleFinishAutoAdvance() {
+  cancelFinishAutoAdvance();
+  if (!currentState?.matchFinished) return;
+  finishAutoAdvanceTimer = window.setTimeout(() => {
+    finishAutoAdvanceTimer = null;
+    advanceToNextMatchWithTransition();
+  }, FINISH_AUTO_ADVANCE_MS);
+}
+
 async function playFinishThenAdvance(snapshot, options = {}) {
-  let advanced = false;
   remoteFinishPlaybackLocked = Boolean(document.querySelector("[data-remote]"));
   if (remoteFinishPlaybackLocked) renderRemote();
-  const advanceOnce = async () => {
-    if (advanced) return;
-    advanced = true;
-    await advanceToNextMatchWithTransition();
-  };
-  const fallback = window.setTimeout(() => {
-    advanceOnce();
-  }, MATCH_TRANSITION_FALLBACK_MS);
   try {
-    await playFinishSummary(snapshot, options);
+    await Promise.race([playFinishSummary(snapshot, options), waitMs(MATCH_TRANSITION_FALLBACK_MS)]);
   } finally {
-    window.clearTimeout(fallback);
-    await advanceOnce();
     if (remoteFinishPlaybackLocked) {
       remoteFinishPlaybackLocked = false;
       renderRemote();
     }
+    scheduleFinishAutoAdvance();
   }
 }
 
@@ -1484,9 +1494,9 @@ function renderRemote() {
   }
   const timerAction = document.querySelector("[data-action='toggle_timer']");
   if (timerAction) {
-    timerAction.textContent = currentState.running ? "暂停" : (currentState.timerStarted && !currentState.timeExpired ? "继续" : "开始");
-    timerAction.disabled = remoteLocked || currentState.matchFinished || (currentState.timeExpired && !currentState.running);
-    timerAction.classList.toggle("disabled", remoteLocked || currentState.matchFinished || (currentState.timeExpired && !currentState.running));
+    timerAction.textContent = currentState.matchFinished ? "下一场" : (currentState.running ? "暂停" : (currentState.timerStarted && !currentState.timeExpired ? "继续" : "开始"));
+    timerAction.disabled = remoteLocked || (currentState.timeExpired && !currentState.running && !currentState.matchFinished);
+    timerAction.classList.toggle("disabled", remoteLocked || (currentState.timeExpired && !currentState.running && !currentState.matchFinished));
   }
   const countdownAction = document.querySelector("[data-action='ten-second-countdown']");
   if (countdownAction) {
@@ -3211,6 +3221,7 @@ function handleRfSignalEffects(previousState, nextState) {
 }
 
 function rfPasswordDigitForAction(actionId) {
+  if (actionId === "toggle_music") return "0";
   const match = String(actionId || "").match(/^ball_(\d+)$/);
   if (!match) return "";
   const number = Number(match[1]);
@@ -3271,6 +3282,7 @@ function applyState(state, options = {}) {
     return;
   }
   currentState = state;
+  if (!currentState?.matchFinished) cancelFinishAutoAdvance();
   renderState(options);
 }
 
@@ -3424,6 +3436,9 @@ function closeRemoteSettingsDialog() {
   keyCaptureAction = "";
   document.querySelector("[data-remote-settings-dialog]")?.classList.remove("open");
   renderKeyBindings();
+  if (settingsReturnTarget === "scoreboard") {
+    window.location.href = "/scoreboard";
+  }
 }
 
 function collectSettingsPayload(form) {
@@ -3723,7 +3738,8 @@ function handlePasswordKey(event) {
     if (event.key === "Backspace") settingsPassword = settingsPassword.slice(0, -1);
     document.querySelector("[data-settings-password]").textContent = "●".repeat(settingsPassword.length);
     if (event.key === "Enter" || event.code === "NumpadEnter") {
-      window.location.href = `/set?password=${encodeURIComponent(settingsPassword)}`;
+      const returnParam = document.querySelector("[data-scoreboard]") ? "&return=scoreboard" : "";
+      window.location.href = `/set?password=${encodeURIComponent(settingsPassword)}${returnParam}`;
     }
     return true;
   }
@@ -3985,7 +4001,11 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (action === "confirm-swap-team") return confirmSwapTeam();
-  if (action === "toggle_timer" && (currentState?.matchFinished || (currentState?.timeExpired && !currentState?.running))) return;
+  if (action === "toggle_timer" && currentState?.timeExpired && !currentState?.running && !currentState?.matchFinished) return;
+  if (action === "toggle_timer" && currentState?.matchFinished) {
+    advanceToNextMatchWithTransition();
+    return;
+  }
   if (action === "swap_team_names") {
     sendAction({ action: "swap_team_names" });
     return;
