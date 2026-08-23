@@ -257,6 +257,148 @@ install_rf_support() {
   fi
 }
 
+wait_for_network_manager() {
+  echo "Waiting for NetworkManager to become ready..."
+  if command -v nm-online >/dev/null 2>&1; then
+    sudo nm-online -q --timeout=15 || echo "Warning: nm-online timed out; continuing with nmcli readiness checks."
+  fi
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    if nmcli general status >/dev/null 2>&1; then
+      sleep 2
+      return 0
+    fi
+    sleep 1
+  done
+  echo "Warning: NetworkManager did not report ready within 15 seconds."
+  return 1
+}
+
+wait_for_hotspot_interface() {
+  local ifname="$1"
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    if ip link show "$ifname" >/dev/null 2>&1; then
+      for _ in 1 2 3 4 5; do
+        if nmcli -t -f DEVICE device status 2>/dev/null | grep -Fxq "$ifname"; then
+          return 0
+        fi
+        sleep 1
+      done
+      echo "Warning: $ifname exists, but NetworkManager has not listed it yet."
+      return 0
+    fi
+    sleep 1
+  done
+  echo "Hotspot interface not found: $ifname" >&2
+  return 1
+}
+
+ensure_hotspot_profile() {
+  local ifname="$1"
+  local connection="$2"
+  local ssid="$3"
+  local password="$4"
+  local address="$5"
+  local create_output=""
+  local up_output=""
+
+  wait_for_hotspot_interface "$ifname" || return 1
+  while IFS=: read -r active_name active_device; do
+    if [ "$active_device" = "$ifname" ] && [ "$active_name" != "$connection" ]; then
+      echo "Releasing active connection on $ifname: $active_name"
+      sudo nmcli connection down "$active_name" || true
+    fi
+  done < <(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null || true)
+
+  if ! sudo nmcli connection show "$connection" >/dev/null 2>&1; then
+    for attempt in 1 2 3; do
+      echo "Creating hotspot profile $connection on $ifname (attempt $attempt/3)..."
+      if create_output="$(sudo nmcli device wifi hotspot ifname "$ifname" con-name "$connection" ssid "$ssid" password "$password" 2>&1)"; then
+        echo "$create_output"
+        break
+      fi
+      echo "Hotspot creation attempt $attempt failed:" >&2
+      echo "$create_output" >&2
+      sleep 2
+    done
+  fi
+
+  if ! sudo nmcli connection show "$connection" >/dev/null 2>&1; then
+    echo "Hotspot profile was not created: $connection" >&2
+    nmcli device status >&2 || true
+    return 1
+  fi
+
+  sudo nmcli connection modify "$connection" \
+    connection.autoconnect yes \
+    connection.interface-name "$ifname" \
+    802-11-wireless.mode ap \
+    802-11-wireless.ssid "$ssid" \
+    ipv4.method shared \
+    ipv4.addresses "$address/24" \
+    ipv4.dns "$address" \
+    ipv4.ignore-auto-dns yes \
+    ipv6.method ignore \
+    wifi-sec.key-mgmt wpa-psk \
+    wifi-sec.psk "$password"
+
+  for attempt in 1 2 3; do
+    echo "Starting hotspot profile $connection (attempt $attempt/3)..."
+    if up_output="$(sudo nmcli connection up "$connection" 2>&1)"; then
+      echo "$up_output"
+      break
+    fi
+    echo "Hotspot start attempt $attempt failed:" >&2
+    echo "$up_output" >&2
+    sleep 2
+  done
+
+  if ! nmcli -t -f NAME connection show --active 2>/dev/null | grep -Fxq "$connection"; then
+    echo "Hotspot profile is not active after start attempt: $connection" >&2
+    nmcli connection show "$connection" >&2 || true
+    nmcli connection show --active >&2 || true
+    nmcli device status >&2 || true
+    return 1
+  fi
+
+  if command -v iw >/dev/null 2>&1; then
+    if ! iw dev 2>/dev/null | awk -v iface="$ifname" '
+      $1 == "Interface" { current = $2 }
+      current == iface && $1 == "type" && $2 == "AP" { found = 1 }
+      END { exit(found ? 0 : 1) }
+    '; then
+      echo "Warning: $ifname is active in NetworkManager, but iw does not currently report type AP."
+      iw dev || true
+    fi
+  fi
+}
+
+print_hotspot_status() {
+  local connection="$1"
+  local ifname="$2"
+  local ssid="$3"
+  local address="$4"
+  local profile_status="FAIL"
+  local interface_status="FAIL"
+  local state_status="FAIL"
+
+  if sudo nmcli connection show "$connection" >/dev/null 2>&1; then
+    profile_status="OK"
+  fi
+  if ip link show "$ifname" >/dev/null 2>&1; then
+    interface_status="OK"
+  fi
+  if nmcli -t -f NAME connection show --active 2>/dev/null | grep -Fxq "$connection"; then
+    state_status="OK"
+  fi
+
+  echo
+  printf '%-34s %s\n' "Hotspot profile: $connection" "$profile_status"
+  printf '%-34s %s\n' "Hotspot interface: $ifname" "$interface_status"
+  printf '%-34s %s\n' "Hotspot state: active" "$state_status"
+  printf 'SSID: %s\n' "$ssid"
+  printf 'IP: %s\n' "$address"
+}
+
 install_network_support() {
   if [ "$INSTALL_NETWORK_SUPPORT" != "1" ]; then
     echo "Gateball network support skipped: INSTALL_NETWORK_SUPPORT=$INSTALL_NETWORK_SUPPORT"
@@ -321,6 +463,8 @@ set -euo pipefail
 SSID="\${1:-$GATEBALL_HOTSPOT_SSID}"
 PASSWORD="\${2:-$GATEBALL_HOTSPOT_PASSWORD}"
 HOTSPOT_IFNAME="$GATEBALL_HOTSPOT_IFNAME"
+HOTSPOT_CONNECTION="$GATEBALL_HOTSPOT_CONNECTION"
+HOTSPOT_ADDRESS="$GATEBALL_HOTSPOT_ADDRESS"
 if [ -z "\$SSID" ] || [ "\${#SSID}" -gt 32 ]; then
   echo "Invalid hotspot SSID" >&2
   exit 2
@@ -329,22 +473,84 @@ if [ "\${#PASSWORD}" -lt 8 ] || [ "\${#PASSWORD}" -gt 63 ]; then
   echo "Invalid hotspot password" >&2
   exit 2
 fi
-if ! nmcli connection show "$GATEBALL_HOTSPOT_CONNECTION" >/dev/null 2>&1; then
-  nmcli device wifi hotspot ifname "\$HOTSPOT_IFNAME" con-name "$GATEBALL_HOTSPOT_CONNECTION" ssid "\$SSID" password "\$PASSWORD" >/dev/null 2>&1 || true
+
+wait_for_hotspot_interface() {
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    if ip link show "\$HOTSPOT_IFNAME" >/dev/null 2>&1; then
+      for _ in 1 2 3 4 5; do
+        if nmcli -t -f DEVICE device status 2>/dev/null | grep -Fxq "\$HOTSPOT_IFNAME"; then
+          return 0
+        fi
+        sleep 1
+      done
+      echo "Warning: \$HOTSPOT_IFNAME exists, but NetworkManager has not listed it yet."
+      return 0
+    fi
+    sleep 1
+  done
+  echo "Hotspot interface not found: \$HOTSPOT_IFNAME" >&2
+  return 1
+}
+
+wait_for_hotspot_interface
+
+while IFS=: read -r active_name active_device; do
+  if [ "\$active_device" = "\$HOTSPOT_IFNAME" ] && [ "\$active_name" != "\$HOTSPOT_CONNECTION" ]; then
+    echo "Releasing active connection on \$HOTSPOT_IFNAME: \$active_name"
+    nmcli connection down "\$active_name" || true
+  fi
+done < <(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null || true)
+
+if ! nmcli connection show "\$HOTSPOT_CONNECTION" >/dev/null 2>&1; then
+  for attempt in 1 2 3; do
+    echo "Creating hotspot profile \$HOTSPOT_CONNECTION on \$HOTSPOT_IFNAME (attempt \$attempt/3)..."
+    if output="\$(nmcli device wifi hotspot ifname "\$HOTSPOT_IFNAME" con-name "\$HOTSPOT_CONNECTION" ssid "\$SSID" password "\$PASSWORD" 2>&1)"; then
+      echo "\$output"
+      break
+    fi
+    echo "Hotspot creation attempt \$attempt failed:" >&2
+    echo "\$output" >&2
+    sleep 2
+  done
 fi
-nmcli connection modify "$GATEBALL_HOTSPOT_CONNECTION" \\
+
+if ! nmcli connection show "\$HOTSPOT_CONNECTION" >/dev/null 2>&1; then
+  echo "Hotspot profile was not created: \$HOTSPOT_CONNECTION" >&2
+  nmcli device status >&2 || true
+  exit 1
+fi
+
+nmcli connection modify "\$HOTSPOT_CONNECTION" \\
   connection.autoconnect yes \\
   connection.interface-name "\$HOTSPOT_IFNAME" \\
   802-11-wireless.mode ap \\
   802-11-wireless.ssid "\$SSID" \\
   ipv4.method shared \\
-  ipv4.addresses "$GATEBALL_HOTSPOT_ADDRESS/24" \\
-  ipv4.dns "$GATEBALL_HOTSPOT_ADDRESS" \\
+  ipv4.addresses "\$HOTSPOT_ADDRESS/24" \\
+  ipv4.dns "\$HOTSPOT_ADDRESS" \\
   ipv4.ignore-auto-dns yes \\
   ipv6.method ignore \\
   wifi-sec.key-mgmt wpa-psk \\
   wifi-sec.psk "\$PASSWORD"
-nmcli connection up "$GATEBALL_HOTSPOT_CONNECTION" >/dev/null
+
+for attempt in 1 2 3; do
+  echo "Starting hotspot profile \$HOTSPOT_CONNECTION (attempt \$attempt/3)..."
+  if output="\$(nmcli connection up "\$HOTSPOT_CONNECTION" 2>&1)"; then
+    echo "\$output"
+    break
+  fi
+  echo "Hotspot start attempt \$attempt failed:" >&2
+  echo "\$output" >&2
+  sleep 2
+done
+
+if ! nmcli -t -f NAME connection show --active 2>/dev/null | grep -Fxq "\$HOTSPOT_CONNECTION"; then
+  echo "Hotspot profile is not active: \$HOTSPOT_CONNECTION" >&2
+  nmcli connection show "\$HOTSPOT_CONNECTION" >&2 || true
+  nmcli connection show --active >&2 || true
+  nmcli device status >&2 || true
+  exit 1
+fi
 echo "Hotspot updated: \$SSID"
 EOF
   sudo chmod 755 "$NETWORK_APPLY_HELPER"
@@ -392,36 +598,26 @@ EOF
     echo "Warning: nginx configuration test failed. Check: sudo nginx -t"
   fi
 
-  sudo systemctl restart NetworkManager >/dev/null 2>&1 || true
-
   if command -v nmcli >/dev/null 2>&1; then
-    if ! sudo nmcli connection show "$GATEBALL_HOTSPOT_CONNECTION" >/dev/null 2>&1; then
-      sudo nmcli device wifi hotspot \
-        ifname "$GATEBALL_HOTSPOT_IFNAME" \
-        con-name "$GATEBALL_HOTSPOT_CONNECTION" \
-        ssid "$GATEBALL_HOTSPOT_SSID" \
-        password "$GATEBALL_HOTSPOT_PASSWORD" >/dev/null 2>&1 || true
+    sudo systemctl restart NetworkManager
+    wait_for_network_manager
+    if [ "$GATEBALL_HOTSPOT_IFNAME" != "$base_wifi_ifname" ]; then
+      sudo systemctl start "$AP_INTERFACE_SERVICE_NAME"
     fi
-    if sudo nmcli connection show "$GATEBALL_HOTSPOT_CONNECTION" >/dev/null 2>&1; then
-      sudo nmcli connection modify "$GATEBALL_HOTSPOT_CONNECTION" \
-        connection.autoconnect yes \
-        connection.interface-name "$GATEBALL_HOTSPOT_IFNAME" \
-        802-11-wireless.mode ap \
-        802-11-wireless.ssid "$GATEBALL_HOTSPOT_SSID" \
-        ipv4.method shared \
-        ipv4.addresses "$GATEBALL_HOTSPOT_ADDRESS/24" \
-        ipv4.dns "$GATEBALL_HOTSPOT_ADDRESS" \
-        ipv4.ignore-auto-dns yes \
-        ipv6.method ignore \
-        wifi-sec.key-mgmt wpa-psk \
-        wifi-sec.psk "$GATEBALL_HOTSPOT_PASSWORD" >/dev/null 2>&1 || true
-      sudo nmcli connection up "$GATEBALL_HOTSPOT_CONNECTION" >/dev/null 2>&1 || \
-        echo "Warning: hotspot saved, but could not be started now. Reboot and check nmcli connection up $GATEBALL_HOTSPOT_CONNECTION"
-    else
-      echo "Warning: hotspot connection was not created. Check WiFi/AP interface: $GATEBALL_HOTSPOT_IFNAME"
-    fi
+    ensure_hotspot_profile \
+      "$GATEBALL_HOTSPOT_IFNAME" \
+      "$GATEBALL_HOTSPOT_CONNECTION" \
+      "$GATEBALL_HOTSPOT_SSID" \
+      "$GATEBALL_HOTSPOT_PASSWORD" \
+      "$GATEBALL_HOTSPOT_ADDRESS"
+    print_hotspot_status \
+      "$GATEBALL_HOTSPOT_CONNECTION" \
+      "$GATEBALL_HOTSPOT_IFNAME" \
+      "$GATEBALL_HOTSPOT_SSID" \
+      "$GATEBALL_HOTSPOT_ADDRESS"
   else
     echo "Warning: nmcli not found. Hotspot was not configured."
+    return 1
   fi
 
   echo "Gateball network entries:"

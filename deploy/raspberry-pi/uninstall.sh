@@ -31,6 +31,23 @@ NETWORK_SUDOERS_FILE="/etc/sudoers.d/gateball-network"
 AP_INTERFACE_SERVICE_NAME="gateball-wlan-ap.service"
 AP_INTERFACE_SERVICE_FILE="/etc/systemd/system/$AP_INTERFACE_SERVICE_NAME"
 
+wait_for_network_manager() {
+  if ! command -v nmcli >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v nm-online >/dev/null 2>&1; then
+    sudo nm-online -q --timeout=15 || true
+  fi
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    if nmcli general status >/dev/null 2>&1; then
+      sleep 2
+      return 0
+    fi
+    sleep 1
+  done
+  return 0
+}
+
 enable_display_manager() {
   sudo systemctl set-default graphical.target
   if [ -e /etc/systemd/system/display-manager.service ]; then
@@ -95,7 +112,10 @@ remove_network_support() {
   if command -v nginx >/dev/null 2>&1; then
     sudo nginx -t >/dev/null 2>&1 && sudo systemctl reload nginx >/dev/null 2>&1 || true
   fi
-  sudo systemctl restart NetworkManager >/dev/null 2>&1 || true
+  if command -v systemctl >/dev/null 2>&1; then
+    sudo systemctl restart NetworkManager >/dev/null 2>&1 || true
+    wait_for_network_manager
+  fi
   sudo systemctl daemon-reload >/dev/null 2>&1 || true
   echo "Removed Gateball hotspot, nginx site, and local DNS name configuration."
 }
