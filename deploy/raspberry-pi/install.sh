@@ -28,7 +28,6 @@ GATEBALL_HOTSPOT_SSID="${GATEBALL_HOTSPOT_SSID:-HongxingMenqiu1}"
 GATEBALL_HOTSPOT_PASSWORD="${GATEBALL_HOTSPOT_PASSWORD:-1234567890}"
 GATEBALL_HOTSPOT_CONNECTION="${GATEBALL_HOTSPOT_CONNECTION:-gateball-ap}"
 GATEBALL_HOTSPOT_IFNAME="${GATEBALL_HOTSPOT_IFNAME:-wlan0_ap}"
-GATEBALL_HOTSPOT_ADDRESS="${GATEBALL_HOTSPOT_ADDRESS:-192.168.1.1}"
 SERVICE_NAME="${SERVICE_NAME:-gateball.service}"
 DIRECT_X_SERVICE_NAME="${DIRECT_X_SERVICE_NAME:-gateball-x-kiosk.service}"
 AUTOSTART_FILE="$GATEBALL_HOME/.config/autostart/gateball-kiosk.desktop"
@@ -308,12 +307,55 @@ wait_for_hotspot_interface() {
   return 1
 }
 
+get_hotspot_ip() {
+  local ifname="$1"
+  ip -4 -o addr show dev "$ifname" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1
+}
+
+wait_for_hotspot_ip() {
+  local ifname="$1"
+  local hotspot_ip=""
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    hotspot_ip="$(get_hotspot_ip "$ifname")"
+    if [ -n "$hotspot_ip" ]; then
+      printf '%s\n' "$hotspot_ip"
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+hotspot_is_ap_mode() {
+  local ifname="$1"
+  command -v iw >/dev/null 2>&1 || return 0
+  iw dev 2>/dev/null | awk -v iface="$ifname" '
+    $1 == "Interface" { current = $2 }
+    current == iface && $1 == "type" && $2 == "AP" { found = 1 }
+    END { exit(found ? 0 : 1) }
+  '
+}
+
+delete_static_hotspot_profile_if_needed() {
+  local connection="$1"
+  local addresses=""
+  local dns=""
+  local ignore_auto_dns=""
+  sudo nmcli connection show "$connection" >/dev/null 2>&1 || return 0
+  addresses="$(sudo nmcli -g ipv4.addresses connection show "$connection" 2>/dev/null || true)"
+  dns="$(sudo nmcli -g ipv4.dns connection show "$connection" 2>/dev/null || true)"
+  ignore_auto_dns="$(sudo nmcli -g ipv4.ignore-auto-dns connection show "$connection" 2>/dev/null || true)"
+  if [ -n "$addresses" ] || [ -n "$dns" ] || [ "$ignore_auto_dns" = "yes" ]; then
+    echo "Removing old static IPv4 hotspot profile before recreating: $connection"
+    sudo nmcli connection delete "$connection"
+  fi
+}
+
 ensure_hotspot_profile() {
   local ifname="$1"
   local connection="$2"
   local ssid="$3"
   local password="$4"
-  local address="$5"
   local create_output=""
   local up_output=""
 
@@ -324,6 +366,8 @@ ensure_hotspot_profile() {
       sudo nmcli connection down "$active_name" || true
     fi
   done < <(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null || true)
+
+  delete_static_hotspot_profile_if_needed "$connection"
 
   if ! sudo nmcli connection show "$connection" >/dev/null 2>&1; then
     for attempt in 1 2 3; do
@@ -350,9 +394,6 @@ ensure_hotspot_profile() {
     802-11-wireless.mode ap \
     802-11-wireless.ssid "$ssid" \
     ipv4.method shared \
-    ipv4.addresses "$address/24" \
-    ipv4.dns "$address" \
-    ipv4.ignore-auto-dns yes \
     ipv6.method ignore \
     wifi-sec.key-mgmt wpa-psk \
     wifi-sec.psk "$password"
@@ -376,15 +417,15 @@ ensure_hotspot_profile() {
     return 1
   fi
 
-  if command -v iw >/dev/null 2>&1; then
-    if ! iw dev 2>/dev/null | awk -v iface="$ifname" '
-      $1 == "Interface" { current = $2 }
-      current == iface && $1 == "type" && $2 == "AP" { found = 1 }
-      END { exit(found ? 0 : 1) }
-    '; then
-      echo "Warning: $ifname is active in NetworkManager, but iw does not currently report type AP."
-      iw dev || true
-    fi
+  if ! hotspot_is_ap_mode "$ifname"; then
+    echo "Warning: $ifname is active in NetworkManager, but iw does not currently report type AP."
+    iw dev || true
+  fi
+
+  if ! wait_for_hotspot_ip "$ifname" >/dev/null; then
+    echo "Hotspot did not receive an IPv4 address from NetworkManager shared mode." >&2
+    nmcli device show "$ifname" >&2 || true
+    return 1
   fi
 }
 
@@ -392,27 +433,54 @@ print_hotspot_status() {
   local connection="$1"
   local ifname="$2"
   local ssid="$3"
-  local address="$4"
   local profile_status="FAIL"
   local interface_status="FAIL"
   local state_status="FAIL"
+  local ap_status="FAIL"
+  local hotspot_ip=""
+  local result=0
 
   if sudo nmcli connection show "$connection" >/dev/null 2>&1; then
     profile_status="OK"
+  else
+    result=1
   fi
   if ip link show "$ifname" >/dev/null 2>&1; then
     interface_status="OK"
+  else
+    result=1
   fi
   if nmcli -t -f NAME connection show --active 2>/dev/null | grep -Fxq "$connection"; then
     state_status="OK"
+  else
+    result=1
+  fi
+  if hotspot_is_ap_mode "$ifname"; then
+    ap_status="OK"
+  else
+    result=1
+  fi
+  if hotspot_ip="$(wait_for_hotspot_ip "$ifname")"; then
+    :
+  else
+    hotspot_ip="not assigned"
+    result=1
   fi
 
   echo
   printf '%-34s %s\n' "Hotspot profile: $connection" "$profile_status"
   printf '%-34s %s\n' "Hotspot interface: $ifname" "$interface_status"
   printf '%-34s %s\n' "Hotspot state: active" "$state_status"
+  printf '%-34s %s\n' "Hotspot mode: AP" "$ap_status"
   printf 'SSID: %s\n' "$ssid"
-  printf 'IP: %s\n' "$address"
+  printf 'Hotspot IP: %s\n' "$hotspot_ip"
+  printf 'Remote URL: http://gateball\n'
+  if [ "$hotspot_ip" != "not assigned" ]; then
+    printf 'Backup URL: http://%s\n' "$hotspot_ip"
+  else
+    printf 'Backup URL: unavailable\n'
+  fi
+  return "$result"
 }
 
 install_network_support() {
@@ -480,7 +548,6 @@ SSID="\${1:-$GATEBALL_HOTSPOT_SSID}"
 PASSWORD="\${2:-$GATEBALL_HOTSPOT_PASSWORD}"
 HOTSPOT_IFNAME="$GATEBALL_HOTSPOT_IFNAME"
 HOTSPOT_CONNECTION="$GATEBALL_HOTSPOT_CONNECTION"
-HOTSPOT_ADDRESS="$GATEBALL_HOTSPOT_ADDRESS"
 if [ -z "\$SSID" ] || [ "\${#SSID}" -gt 32 ]; then
   echo "Invalid hotspot SSID" >&2
   exit 2
@@ -508,6 +575,33 @@ wait_for_hotspot_interface() {
   return 1
 }
 
+get_hotspot_ip() {
+  ip -4 -o addr show dev "\$HOTSPOT_IFNAME" 2>/dev/null | awk '{print \$4}' | cut -d/ -f1 | head -n1
+}
+
+wait_for_hotspot_ip() {
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    hotspot_ip="\$(get_hotspot_ip)"
+    if [ -n "\$hotspot_ip" ]; then
+      printf '%s\n' "\$hotspot_ip"
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+delete_static_hotspot_profile_if_needed() {
+  nmcli connection show "\$HOTSPOT_CONNECTION" >/dev/null 2>&1 || return 0
+  addresses="\$(nmcli -g ipv4.addresses connection show "\$HOTSPOT_CONNECTION" 2>/dev/null || true)"
+  dns="\$(nmcli -g ipv4.dns connection show "\$HOTSPOT_CONNECTION" 2>/dev/null || true)"
+  ignore_auto_dns="\$(nmcli -g ipv4.ignore-auto-dns connection show "\$HOTSPOT_CONNECTION" 2>/dev/null || true)"
+  if [ -n "\$addresses" ] || [ -n "\$dns" ] || [ "\$ignore_auto_dns" = "yes" ]; then
+    echo "Removing old static IPv4 hotspot profile before recreating: \$HOTSPOT_CONNECTION"
+    nmcli connection delete "\$HOTSPOT_CONNECTION"
+  fi
+}
+
 wait_for_hotspot_interface
 
 while IFS=: read -r active_name active_device; do
@@ -516,6 +610,8 @@ while IFS=: read -r active_name active_device; do
     nmcli connection down "\$active_name" || true
   fi
 done < <(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null || true)
+
+delete_static_hotspot_profile_if_needed
 
 if ! nmcli connection show "\$HOTSPOT_CONNECTION" >/dev/null 2>&1; then
   for attempt in 1 2 3; do
@@ -542,9 +638,6 @@ nmcli connection modify "\$HOTSPOT_CONNECTION" \\
   802-11-wireless.mode ap \\
   802-11-wireless.ssid "\$SSID" \\
   ipv4.method shared \\
-  ipv4.addresses "\$HOTSPOT_ADDRESS/24" \\
-  ipv4.dns "\$HOTSPOT_ADDRESS" \\
-  ipv4.ignore-auto-dns yes \\
   ipv6.method ignore \\
   wifi-sec.key-mgmt wpa-psk \\
   wifi-sec.psk "\$PASSWORD"
@@ -567,7 +660,13 @@ if ! nmcli -t -f NAME connection show --active 2>/dev/null | grep -Fxq "\$HOTSPO
   nmcli device status >&2 || true
   exit 1
 fi
-echo "Hotspot updated: \$SSID"
+if hotspot_ip="\$(wait_for_hotspot_ip)"; then
+  echo "Hotspot updated: \$SSID (\$hotspot_ip)"
+else
+  echo "Hotspot updated, but no IPv4 address was assigned yet: \$SSID" >&2
+  nmcli device show "\$HOTSPOT_IFNAME" >&2 || true
+  exit 1
+fi
 EOF
   sudo chmod 755 "$NETWORK_APPLY_HELPER"
   echo "$GATEBALL_USER ALL=(root) NOPASSWD: $NETWORK_APPLY_HELPER" | sudo tee "$NETWORK_SUDOERS_FILE" >/dev/null
@@ -579,8 +678,8 @@ EOF
 
   sudo install -d /etc/NetworkManager/dnsmasq.d /etc/NetworkManager/dnsmasq-shared.d
   {
-    echo "address=/gateball/$GATEBALL_HOTSPOT_ADDRESS"
-    echo "address=/menqiu/$GATEBALL_HOTSPOT_ADDRESS"
+    echo "interface-name=gateball,$GATEBALL_HOTSPOT_IFNAME"
+    echo "interface-name=menqiu,$GATEBALL_HOTSPOT_IFNAME"
   } | sudo tee "$NM_DNSMASQ_CONF" >/dev/null
   sudo cp "$NM_DNSMASQ_CONF" "$NM_DNSMASQ_SHARED_CONF"
 
@@ -589,7 +688,7 @@ EOF
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
-    server_name gateball menqiu $GATEBALL_HOTSPOT_ADDRESS _;
+    server_name gateball menqiu _;
 
     location = / {
         return 302 /remote;
@@ -624,13 +723,11 @@ EOF
       "$GATEBALL_HOTSPOT_IFNAME" \
       "$GATEBALL_HOTSPOT_CONNECTION" \
       "$GATEBALL_HOTSPOT_SSID" \
-      "$GATEBALL_HOTSPOT_PASSWORD" \
-      "$GATEBALL_HOTSPOT_ADDRESS"
+      "$GATEBALL_HOTSPOT_PASSWORD"
     print_hotspot_status \
       "$GATEBALL_HOTSPOT_CONNECTION" \
       "$GATEBALL_HOTSPOT_IFNAME" \
-      "$GATEBALL_HOTSPOT_SSID" \
-      "$GATEBALL_HOTSPOT_ADDRESS"
+      "$GATEBALL_HOTSPOT_SSID"
   else
     echo "Warning: nmcli not found. Hotspot was not configured."
     return 1
@@ -640,7 +737,13 @@ EOF
   echo "  Hotspot: $GATEBALL_HOTSPOT_SSID / $GATEBALL_HOTSPOT_PASSWORD"
   echo "  Interface: $GATEBALL_HOTSPOT_IFNAME"
   echo "  Remote:  http://gateball or http://menqiu"
-  echo "  Backup:  http://$GATEBALL_HOTSPOT_ADDRESS:8000/remote"
+  local hotspot_ip=""
+  hotspot_ip="$(get_hotspot_ip "$GATEBALL_HOTSPOT_IFNAME")"
+  if [ -n "$hotspot_ip" ]; then
+    echo "  Backup:  http://$hotspot_ip/remote"
+  else
+    echo "  Backup:  waiting for hotspot IP"
+  fi
 }
 
 if ! command -v python3 >/dev/null 2>&1; then

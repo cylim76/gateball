@@ -28,6 +28,7 @@ from common.network_manager import (
     DEFAULT_HOTSPOT_SSID,
     configure_hotspot,
     connect_wifi,
+    hotspot_ipv4_address,
     network_status,
     scan_wifi_networks,
 )
@@ -614,6 +615,7 @@ class Store:
         self.history: list[dict] = []
         self.last_rf_music_raw = ""
         self.last_rf_music_at = 0.0
+        self.boot_wifi_info_pending = False
         self.load()
         apply_audio_output_mode(self.state.get("audioOutputMode", "auto"))
         self.apply_boot_music_autoplay()
@@ -628,9 +630,34 @@ class Store:
             return
         ssid = str(self.state.get("hotspotSsid") or DEFAULT_HOTSPOT_SSID).strip() or DEFAULT_HOTSPOT_SSID
         password = str(self.state.get("hotspotPassword") or DEFAULT_HOTSPOT_PASSWORD).strip() or DEFAULT_HOTSPOT_PASSWORD
-        self.record("boot_wifi_info", None, f"WiFi：{ssid} / {password}    http://gateball")
+        hotspot_ip = hotspot_ipv4_address()
+        backup = f"http://{hotspot_ip}" if hotspot_ip else "热点 IP：等待网络初始化..."
+        self.boot_wifi_info_pending = not bool(hotspot_ip)
+        self.record("boot_wifi_info", None, f"WiFi：{ssid} / {password}    http://gateball | {backup}")
         self.state["lastMessage"] = self.history[-1]["message"]
         self.save()
+
+    def refresh_boot_wifi_info(self) -> bool:
+        if not self.boot_wifi_info_pending or not self.state.get("showBootWifiInfo", True):
+            return False
+        hotspot_ip = hotspot_ipv4_address()
+        if not hotspot_ip:
+            return False
+        ssid = str(self.state.get("hotspotSsid") or DEFAULT_HOTSPOT_SSID).strip() or DEFAULT_HOTSPOT_SSID
+        password = str(self.state.get("hotspotPassword") or DEFAULT_HOTSPOT_PASSWORD).strip() or DEFAULT_HOTSPOT_PASSWORD
+        message = f"WiFi：{ssid} / {password}    http://gateball | http://{hotspot_ip}"
+        for item in reversed(self.history):
+            if item.get("action") == "boot_wifi_info":
+                item["message"] = message
+                item["time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                break
+        else:
+            self.record("boot_wifi_info", None, message)
+        self.state["lastMessage"] = message
+        self.boot_wifi_info_pending = False
+        self.emit()
+        self.save()
+        return True
 
     def load(self) -> None:
         if not DATA_FILE.exists():
@@ -1666,7 +1693,28 @@ class Store:
 results_store = ResultsStore(RESULTS_DB_FILE)
 store = Store()
 rf_listener_started = False
+boot_wifi_info_refresher_started = False
 rf_signal_queue: SimpleQueue[dict] = SimpleQueue()
+
+
+def boot_wifi_info_refresh_loop() -> None:
+    for _ in range(60):
+        time.sleep(1)
+        try:
+            with store.lock:
+                if store.refresh_boot_wifi_info():
+                    return
+        except Exception as exc:
+            print(f"Boot WiFi info refresh error: {exc}")
+            return
+
+
+def start_boot_wifi_info_refresher() -> None:
+    global boot_wifi_info_refresher_started
+    if boot_wifi_info_refresher_started or not store.boot_wifi_info_pending:
+        return
+    boot_wifi_info_refresher_started = True
+    Thread(target=boot_wifi_info_refresh_loop, name="gateball-boot-wifi-info", daemon=True).start()
 
 
 def enqueue_rf_signal(payload: dict) -> None:
@@ -2337,6 +2385,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     start_rf_listener()
+    start_boot_wifi_info_refresher()
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"Gateball web prototype: http://127.0.0.1:{PORT}/scoreboard")
     print(f"Phone remote: http://127.0.0.1:{PORT}/remote")

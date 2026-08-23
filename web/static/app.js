@@ -1937,11 +1937,12 @@ function renderNetworkStatus(status) {
   const box = document.querySelector("[data-network-status]");
   if (!box) return;
   const local = (status.localAddresses || []).map((address) => `http://${address}:8000`).join(" / ") || "未检测到";
+  const fallback = status.fallbackAddress || "等待热点 IP";
   box.innerHTML = `
     <div><strong>球场：</strong>${escapeHtml(status.courtName || "红星门球场1")}</div>
     <div><strong>热点：</strong>${escapeHtml(status.hotspotSsid || DEFAULT_HOTSPOT_SSID)} / ${escapeHtml(status.hotspotPassword || DEFAULT_HOTSPOT_PASSWORD)}</div>
     <div><strong>固定入口：</strong>${escapeHtml(status.hotspotAddress || "http://gateball")} / ${escapeHtml(status.secondaryHotspotAddress || "http://menqiu")}</div>
-    <div><strong>备用地址：</strong>${escapeHtml(status.fallbackAddress || "http://192.168.1.1:8000")}</div>
+    <div><strong>备用地址：</strong>${escapeHtml(fallback)}</div>
     <div><strong>本机地址：</strong>${escapeHtml(local)}</div>
     <div><strong>外部 WiFi：</strong>${escapeHtml(status.activeWifi || "未连接")}</div>
     <div><strong>互联网：</strong>${status.internetOk ? "可用" : "不可用"}</div>

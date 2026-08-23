@@ -5,14 +5,13 @@ import shutil
 import socket
 import subprocess
 import os
+import time
 
 
 DEFAULT_HOTSPOT_SSID = "HongxingMenqiu1"
 DEFAULT_HOTSPOT_PASSWORD = "1234567890"
 HOTSPOT_CONNECTION = "gateball-ap"
 HOTSPOT_IFNAME = "wlan0_ap"
-HOTSPOT_ADDRESS = "192.168.1.1"
-HOTSPOT_CIDR = f"{HOTSPOT_ADDRESS}/24"
 HOTSPOT_APPLY_HELPER = "/usr/local/bin/gateball-network-apply"
 SHORT_HOSTS = ("gateball", "menqiu")
 
@@ -84,11 +83,65 @@ def local_ipv4_addresses() -> list[str]:
     return sorted(addresses)
 
 
+def hotspot_ipv4_address(ifname: str = HOTSPOT_IFNAME) -> str:
+    if platform.system().lower() != "linux":
+        return ""
+    try:
+        result = subprocess.run(
+            ["ip", "-4", "-o", "addr", "show", "dev", ifname],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=4,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 4 and parts[2] == "inet":
+                    return parts[3].split("/", 1)[0]
+    except Exception:
+        pass
+
+    if command_available("nmcli"):
+        try:
+            result = run_nmcli(["-g", "IP4.ADDRESS", "device", "show", ifname], timeout=5)
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    address = line.strip().split("/", 1)[0]
+                    if address:
+                        return address
+        except Exception:
+            pass
+    return ""
+
+
+def wait_for_hotspot_ipv4(ifname: str = HOTSPOT_IFNAME, timeout_seconds: int = 10) -> str:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        address = hotspot_ipv4_address(ifname)
+        if address:
+            return address
+        time.sleep(1)
+    return hotspot_ipv4_address(ifname)
+
+
+def hotspot_profile_has_static_ipv4() -> bool:
+    if not command_available("nmcli"):
+        return False
+    fields = ("ipv4.addresses", "ipv4.dns", "ipv4.ignore-auto-dns")
+    values: dict[str, str] = {}
+    for field in fields:
+        result = run_nmcli(["-g", field, "connection", "show", HOTSPOT_CONNECTION], timeout=5)
+        values[field] = result.stdout.strip() if result.returncode == 0 else ""
+    return bool(values["ipv4.addresses"] or values["ipv4.dns"] or values["ipv4.ignore-auto-dns"].lower() == "yes")
+
+
 def network_status(state: dict) -> dict:
     supported = platform.system().lower() == "linux" and command_available("nmcli")
     active_wifi = ""
     internet_ok = False
     error = ""
+    hotspot_ip = hotspot_ipv4_address()
 
     if supported:
         try:
@@ -119,7 +172,8 @@ def network_status(state: dict) -> dict:
         "hotspotPassword": state.get("hotspotPassword") or DEFAULT_HOTSPOT_PASSWORD,
         "hotspotAddress": "http://gateball",
         "secondaryHotspotAddress": "http://menqiu",
-        "fallbackAddress": f"http://{HOTSPOT_ADDRESS}:8000",
+        "hotspotIp": hotspot_ip,
+        "fallbackAddress": f"http://{hotspot_ip}" if hotspot_ip else "",
         "localAddresses": local_ipv4_addresses(),
         "activeWifi": active_wifi,
         "internetOk": internet_ok,
@@ -140,6 +194,10 @@ def configure_hotspot(ssid: str, password: str) -> dict:
         return helper_result
 
     exists = run_nmcli(["connection", "show", HOTSPOT_CONNECTION], timeout=8)
+    if exists.returncode == 0 and hotspot_profile_has_static_ipv4():
+        run_nmcli(["connection", "delete", HOTSPOT_CONNECTION], timeout=12)
+        exists = run_nmcli(["connection", "show", HOTSPOT_CONNECTION], timeout=8)
+
     if exists.returncode != 0:
         create = run_nmcli(
             [
@@ -179,12 +237,6 @@ def configure_hotspot(ssid: str, password: str) -> dict:
             ssid,
             "ipv4.method",
             "shared",
-            "ipv4.addresses",
-            HOTSPOT_CIDR,
-            "ipv4.dns",
-            HOTSPOT_ADDRESS,
-            "ipv4.ignore-auto-dns",
-            "yes",
             "ipv6.method",
             "ignore",
             "wifi-sec.key-mgmt",
@@ -208,7 +260,9 @@ def configure_hotspot(ssid: str, password: str) -> dict:
             "supported": True,
             "message": up.stderr.strip() or up.stdout.strip() or "热点已保存，启动热点失败，重启后可再确认",
         }
-    return {"ok": True, "supported": True, "message": f"热点已更新：{ssid}"}
+    hotspot_ip = wait_for_hotspot_ipv4()
+    suffix = f" ({hotspot_ip})" if hotspot_ip else ""
+    return {"ok": True, "supported": True, "message": f"热点已更新：{ssid}{suffix}", "hotspotIp": hotspot_ip}
 
 
 def scan_wifi_networks() -> dict:
