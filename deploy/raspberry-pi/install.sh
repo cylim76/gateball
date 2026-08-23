@@ -39,12 +39,15 @@ XWRAPPER_CONFIG="/etc/X11/Xwrapper.config"
 DIRECT_X_PACKAGES=(xserver-xorg xinit openbox)
 NGINX_GATEBALL_SITE="/etc/nginx/sites-available/gateball"
 NGINX_GATEBALL_SITE_ENABLED="/etc/nginx/sites-enabled/gateball"
-NM_DNSMASQ_CONF="/etc/NetworkManager/dnsmasq.d/gateball.conf"
-NM_DNSMASQ_SHARED_CONF="/etc/NetworkManager/dnsmasq-shared.d/gateball.conf"
+LEGACY_NM_DNSMASQ_CONF="/etc/NetworkManager/dnsmasq.d/gateball.conf"
+LEGACY_NM_DNSMASQ_SHARED_CONF="/etc/NetworkManager/dnsmasq-shared.d/gateball.conf"
 NETWORK_APPLY_HELPER="/usr/local/bin/gateball-network-apply"
 NETWORK_SUDOERS_FILE="/etc/sudoers.d/gateball-network"
 AP_INTERFACE_SERVICE_NAME="gateball-wlan-ap.service"
 AP_INTERFACE_SERVICE_FILE="/etc/systemd/system/$AP_INTERFACE_SERVICE_NAME"
+MDNS_PUBLISHER="/usr/local/bin/gateball-mdns-publish"
+MDNS_SERVICE_NAME="gateball-mdns.service"
+MDNS_SERVICE_FILE="/etc/systemd/system/$MDNS_SERVICE_NAME"
 
 enable_display_manager() {
   sudo systemctl set-default graphical.target
@@ -474,13 +477,124 @@ print_hotspot_status() {
   printf '%-34s %s\n' "Hotspot mode: AP" "$ap_status"
   printf 'SSID: %s\n' "$ssid"
   printf 'Hotspot IP: %s\n' "$hotspot_ip"
-  printf 'Remote URL: http://gateball\n'
+  printf 'mDNS URL 1: http://gateball.local\n'
+  printf 'mDNS URL 2: http://menqiu.local\n'
   if [ "$hotspot_ip" != "not assigned" ]; then
     printf 'Backup URL: http://%s\n' "$hotspot_ip"
   else
     printf 'Backup URL: unavailable\n'
   fi
   return "$result"
+}
+
+install_mdns_support() {
+  local ifname="$1"
+  echo "Installing Gateball mDNS support: avahi-daemon avahi-utils"
+  if ! sudo apt-get install -y avahi-daemon avahi-utils; then
+    echo "Error: failed to install Avahi packages. mDNS URLs will not work." >&2
+    return 1
+  fi
+
+  if ! sudo systemctl enable --now avahi-daemon; then
+    echo "Error: avahi-daemon failed to start." >&2
+    sudo systemctl status avahi-daemon --no-pager >&2 || true
+    return 1
+  fi
+  if ! systemctl is-enabled avahi-daemon >/dev/null 2>&1; then
+    echo "Error: avahi-daemon is not enabled." >&2
+    return 1
+  fi
+  if ! systemctl is-active avahi-daemon >/dev/null 2>&1; then
+    echo "Error: avahi-daemon is not active." >&2
+    sudo systemctl status avahi-daemon --no-pager >&2 || true
+    return 1
+  fi
+
+  sudo tee "$MDNS_PUBLISHER" >/dev/null <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+HOTSPOT_IFNAME="\${1:-$ifname}"
+NAMES=(gateball.local menqiu.local)
+
+get_hotspot_ip() {
+  ip -4 -o addr show dev "\$HOTSPOT_IFNAME" 2>/dev/null | awk '{print \$4}' | cut -d/ -f1 | head -n1
+}
+
+stop_publishers() {
+  if [ "\${#PIDS[@]}" -gt 0 ]; then
+    kill "\${PIDS[@]}" >/dev/null 2>&1 || true
+    wait "\${PIDS[@]}" >/dev/null 2>&1 || true
+  fi
+  PIDS=()
+}
+
+publish_name() {
+  local name="\$1"
+  local ip="\$2"
+  if command -v avahi-publish-address >/dev/null 2>&1; then
+    avahi-publish-address "\$name" "\$ip" &
+  elif command -v avahi-publish >/dev/null 2>&1; then
+    avahi-publish -a "\$name" "\$ip" &
+  else
+    echo "Error: avahi-publish-address or avahi-publish is required." >&2
+    exit 1
+  fi
+  PIDS+=("\$!")
+}
+
+PIDS=()
+trap stop_publishers EXIT INT TERM
+current_ip=""
+
+while true; do
+  next_ip="\$(get_hotspot_ip)"
+  if [ -z "\$next_ip" ]; then
+    stop_publishers
+    current_ip=""
+    sleep 2
+    continue
+  fi
+
+  if [ "\$next_ip" != "\$current_ip" ]; then
+    stop_publishers
+    current_ip="\$next_ip"
+    for name in "\${NAMES[@]}"; do
+      publish_name "\$name" "\$current_ip"
+    done
+    echo "Published Gateball mDNS names on \$HOTSPOT_IFNAME: \${NAMES[*]} -> \$current_ip"
+  fi
+
+  sleep 5
+done
+EOF
+  sudo chmod 755 "$MDNS_PUBLISHER"
+
+  sudo tee "$MDNS_SERVICE_FILE" >/dev/null <<EOF
+[Unit]
+Description=Publish Gateball mDNS aliases
+After=avahi-daemon.service NetworkManager.service $AP_INTERFACE_SERVICE_NAME
+Wants=avahi-daemon.service
+
+[Service]
+Type=simple
+ExecStart=$MDNS_PUBLISHER $ifname
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  sudo systemctl daemon-reload
+  if ! sudo systemctl enable --now "$MDNS_SERVICE_NAME"; then
+    echo "Error: $MDNS_SERVICE_NAME failed to start." >&2
+    sudo systemctl status "$MDNS_SERVICE_NAME" --no-pager >&2 || true
+    return 1
+  fi
+  if ! systemctl is-active "$MDNS_SERVICE_NAME" >/dev/null 2>&1; then
+    echo "Error: $MDNS_SERVICE_NAME is not active." >&2
+    sudo systemctl status "$MDNS_SERVICE_NAME" --no-pager >&2 || true
+    return 1
+  fi
 }
 
 install_network_support() {
@@ -494,9 +608,9 @@ install_network_support() {
     return
   fi
 
-  echo "Installing Gateball network support: NetworkManager hotspot, nginx, local DNS names"
-  if ! sudo apt-get update || ! sudo apt-get install -y network-manager nginx dnsmasq-base; then
-    echo "Warning: failed to install network packages. Short names and hotspot may not work yet."
+  echo "Installing Gateball network support: NetworkManager hotspot, nginx, Avahi mDNS names"
+  if ! sudo apt-get update || ! sudo apt-get install -y network-manager nginx dnsmasq-base avahi-daemon avahi-utils; then
+    echo "Warning: failed to install network packages. mDNS names and hotspot may not work yet."
     return
   fi
 
@@ -676,19 +790,14 @@ EOF
     echo "Warning: sudoers check failed. Network settings may need manual sudo."
   fi
 
-  sudo install -d /etc/NetworkManager/dnsmasq.d /etc/NetworkManager/dnsmasq-shared.d
-  {
-    echo "interface-name=gateball,$GATEBALL_HOTSPOT_IFNAME"
-    echo "interface-name=menqiu,$GATEBALL_HOTSPOT_IFNAME"
-  } | sudo tee "$NM_DNSMASQ_CONF" >/dev/null
-  sudo cp "$NM_DNSMASQ_CONF" "$NM_DNSMASQ_SHARED_CONF"
+  sudo rm -f "$LEGACY_NM_DNSMASQ_CONF" "$LEGACY_NM_DNSMASQ_SHARED_CONF"
 
   sudo install -d /etc/nginx/sites-available /etc/nginx/sites-enabled
   sudo tee "$NGINX_GATEBALL_SITE" >/dev/null <<EOF
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
-    server_name gateball menqiu _;
+    server_name gateball.local menqiu.local gateball menqiu _;
 
     location = / {
         return 302 /remote;
@@ -724,6 +833,7 @@ EOF
       "$GATEBALL_HOTSPOT_CONNECTION" \
       "$GATEBALL_HOTSPOT_SSID" \
       "$GATEBALL_HOTSPOT_PASSWORD"
+    install_mdns_support "$GATEBALL_HOTSPOT_IFNAME"
     print_hotspot_status \
       "$GATEBALL_HOTSPOT_CONNECTION" \
       "$GATEBALL_HOTSPOT_IFNAME" \
@@ -736,7 +846,7 @@ EOF
   echo "Gateball network entries:"
   echo "  Hotspot: $GATEBALL_HOTSPOT_SSID / $GATEBALL_HOTSPOT_PASSWORD"
   echo "  Interface: $GATEBALL_HOTSPOT_IFNAME"
-  echo "  Remote:  http://gateball or http://menqiu"
+  echo "  Remote:  http://gateball.local or http://menqiu.local"
   local hotspot_ip=""
   hotspot_ip="$(get_hotspot_ip "$GATEBALL_HOTSPOT_IFNAME")"
   if [ -n "$hotspot_ip" ]; then

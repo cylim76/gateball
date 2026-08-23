@@ -1941,7 +1941,7 @@ function renderNetworkStatus(status) {
   box.innerHTML = `
     <div><strong>球场：</strong>${escapeHtml(status.courtName || "红星门球场1")}</div>
     <div><strong>热点：</strong>${escapeHtml(status.hotspotSsid || DEFAULT_HOTSPOT_SSID)} / ${escapeHtml(status.hotspotPassword || DEFAULT_HOTSPOT_PASSWORD)}</div>
-    <div><strong>固定入口：</strong>${escapeHtml(status.hotspotAddress || "http://gateball")} / ${escapeHtml(status.secondaryHotspotAddress || "http://menqiu")}</div>
+    <div><strong>推荐入口：</strong>${escapeHtml(status.hotspotAddress || "http://gateball.local")} / ${escapeHtml(status.secondaryHotspotAddress || "http://menqiu.local")}</div>
     <div><strong>备用地址：</strong>${escapeHtml(fallback)}</div>
     <div><strong>本机地址：</strong>${escapeHtml(local)}</div>
     <div><strong>外部 WiFi：</strong>${escapeHtml(status.activeWifi || "未连接")}</div>

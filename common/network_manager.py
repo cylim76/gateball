@@ -13,7 +13,7 @@ DEFAULT_HOTSPOT_PASSWORD = "1234567890"
 HOTSPOT_CONNECTION = "gateball-ap"
 HOTSPOT_IFNAME = "wlan0_ap"
 HOTSPOT_APPLY_HELPER = "/usr/local/bin/gateball-network-apply"
-SHORT_HOSTS = ("gateball", "menqiu")
+SHORT_HOSTS = ("gateball.local", "menqiu.local")
 
 
 def command_available(name: str) -> bool:
@@ -170,8 +170,8 @@ def network_status(state: dict) -> dict:
         "courtName": state.get("courtName", ""),
         "hotspotSsid": state.get("hotspotSsid") or DEFAULT_HOTSPOT_SSID,
         "hotspotPassword": state.get("hotspotPassword") or DEFAULT_HOTSPOT_PASSWORD,
-        "hotspotAddress": "http://gateball",
-        "secondaryHotspotAddress": "http://menqiu",
+        "hotspotAddress": "http://gateball.local",
+        "secondaryHotspotAddress": "http://menqiu.local",
         "hotspotIp": hotspot_ip,
         "fallbackAddress": f"http://{hotspot_ip}" if hotspot_ip else "",
         "localAddresses": local_ipv4_addresses(),

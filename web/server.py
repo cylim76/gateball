@@ -628,12 +628,10 @@ class Store:
     def record_boot_wifi_info(self) -> None:
         if not self.state.get("showBootWifiInfo", True):
             return
-        ssid = str(self.state.get("hotspotSsid") or DEFAULT_HOTSPOT_SSID).strip() or DEFAULT_HOTSPOT_SSID
-        password = str(self.state.get("hotspotPassword") or DEFAULT_HOTSPOT_PASSWORD).strip() or DEFAULT_HOTSPOT_PASSWORD
         hotspot_ip = hotspot_ipv4_address()
         backup = f"http://{hotspot_ip}" if hotspot_ip else "热点 IP：等待网络初始化..."
         self.boot_wifi_info_pending = not bool(hotspot_ip)
-        self.record("boot_wifi_info", None, f"WiFi：{ssid} / {password}    http://gateball | {backup}")
+        self.record("boot_wifi_info", None, f"手机遥控器：http://gateball.local | http://menqiu.local | {backup}")
         self.state["lastMessage"] = self.history[-1]["message"]
         self.save()
 
@@ -643,9 +641,7 @@ class Store:
         hotspot_ip = hotspot_ipv4_address()
         if not hotspot_ip:
             return False
-        ssid = str(self.state.get("hotspotSsid") or DEFAULT_HOTSPOT_SSID).strip() or DEFAULT_HOTSPOT_SSID
-        password = str(self.state.get("hotspotPassword") or DEFAULT_HOTSPOT_PASSWORD).strip() or DEFAULT_HOTSPOT_PASSWORD
-        message = f"WiFi：{ssid} / {password}    http://gateball | http://{hotspot_ip}"
+        message = f"手机遥控器：http://gateball.local | http://menqiu.local | http://{hotspot_ip}"
         for item in reversed(self.history):
             if item.get("action") == "boot_wifi_info":
                 item["message"] = message
