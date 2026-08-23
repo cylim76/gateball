@@ -68,6 +68,7 @@ VOICE_PROFILE_DIRS = {
     "ko-female": "voice-ko-female",
     "ko-male": "voice-ko-male",
 }
+SUPPORTED_AUDIO_OUTPUT_MODES = {"auto", "hdmi", "analog", "bluetooth", "default"}
 RF_REMOTE_MODELS = {
     "gateball-10key": {
         "name": "10-key gateball remote",
@@ -146,6 +147,7 @@ DEFAULT_STATE = {
     "voiceProfile": "female",
     "voicePlaybackRate": 1.2,
     "systemVolumePercent": 100,
+    "audioOutputMode": "auto",
     "musicEnabled": False,
     "musicVolumePercent": 35,
     "musicMode": "random",
@@ -171,6 +173,104 @@ DEFAULT_STATE = {
     "hotspotPassword": DEFAULT_HOTSPOT_PASSWORD,
     "showBootWifiInfo": True,
 }
+
+
+def normalize_audio_output_mode(value: object) -> str:
+    mode = str(value or "auto").strip().lower()
+    return mode if mode in SUPPORTED_AUDIO_OUTPUT_MODES else "auto"
+
+
+def audio_subprocess_env() -> dict[str, str]:
+    env = os.environ.copy()
+    if "XDG_RUNTIME_DIR" not in env and hasattr(os, "getuid"):
+        env["XDG_RUNTIME_DIR"] = f"/run/user/{os.getuid()}"
+    return env
+
+
+def available_pactl_sinks() -> list[str]:
+    try:
+        result = subprocess.run(
+            ["pactl", "list", "short", "sinks"],
+            capture_output=True,
+            check=False,
+            env=audio_subprocess_env(),
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if result.returncode != 0:
+        return []
+    sinks = []
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2:
+            sinks.append(parts[1])
+    return sinks
+
+
+def choose_audio_sink(mode: str, sinks: list[str]) -> str:
+    mode = normalize_audio_output_mode(mode)
+    if mode == "default" or not sinks:
+        return ""
+    groups = {
+        "hdmi": ("hdmi",),
+        "analog": ("analog", "headphone", "headphones", "jack"),
+        "bluetooth": ("bluez", "bluetooth"),
+    }
+    order = ["hdmi", "bluetooth", "analog"] if mode == "auto" else [mode]
+    for group in order:
+        keywords = groups.get(group, ())
+        for sink in sinks:
+            lower = sink.lower()
+            if any(keyword in lower for keyword in keywords):
+                return sink
+    return sinks[0] if mode == "auto" else ""
+
+
+def apply_audio_output_mode(mode: str) -> bool:
+    mode = normalize_audio_output_mode(mode)
+    if mode == "default":
+        return True
+    sinks = available_pactl_sinks()
+    sink = choose_audio_sink(mode, sinks)
+    if not sink:
+        return False
+    try:
+        result = subprocess.run(
+            ["pactl", "set-default-sink", sink],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=audio_subprocess_env(),
+            timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if result.returncode != 0:
+        return False
+    try:
+        inputs = subprocess.run(
+            ["pactl", "list", "short", "sink-inputs"],
+            capture_output=True,
+            check=False,
+            env=audio_subprocess_env(),
+            text=True,
+            timeout=3,
+        )
+        if inputs.returncode == 0:
+            for line in inputs.stdout.splitlines():
+                input_id = line.split()[0] if line.split() else ""
+                if input_id:
+                    subprocess.run(
+                        ["pactl", "move-sink-input", input_id, sink],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        env=audio_subprocess_env(),
+                        timeout=2,
+                    )
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return True
 
 
 def set_system_volume_percent(percent: int) -> bool:
@@ -515,6 +615,7 @@ class Store:
         self.last_rf_music_raw = ""
         self.last_rf_music_at = 0.0
         self.load()
+        apply_audio_output_mode(self.state.get("audioOutputMode", "auto"))
         self.apply_boot_music_autoplay()
         self.record_boot_wifi_info()
 
@@ -570,6 +671,7 @@ class Store:
             self.state["systemVolumePercent"] = min(100, max(0, int(round(float(self.state.get("systemVolumePercent", 100))))))
         except (TypeError, ValueError):
             self.state["systemVolumePercent"] = 100
+        self.state["audioOutputMode"] = normalize_audio_output_mode(self.state.get("audioOutputMode"))
         try:
             self.state["teamNameScale"] = min(1.6, max(0.6, round(float(self.state.get("teamNameScale", 1.0)), 2)))
         except (TypeError, ValueError):
@@ -1387,6 +1489,11 @@ class Store:
                         set_system_volume_percent(self.state["systemVolumePercent"])
                     except (TypeError, ValueError):
                         pass
+                audio_message = ""
+                if "audioOutputMode" in payload:
+                    self.state["audioOutputMode"] = normalize_audio_output_mode(payload.get("audioOutputMode"))
+                    if not apply_audio_output_mode(self.state["audioOutputMode"]):
+                        audio_message = "；音频输出切换未成功，请在系统声音设置中确认"
                 if "musicEnabled" in payload:
                     self.state["musicEnabled"] = bool(payload["musicEnabled"])
                 if "musicAutoPlayDuringMatch" in payload:
@@ -1460,7 +1567,7 @@ class Store:
                         network_message = f"；{hotspot_result.get('message') or '热点同步失败'}"
                     elif hotspot_result.get("supported") is False:
                         network_message = "；热点配置已保存，当前系统未自动应用"
-                message = f"设置已保存{network_message}"
+                message = f"设置已保存{network_message}{audio_message}"
                 self.state["lastMessage"] = message
                 self.record("settings", None, message)
 

@@ -22,6 +22,7 @@ INSTALL_DIRECT_X_KIOSK="${INSTALL_DIRECT_X_KIOSK:-0}"
 CONFIGURE_QUIET_BOOT="${CONFIGURE_QUIET_BOOT:-1}"
 RESTART_DISPLAY_MANAGER="${RESTART_DISPLAY_MANAGER:-0}"
 INSTALL_RF_SUPPORT="${INSTALL_RF_SUPPORT:-1}"
+INSTALL_AUDIO_SUPPORT="${INSTALL_AUDIO_SUPPORT:-1}"
 INSTALL_NETWORK_SUPPORT="${INSTALL_NETWORK_SUPPORT:-1}"
 GATEBALL_HOTSPOT_SSID="${GATEBALL_HOTSPOT_SSID:-HongxingMenqiu1}"
 GATEBALL_HOTSPOT_PASSWORD="${GATEBALL_HOTSPOT_PASSWORD:-1234567890}"
@@ -254,6 +255,21 @@ install_rf_support() {
     echo "RF GPIO decoder installed: rpi-rf"
   else
     echo "Warning: rpi-rf installation finished, but python3 still cannot import rpi_rf."
+  fi
+}
+
+install_audio_support() {
+  if [ "$INSTALL_AUDIO_SUPPORT" != "1" ]; then
+    echo "Audio output helper install skipped: INSTALL_AUDIO_SUPPORT=$INSTALL_AUDIO_SUPPORT"
+    return
+  fi
+  if command -v pactl >/dev/null 2>&1; then
+    echo "Audio output helper already available: pactl"
+    return
+  fi
+  echo "Installing audio output helper: pulseaudio-utils"
+  if ! sudo apt-get update || ! sudo apt-get install -y pulseaudio-utils; then
+    echo "Warning: failed to install pulseaudio-utils. Manual audio output switching may need system sound settings."
   fi
 }
 
@@ -643,6 +659,7 @@ echo "User:    $GATEBALL_USER"
 echo "Home:    $GATEBALL_HOME"
 
 install_rf_support
+install_audio_support
 install_network_support
 
 sudo install -d /etc/systemd/system

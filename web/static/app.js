@@ -1725,6 +1725,7 @@ function renderSettings() {
     if (form.voiceProfile) form.voiceProfile.value = currentState.voiceProfile || "female";
     if (form.voicePlaybackRate) form.voicePlaybackRate.value = Number(currentState.voicePlaybackRate || DEFAULT_GAMEPLAY_PLAYBACK_RATE).toFixed(1);
     if (form.systemVolumePercent) form.systemVolumePercent.value = normalizeSystemVolumePercent(currentState.systemVolumePercent);
+    if (form.audioOutputMode) form.audioOutputMode.value = currentState.audioOutputMode || "auto";
     if (form.titleColor) form.titleColor.value = normalizeHexColor(currentState.titleColor);
     if (form.titleFontScale) form.titleFontScale.value = normalizeTitleFontScale(currentState.titleFontScale).toFixed(2);
     if (form.teamNameAutoSize) form.teamNameAutoSize.checked = currentState.teamNameAutoSize !== false;
@@ -1774,6 +1775,7 @@ function enhanceSettingsForm(form) {
     "voiceProfile",
     "voicePlaybackRate",
     "systemVolumePercent",
+    "audioOutputMode",
     "weatherLocation",
     "finishPassword",
     "settingsPassword",
@@ -3583,6 +3585,7 @@ function collectSettingsPayload(form) {
   if (form.voiceProfile) payload.voiceProfile = form.voiceProfile.value || "female";
   if (form.voicePlaybackRate) payload.voicePlaybackRate = form.voicePlaybackRate.value || DEFAULT_GAMEPLAY_PLAYBACK_RATE;
   if (form.systemVolumePercent) payload.systemVolumePercent = normalizeSystemVolumePercent(form.systemVolumePercent.value);
+  if (form.audioOutputMode) payload.audioOutputMode = form.audioOutputMode.value || "auto";
   if (form.musicEnabled) payload.musicEnabled = form.musicEnabled.checked;
   if (form.selectedMusicTrack) payload.selectedMusicTrack = musicTrackIdFromForm(form);
   if (form.musicMode) payload.musicMode = form.musicMode.value || "random";
