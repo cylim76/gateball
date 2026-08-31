@@ -133,23 +133,27 @@ Open pages:
 
 ## 433MHz Remote Debug
 
-Connect the receiver DATA pin to a Raspberry Pi BCM GPIO pin, then run:
+For standalone RF receiver testing, copy `tools/linux433test` to the Raspberry
+Pi and run it outside the Gateball service. This helps verify the RXB6 wiring
+and decoded 24-bit codes without scoreboard state or learning logic involved.
 
 ```bash
-python3 tools/rf_433_debug.py --gpio 27
+cd tools/linux433test
+chmod +x start.sh rf_hex_test.py
+./start.sh -decode 27
 ```
 
-The tool prefers `rpi-rf` when it is installed and prints decoded values:
+The tool prints decoded values such as:
 
 ```text
-code=1234567 address=123456 button=7 protocol=1 pulse=350
+decoded code=0x57F0FF hex=57 F0 FF address=0x57F0 button=0xFF short_us=417 long_us=1250
 ```
 
-After adding the remote address in Settings -> 遥控器, you can forward decoded
-signals to the running scoreboard for an end-to-end test:
+If no decoded code appears, dump raw pulse timings while pressing a remote
+button:
 
 ```bash
-python3 tools/rf_433_debug.py --gpio 27 --post-url http://127.0.0.1:8000/api/action
+bash start.sh -dump 27
 ```
 
 If `rpi-rf` is not installed or cannot start on the current Raspberry Pi, it
