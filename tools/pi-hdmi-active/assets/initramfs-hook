@@ -1,0 +1,19 @@
+#!/bin/sh
+PREREQ=""
+
+prereqs() {
+    echo "$PREREQ"
+}
+
+case "$1" in
+    prereqs)
+        prereqs
+        exit 0
+        ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+mkdir -p "${DESTDIR}/lib/firmware"
+cp -a /lib/firmware/pi-hdmi-active-edid.bin \
+    "${DESTDIR}/lib/firmware/pi-hdmi-active-edid.bin"

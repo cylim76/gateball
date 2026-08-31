@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+export LC_ALL=C
+
+POLL_INTERVAL="${PI_HDMI_POLL_INTERVAL:-2}"
+TARGET_VOLUME="${PI_HDMI_VOLUME:-60%}"
+TAG="pi-hdmi-active"
+
+log() {
+    printf '%s\n' "$*"
+    logger -t "$TAG" -- "$*" 2>/dev/null || true
+}
+
+connector_status() {
+    local connector="$1" path
+    for path in /sys/class/drm/card*-"$connector"/status; do
+        if [[ -r "$path" ]]; then
+            tr -d '\r\n' < "$path"
+            return 0
+        fi
+    done
+    printf 'missing\n'
+}
+
+desired_port() {
+    # HDMI0 is not force-enabled, so its status reflects a real cable.
+    # HDMI1 is the fallback and is kept available by the boot parameters.
+    if [[ "$(connector_status HDMI-A-1)" == "connected" ]]; then
+        printf 'hdmi0\n'
+    else
+        printf 'hdmi1\n'
+    fi
+}
+
+wait_for_pactl() {
+    local attempt
+    for attempt in $(seq 1 30); do
+        if pactl info >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
+find_card() {
+    local card_index="$1" card
+    card="$(pactl list cards 2>/dev/null | awk -v needle="vc4-hdmi-${card_index}" '
+        /^[[:space:]]*Name:/ { name=$2 }
+        /api[.]alsa[.]card[.]name =/ && index($0, "\"" needle "\"") { print name; exit }
+    ')"
+    if [[ -n "$card" ]]; then
+        printf '%s\n' "$card"
+        return 0
+    fi
+
+    # Fallback for images that omit api.alsa.card.name from pactl output.
+    pactl list short cards 2>/dev/null | awk -v row="$((card_index + 1))" 'NR == row { print $2; exit }'
+}
+
+sink_for_card() {
+    local card="$1"
+    printf '%s.hdmi-stereo\n' "${card/alsa_card/alsa_output}"
+}
+
+profile_and_sink_ready() {
+    local card="$1" sink="$2" attempt
+    for attempt in $(seq 1 8); do
+        pactl set-card-profile "$card" output:hdmi-stereo >/dev/null 2>&1 || true
+        if pactl list short sinks 2>/dev/null | awk -v wanted="$sink" '$2 == wanted { found=1 } END { exit !found }'; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
+switch_port() {
+    local port="$1" card_index card sink input_id
+
+    case "$port" in
+        hdmi0) card_index=0 ;;
+        hdmi1) card_index=1 ;;
+        *) log "Unknown port: $port"; return 2 ;;
+    esac
+
+    if ! wait_for_pactl; then
+        log "PipeWire/Pulse is not ready"
+        return 1
+    fi
+
+    card="$(find_card "$card_index")"
+    if [[ -z "$card" ]]; then
+        log "Unable to find vc4 HDMI card $card_index"
+        return 1
+    fi
+    sink="$(sink_for_card "$card")"
+
+    if ! profile_and_sink_ready "$card" "$sink"; then
+        log "Refreshing PipeWire for $port hotplug"
+        systemctl --user restart wireplumber.service pipewire.service pipewire-pulse.service || true
+        if ! wait_for_pactl; then
+            log "PipeWire did not return after refresh"
+            return 1
+        fi
+        card="$(find_card "$card_index")"
+        sink="$(sink_for_card "$card")"
+        if ! profile_and_sink_ready "$card" "$sink"; then
+            log "HDMI stereo profile is unavailable on $port"
+            return 1
+        fi
+    fi
+
+    pactl set-default-sink "$sink"
+    pactl set-sink-mute "$sink" 0 || true
+    pactl set-sink-volume "$sink" "$TARGET_VOLUME" || true
+
+    while read -r input_id _; do
+        [[ -n "$input_id" ]] && pactl move-sink-input "$input_id" "$sink" || true
+    done < <(pactl list short sink-inputs 2>/dev/null)
+
+    log "Selected $port: $sink (volume $TARGET_VOLUME)"
+}
+
+show_status() {
+    printf 'HDMI0: %s\n' "$(connector_status HDMI-A-1)"
+    printf 'HDMI1: %s\n' "$(connector_status HDMI-A-2)"
+    printf 'Policy choice: %s\n' "$(desired_port)"
+    if pactl info >/dev/null 2>&1; then
+        printf 'Default sink: %s\n' "$(pactl get-default-sink 2>/dev/null || printf 'none')"
+    else
+        printf 'Default sink: PipeWire unavailable\n'
+    fi
+}
+
+monitor() {
+    local last_port="" port current_default expected_card expected_sink
+    log "Hotplug monitor started"
+    while true; do
+        port="$(desired_port)"
+        expected_card="$(find_card "${port#hdmi}" 2>/dev/null || true)"
+        expected_sink=""
+        [[ -n "$expected_card" ]] && expected_sink="$(sink_for_card "$expected_card")"
+        current_default="$(pactl get-default-sink 2>/dev/null || true)"
+
+        if [[ "$port" != "$last_port" || -z "$expected_sink" || "$current_default" != "$expected_sink" ]]; then
+            if switch_port "$port"; then
+                last_port="$port"
+            else
+                last_port=""
+            fi
+        fi
+        sleep "$POLL_INTERVAL"
+    done
+}
+
+case "${1:-monitor}" in
+    monitor)
+        monitor
+        ;;
+    once)
+        switch_port "${2:-$(desired_port)}"
+        ;;
+    status)
+        show_status
+        ;;
+    *)
+        echo "Usage: $0 {monitor|once [hdmi0|hdmi1]|status}" >&2
+        exit 2
+        ;;
+esac

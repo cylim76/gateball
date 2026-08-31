@@ -1,0 +1,15 @@
+[Unit]
+Description=Raspberry Pi HDMI audio hotplug selector
+After=pipewire.service pipewire-pulse.service wireplumber.service
+Wants=pipewire.service pipewire-pulse.service wireplumber.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/pi-hdmi-active monitor
+Restart=always
+RestartSec=2
+Environment=PI_HDMI_POLL_INTERVAL=2
+Environment=PI_HDMI_VOLUME=60%%
+
+[Install]
+WantedBy=default.target
