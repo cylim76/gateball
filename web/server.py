@@ -976,7 +976,7 @@ class Store:
         self.state["rfRemotes"] = normalized
         return normalized
 
-    def record_rf_signal(self, *, raw: str, address: str, button: str, remote: dict | None, action_id: str, status: str) -> dict:
+    def record_rf_signal(self, *, raw: str, address: str, button: str, remote: dict | None, action_id: str, status: str, bits: int | None = None) -> dict:
         now = time.time()
         self.state["rfLastSignal"] = {
             "id": f"{now:.6f}",
@@ -984,6 +984,7 @@ class Store:
             "raw": raw,
             "address": address,
             "button": button,
+            "bits": bits,
             "remoteId": remote.get("id") if remote else None,
             "remoteName": remote.get("name") if remote else None,
             "action": action_id,
@@ -1008,13 +1009,17 @@ class Store:
         raw = str(payload.get("raw") or payload.get("code") or "").strip()
         address = str(payload.get("address") or "").strip()
         button = str(payload.get("button") or "").strip()
+        try:
+            bits = int(payload.get("bits")) if payload.get("bits") is not None else None
+        except (TypeError, ValueError):
+            bits = None
         if not address and raw:
             address = raw[:-1] if len(raw) > 1 else raw
         if not button and raw:
             button = raw[-1:]
         learning = self.rf_learning_status()
         if learning and not learning.get("signal"):
-            signal = self.record_rf_signal(raw=raw, address=address, button=button, remote=None, action_id="", status="learning")
+            signal = self.record_rf_signal(raw=raw, address=address, button=button, remote=None, action_id="", status="learning", bits=bits)
             learning["signal"] = signal
             self.state["rfLearning"] = learning
             self.save()
@@ -1065,7 +1070,7 @@ class Store:
             self.action(RF_ACTION_PAYLOADS[action_id])
         elif action_id:
             status = "unknown_button"
-        self.record_rf_signal(raw=raw, address=address, button=button, remote=remote, action_id=action_id, status=status)
+        self.record_rf_signal(raw=raw, address=address, button=button, remote=remote, action_id=action_id, status=status, bits=bits)
         self.save()
         self.emit()
         return {"ok": status in {"executed", "finish_requires_password", "finish_password_digit"}, "message": status, "state": self.snapshot()}
@@ -1732,7 +1737,7 @@ def split_rf_code(code: object) -> tuple[str, str]:
     return text[:-1], text[-1]
 
 
-def rf_payload_from_code(code: object, *, address: str = "", button: str = "") -> dict:
+def rf_payload_from_code(code: object, *, address: str = "", button: str = "", bits: int | None = None) -> dict:
     raw = str(code).strip()
     if not address and not button:
         address, button = split_rf_code(raw)
@@ -1741,13 +1746,14 @@ def rf_payload_from_code(code: object, *, address: str = "", button: str = "") -
         "raw": raw,
         "address": str(address or "").strip(),
         "button": str(button or "").strip(),
+        "bits": bits,
     }
 
 
 def rf_payload_from_24bit_code(code: int) -> dict:
     address = (code >> 8) & 0xFFFF
     button = code & 0xFF
-    return rf_payload_from_code(f"0x{code:06X}", address=f"0x{address:04X}", button=f"0x{button:02X}")
+    return rf_payload_from_code(f"0x{code:06X}", address=f"0x{address:04X}", button=f"0x{button:02X}", bits=24)
 
 
 def lgpio_tick_delta_us(previous_tick: int, tick: int) -> int:
@@ -1772,19 +1778,65 @@ def rf_payload_from_serial_line(line: str) -> dict | None:
     text = line.strip()
     if not text:
         return None
+    ignored_prefixes = (
+        "candidate ",
+        "raw ",
+        "warning ",
+        "ESP32 ",
+        "DATA GPIO=",
+        "Press ",
+        "Receiver ",
+        "ets ",
+        "rst:",
+        "configsip:",
+        "clk_drv:",
+        "mode:",
+        "load:",
+        "entry ",
+    )
+    if text.startswith(ignored_prefixes):
+        return None
+    if text in {"�", "⸮"}:
+        return None
+    if text.startswith("RFJSON:"):
+        text = text.removeprefix("RFJSON:").strip()
     if text.startswith("{"):
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
             data = {}
         raw = data.get("raw") or data.get("code") or data.get("value") or ""
+        try:
+            bits = int(data.get("bits")) if data.get("bits") is not None else None
+        except (TypeError, ValueError):
+            bits = None
+        if bits is not None and bits != 24:
+            return None
         if raw or data.get("address") or data.get("button"):
-            return rf_payload_from_code(raw, address=str(data.get("address") or ""), button=str(data.get("button") or ""))
+            return rf_payload_from_code(raw, address=str(data.get("address") or ""), button=str(data.get("button") or ""), bits=bits)
     parts = re.split(r"[:：,\s]+", text)
     parts = [part for part in parts if part]
     if len(parts) >= 2:
         return rf_payload_from_code(text, address=parts[0], button=" ".join(parts[1:]))
     return rf_payload_from_code(text)
+
+
+def configure_rf_serial_device(serial_file) -> None:
+    if os.name == "nt":
+        return
+    try:
+        import termios
+    except ImportError:
+        return
+    try:
+        attrs = termios.tcgetattr(serial_file.fileno())
+        baud = termios.B115200
+        attrs[4] = baud
+        attrs[5] = baud
+        attrs[2] |= termios.CLOCAL | termios.CREAD
+        termios.tcsetattr(serial_file.fileno(), termios.TCSANOW, attrs)
+    except Exception as exc:
+        print(f"RF serial baud setup skipped: {exc}")
 
 
 def cleanup_rf_device(device: object | None) -> None:
@@ -2031,6 +2083,7 @@ def rf_listener_loop() -> None:
                 if serial_file is None or active_mode != "serial" or active_serial_device != serial_device:
                     cleanup_rf_device(serial_file)
                     serial_file = open(serial_device, "r", encoding="utf-8", errors="replace", buffering=1)
+                    configure_rf_serial_device(serial_file)
                     active_mode = "serial"
                     active_serial_device = serial_device
                     print(f"RF serial listener active on {serial_device}")
