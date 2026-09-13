@@ -1987,6 +1987,7 @@ def rf_listener_loop() -> None:
     rf_device_class = None
     rpi_rf_missing_logged = False
     lgpio_missing_logged = False
+    gpio_unsupported_logged = False
     active_gpio = None
     active_serial_device = ""
     active_mode = ""
@@ -2012,6 +2013,20 @@ def rf_listener_loop() -> None:
                 time.sleep(1.0)
                 continue
             if receiver_type == "gpio":
+                if not is_raspberry_pi():
+                    if rfdevice or serial_file:
+                        cleanup_rf_device(rfdevice)
+                        cleanup_rf_device(serial_file)
+                        rfdevice = None
+                        serial_file = None
+                        active_gpio = None
+                        active_serial_device = ""
+                        active_mode = ""
+                    if not gpio_unsupported_logged:
+                        print("RF GPIO listener disabled: this device is not a Raspberry Pi")
+                        gpio_unsupported_logged = True
+                    time.sleep(5.0)
+                    continue
                 if serial_file:
                     cleanup_rf_device(serial_file)
                     serial_file = None
@@ -2104,6 +2119,22 @@ def rf_listener_loop() -> None:
             active_serial_device = ""
             active_mode = ""
             time.sleep(3.0)
+
+
+def is_raspberry_pi() -> bool:
+    candidates = (
+        Path("/proc/device-tree/model"),
+        Path("/sys/firmware/devicetree/base/model"),
+        Path("/proc/cpuinfo"),
+    )
+    for path in candidates:
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if "raspberry pi" in text.lower():
+            return True
+    return False
 
 
 def start_rf_listener() -> None:

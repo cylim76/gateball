@@ -165,8 +165,6 @@ let weatherSearchTimer = null;
 let wakeLockSentinel = null;
 let wakeLockWanted = false;
 let stateEventSource = null;
-let refreshTimer = null;
-let stylePreviewTimer = null;
 let lastHandledRfSignalKey = "";
 let resultsYear = new Date().getFullYear();
 let resultsMonth = new Date().getMonth() + 1;
@@ -1752,7 +1750,7 @@ function renderSettings() {
   applyTeamNameScale(currentState.teamNameScale, currentState.teamNameAutoSize);
   applyTableMarkerScale(currentState.tableMarkerAutoSize, currentState.tableMarkerScale);
   renderNetworkSettings();
-  if (!settingsHydrated || document.querySelector("[data-settings-panel='rf'].active")) renderRfSettings();
+  if (!settingsHydrated) renderRfSettings();
   settingsHydrated = true;
 }
 
@@ -3429,44 +3427,10 @@ async function refresh() {
   }
 }
 
-function startPolling() {
-  if (refreshTimer) return;
-  refresh();
-  refreshTimer = window.setInterval(refresh, 1000);
-}
-
-function startStylePreviewPolling() {
-  if (!document.querySelector("[data-scoreboard]") || stylePreviewTimer) return;
-  stylePreviewTimer = window.setInterval(async () => {
-    try {
-      const state = await api.state();
-      if (!currentState) {
-        applyState(state, { speakEvents: false });
-        return;
-      }
-      const changed = state.titleColor !== currentState.titleColor
-        || state.titleFontScale !== currentState.titleFontScale
-        || state.teamNameAutoSize !== currentState.teamNameAutoSize
-        || state.teamNameScale !== currentState.teamNameScale
-        || state.tableMarkerAutoSize !== currentState.tableMarkerAutoSize
-        || state.tableMarkerScale !== currentState.tableMarkerScale;
-      if (changed) applyState(state, { speakEvents: false, skipTransition: true });
-    } catch (error) {
-      return;
-    }
-  }, 300);
-}
-
-function stopPolling() {
-  if (!refreshTimer) return;
-  window.clearInterval(refreshTimer);
-  refreshTimer = null;
-}
-
 function startStateEvents() {
   if (document.querySelector("[data-results]")) return;
   if (!("EventSource" in window)) {
-    startPolling();
+    refresh();
     return;
   }
   refresh();
@@ -3474,13 +3438,9 @@ function startStateEvents() {
   stateEventSource.onmessage = (event) => {
     try {
       applyState(JSON.parse(event.data));
-      stopPolling();
     } catch (error) {
       console.warn("State event parse failed", error);
     }
-  };
-  stateEventSource.onerror = () => {
-    startPolling();
   };
 }
 
@@ -4313,4 +4273,3 @@ window.addEventListener("resize", () => {
 initScreenWakeLock();
 initResultsPage();
 startStateEvents();
-startStylePreviewPolling();
