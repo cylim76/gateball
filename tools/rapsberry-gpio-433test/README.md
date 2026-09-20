@@ -3,7 +3,7 @@
 Copy this folder to the Raspberry Pi, then run:
 
 ```bash
-cd linux433test
+cd tools/rapsberry-gpio-433test
 chmod +x start.sh rf_hex_test.py
 ./start.sh
 ```

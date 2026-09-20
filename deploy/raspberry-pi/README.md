@@ -133,12 +133,12 @@ Open pages:
 
 ## 433MHz Remote Debug
 
-For standalone RF receiver testing, copy `tools/linux433test` to the Raspberry
+For standalone RF receiver testing, use `tools/rapsberry-gpio-433test` on the Raspberry
 Pi and run it outside the Gateball service. This helps verify the RXB6 wiring
 and decoded 24-bit codes without scoreboard state or learning logic involved.
 
 ```bash
-cd tools/linux433test
+cd tools/rapsberry-gpio-433test
 chmod +x start.sh rf_hex_test.py
 ./start.sh -decode 27
 ```

@@ -20,7 +20,7 @@ Use a level shifter or resistor divider.
 ## Build With PlatformIO
 
 ```bash
-cd tools/esp32-433-bridge
+cd tools/esp32-433-bridge-arduino
 pio run -t upload
 pio device monitor -b 115200
 ```
@@ -37,7 +37,7 @@ build_flags =
 Open:
 
 ```text
-tools/esp32-433-bridge/esp32_433_bridge/esp32_433_bridge.ino
+tools/esp32-433-bridge-arduino/esp32_433_bridge/esp32_433_bridge.ino
 ```
 
 Select an ESP32 board, set baud rate to `115200`, then upload.
