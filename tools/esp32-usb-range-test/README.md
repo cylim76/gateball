@@ -44,6 +44,31 @@ chmod +x start_linux.sh
 
 图形工具不能直接显示在普通 SSH 终端中，需要在 GB2 本机桌面运行。若 Gateball 服务正在占用同一个 USB 串口，请先在设置中暂停遥控器监听，或临时停止 Gateball 服务，再打开测试工具。
 
+## 从 Windows 通过 SSH 远程测试 GB2
+
+不需要 X Server 或远程桌面。在 Windows SSH 登录 GB2 后运行：
+
+```bash
+cd ~/gateball/tools/esp32-usb-range-test
+./start_remote_web.sh
+```
+
+脚本会在测试期间暂停占用 USB 串口的 Gateball 服务。保持 SSH 窗口打开，然后在 Windows 浏览器访问：
+
+```text
+http://192.168.1.221:8765
+```
+
+网页会实时显示与本地图形工具相同的接收次数、最近十秒统计、无信号时间、按键记录和串口原始输出，也能下载本次 CSV。
+
+测试结束时回到 SSH 窗口按 `Ctrl+C`。脚本会关闭测试工具并自动恢复 Gateball 服务。
+
+如果串口不是自动识别的设备，可以指定：
+
+```bash
+ESP32_SERIAL_DEVICE=/dev/ttyUSB0 ./start_remote_web.sh
+```
+
 ## 测试结果
 
 - **累计成功接收**：ESP32 成功解码并输出的信号总数。
