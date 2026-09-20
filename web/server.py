@@ -1826,14 +1826,18 @@ def configure_rf_serial_device(serial_file) -> None:
         return
     try:
         import termios
+        import tty
     except ImportError:
         return
     try:
+        tty.setraw(serial_file.fileno(), when=termios.TCSANOW)
         attrs = termios.tcgetattr(serial_file.fileno())
         baud = termios.B115200
         attrs[4] = baud
         attrs[5] = baud
         attrs[2] |= termios.CLOCAL | termios.CREAD
+        if hasattr(termios, "CRTSCTS"):
+            attrs[2] &= ~termios.CRTSCTS
         termios.tcsetattr(serial_file.fileno(), termios.TCSANOW, attrs)
     except Exception as exc:
         print(f"RF serial baud setup skipped: {exc}")

@@ -136,6 +136,7 @@ let pendingRfLearn = null;
 let rfLearnPollTimer = null;
 let rfLearnTimeoutTimer = null;
 let rfDraftBindings = {};
+let rfSlotDrafts = {};
 let alertPromptAudio = null;
 let errorPromptAudio = null;
 let finishPromptAudio = null;
@@ -237,7 +238,7 @@ const rfBindableActions = keyBindingSpecs.filter((spec) => !["finish_cancel", "r
 let activeRfTab = "rf1";
 const rfReceiverTypeLabels = {
   gpio: "GPIO 接收器",
-  serial: "USB 串口接收器",
+  serial: "串口接收器（USB/UART）",
   keyboard: "USB 键盘/HID",
 };
 const VOICE_PROFILES = ["female", "male", "ko-female", "ko-male"];
@@ -2445,6 +2446,7 @@ function renderRfSettings() {
   if (!currentState) return;
   const layout = document.querySelector("[data-rf-layout]");
   if (!layout) return;
+  rememberVisibleRfSlotDraft();
   if (!rfSlotTabs.some((tab) => tab.id === activeRfTab)) activeRfTab = "rf1";
   const receiverType = currentState.rfReceiverType || "gpio";
   layout.innerHTML = `
@@ -2463,8 +2465,8 @@ function renderRfSettings() {
           <input name="rfReceiverGpio" type="number" min="2" max="27" step="1" value="${escapeHtml(currentState.rfReceiverGpio || 27)}">
         </label>
         <label class="rf-receiver-field ${receiverType === "serial" ? "" : "hidden"}" data-rf-receiver-field="serial">
-          USB 串口设备
-          <input name="rfReceiverSerialDevice" autocomplete="off" placeholder="/dev/ttyUSB0 或 /dev/serial/by-id/..." value="${escapeHtml(currentState.rfReceiverSerialDevice || "")}">
+          串口设备
+          <input name="rfReceiverSerialDevice" autocomplete="off" placeholder="/dev/ttyUSB0、/dev/ttyS0 或 /dev/serial/by-id/..." value="${escapeHtml(currentState.rfReceiverSerialDevice || "")}">
         </label>
         <div class="rf-receiver-note ${receiverType === "keyboard" ? "" : "hidden"}" data-rf-receiver-field="keyboard">
           USB 键盘/HID 接收器会被系统当成键盘，按键请在“键盘”页签里映射。
@@ -2636,6 +2638,17 @@ function rememberDraftBinding(slotId, actionId, binding) {
   rfDraftBindings[slotId][actionId] = binding;
 }
 
+function rememberVisibleRfSlotDraft() {
+  const form = document.querySelector("[data-rf-slot-form]");
+  if (!form) return;
+  const slotId = form.dataset.slotId || activeRfTab;
+  if (!slotId) return;
+  rfSlotDrafts[slotId] = {
+    name: form.rfSlotName?.value || "",
+    enabled: Boolean(form.rfSlotEnabled?.checked),
+  };
+}
+
 function rfBindingDataAttributes(binding) {
   if (!binding) return "";
   return [
@@ -2649,6 +2662,7 @@ function rfBindingDataAttributes(binding) {
 function renderRfDevicePanel() {
   const panel = document.querySelector("[data-rf-device-panel]");
   if (!panel || !currentState) return;
+  rememberVisibleRfSlotDraft();
   if (activeRfTab === "keyboard") {
     panel.innerHTML = `
       <form class="settings-form keyboard-settings-form" data-keyboard-settings-form>
@@ -2669,7 +2683,11 @@ function renderRfDevicePanel() {
     renderKeyBindings();
     return;
   }
-  const slot = rfSlotById(activeRfTab);
+  const savedSlot = rfSlotById(activeRfTab);
+  const slotDraft = rfSlotDrafts[savedSlot.id];
+  const slot = slotDraft
+    ? { ...savedSlot, name: slotDraft.name || savedSlot.name, enabled: slotDraft.enabled }
+    : savedSlot;
   panel.innerHTML = `
     <form class="settings-form rf-slot-form" data-rf-slot-form data-slot-id="${escapeHtml(slot.id)}">
       <div class="rf-slot-head">
@@ -3629,6 +3647,7 @@ async function trySavePendingSettings() {
       currentState = result.state;
       if (payload.action === "update_rf_remote_slot" || payload.action === "clear_rf_remote_slot") {
         delete rfDraftBindings[payload.slotId || activeRfTab];
+        delete rfSlotDrafts[payload.slotId || activeRfTab];
         if (pendingRfLearn?.slotId === (payload.slotId || activeRfTab)) cancelPendingRfLearn("学习已取消");
       }
       if (payload.action === "delete_music_item") {
@@ -3636,6 +3655,9 @@ async function trySavePendingSettings() {
         await loadMusicTracks();
       }
       renderSettings();
+      if (payload.action === "update_rf_remote_slot" || payload.action === "clear_rf_remote_slot") {
+        delete rfSlotDrafts[payload.slotId || activeRfTab];
+      }
       const saveResult = document.querySelector(_resultSelector || "[data-save-result]");
       if (saveResult) {
         saveResult.textContent = result.message;
