@@ -186,6 +186,11 @@ let celebrationAnimationFrame = null;
 let celebrationParticles = [];
 let celebrationLastBurstAt = 0;
 let celebrationLastFrameAt = 0;
+let appliedTitleColor = "";
+let appliedTitleFontScale = "";
+let appliedTeamNameScale = "";
+let appliedTableMarkerScale = "";
+const renderedHtml = new WeakMap();
 const teamNameAudioCache = new Map();
 const guardedActions = new Set(["toggle_timer", "undo", "advance", "ten-second-countdown", "ten_second_countdown"]);
 const guardedActionTimes = new Map();
@@ -452,6 +457,8 @@ function setTeamName(selector, name) {
   const element = document.querySelector(selector);
   if (!element) return;
   const text = String(name || "").trim();
+  if (element.dataset.renderedTeamName === text) return;
+  element.dataset.renderedTeamName = text;
   element.replaceChildren();
   element.classList.remove("scrolling");
   element.classList.remove("multi-line-team-name");
@@ -1370,6 +1377,8 @@ function startCelebrationEffect() {
 }
 
 function stopCelebrationEffect() {
+  const hadActiveEffect = Boolean(celebrationAnimationFrame || celebrationParticles.length || celebrationLastBurstAt || celebrationLastFrameAt);
+  if (!hadActiveEffect) return;
   if (celebrationAnimationFrame) {
     cancelAnimationFrame(celebrationAnimationFrame);
     celebrationAnimationFrame = null;
@@ -1403,6 +1412,21 @@ function renderRows(team) {
   }).join("");
 }
 
+function setRenderedHtml(element, html) {
+  if (!element || renderedHtml.get(element) === html) return false;
+  renderedHtml.set(element, html);
+  element.innerHTML = html;
+  return true;
+}
+
+function setTextIfChanged(element, value) {
+  if (!element) return false;
+  const text = String(value ?? "");
+  if (element.textContent === text) return false;
+  element.textContent = text;
+  return true;
+}
+
 function renderScoreboard() {
   if (!currentState) return;
   const boardBody = document.body;
@@ -1418,7 +1442,7 @@ function renderScoreboard() {
     stopCelebrationEffect();
   }
   const title = document.querySelector("[data-title]");
-  title.textContent = currentState.title;
+  setTextIfChanged(title, currentState.title);
   title.classList.toggle("has-hangul", hasHangul(currentState.title));
   applyTitleColor(currentState.titleColor);
   applyTitleFontScale(currentState.titleFontScale);
@@ -1429,16 +1453,16 @@ function renderScoreboard() {
   const redTotal = document.querySelector("[data-red-total]");
   const whiteTotal = document.querySelector("[data-white-total]");
   if (redTotal) {
-    redTotal.textContent = currentState.redTotal;
+    setTextIfChanged(redTotal, currentState.redTotal);
     redTotal.closest(".team-total")?.classList.toggle("score-double-digit", redScore >= 10 && redScore < 100);
     redTotal.closest(".team-total")?.classList.toggle("score-triple-digit", redScore >= 100);
   }
   if (whiteTotal) {
-    whiteTotal.textContent = currentState.whiteTotal;
+    setTextIfChanged(whiteTotal, currentState.whiteTotal);
     whiteTotal.closest(".team-total")?.classList.toggle("score-double-digit", whiteScore >= 10 && whiteScore < 100);
     whiteTotal.closest(".team-total")?.classList.toggle("score-triple-digit", whiteScore >= 100);
   }
-  document.querySelector("[data-time]").textContent = formatTime(currentState.remainingSeconds);
+  setTextIfChanged(document.querySelector("[data-time]"), formatTime(currentState.remainingSeconds));
   const timer = document.querySelector("[data-scoreboard-timer]");
   if (timer) {
     timer.classList.toggle("is-running", currentState.running);
@@ -1446,14 +1470,16 @@ function renderScoreboard() {
     timer.classList.toggle("is-paused", !currentState.running && !currentState.timeExpired && currentState.timerStarted);
     timer.classList.toggle("is-expired", currentState.timeExpired);
   }
-  document.querySelector("[data-match]").textContent = `第 ${currentState.matchNumber} 场`;
-  document.querySelector("[data-status]").textContent = matchStatusText();
+  setTextIfChanged(document.querySelector("[data-match]"), `第 ${currentState.matchNumber} 场`);
+  setTextIfChanged(document.querySelector("[data-status]"), matchStatusText());
   const courtName = document.querySelector("[data-court-name]");
-  if (courtName) courtName.textContent = currentState.courtName || "红星门球场1";
+  setTextIfChanged(courtName, currentState.courtName || "红星门球场1");
   renderRecentLog();
-  document.querySelector("[data-red-rows]").innerHTML = renderRows("red");
-  document.querySelector("[data-white-rows]").innerHTML = renderRows("white");
-  requestAnimationFrame(() => syncTableMarkerAutoSize(currentState.tableMarkerAutoSize, currentState.tableMarkerScale));
+  const redRowsChanged = setRenderedHtml(document.querySelector("[data-red-rows]"), renderRows("red"));
+  const whiteRowsChanged = setRenderedHtml(document.querySelector("[data-white-rows]"), renderRows("white"));
+  if (redRowsChanged || whiteRowsChanged) {
+    requestAnimationFrame(() => syncTableMarkerAutoSize(currentState.tableMarkerAutoSize, currentState.tableMarkerScale));
+  }
   renderCountdownOverlay();
 }
 
@@ -1465,12 +1491,12 @@ function renderRecentLog(selector = "[data-recent-log]", limit = 3) {
     .slice(-limit)
     .reverse();
   if (!entries.length) {
-    log.innerHTML = `<div class="log-line"><span class="log-main"><span class="log-time">[${formatTime(currentState.remainingSeconds)}]</span> ${currentState.lastMessage}</span></div>`;
+    setRenderedHtml(log, `<div class="log-line"><span class="log-main"><span class="log-time">[${formatTime(currentState.remainingSeconds)}]</span> ${currentState.lastMessage}</span></div>`);
     return;
   }
-  log.innerHTML = entries.map((entry) => (
+  setRenderedHtml(log, entries.map((entry) => (
     `<div class="log-line"><span class="log-main"><span class="log-time">[${historyTime(entry)}]</span> ${entry.message}</span><span class="log-clock">${clockTime(entry)}</span></div>`
-  )).join("");
+  )).join(""));
 }
 
 function renderRemote() {
@@ -2284,7 +2310,10 @@ function updateTitleFontScaleOutput(form) {
 
 function applyTitleFontScale(value) {
   const scale = normalizeTitleFontScale(value);
-  document.documentElement.style.setProperty("--title-font-scale", scale.toFixed(2));
+  const cacheKey = scale.toFixed(2);
+  if (appliedTitleFontScale === cacheKey) return;
+  appliedTitleFontScale = cacheKey;
+  document.documentElement.style.setProperty("--title-font-scale", cacheKey);
   document.querySelectorAll("[data-title]").forEach((title) => {
     title.style.removeProperty("font-size");
     const baseSize = parseFloat(window.getComputedStyle(title).fontSize);
@@ -2302,6 +2331,9 @@ function updateTeamNameScaleOutput(form) {
 
 function applyTeamNameScale(value, autoSize = currentState?.teamNameAutoSize) {
   const scale = autoSize === false ? normalizeTeamNameScale(value) : DEFAULT_TEAM_NAME_SCALE;
+  const cacheKey = `${autoSize !== false}:${scale.toFixed(2)}`;
+  if (appliedTeamNameScale === cacheKey) return;
+  appliedTeamNameScale = cacheKey;
   document.documentElement.style.setProperty("--team-name-scale", scale.toFixed(2));
   requestAnimationFrame(() => syncTeamNameAutoSize());
 }
@@ -2912,6 +2944,9 @@ function updateTableMarkerControls(form) {
 
 function applyTableMarkerScale(autoSize, value) {
   const scale = autoSize === false ? normalizeTableMarkerScale(value) : DEFAULT_TABLE_MARKER_SCALE;
+  const cacheKey = `${autoSize !== false}:${scale.toFixed(2)}`;
+  if (appliedTableMarkerScale === cacheKey) return;
+  appliedTableMarkerScale = cacheKey;
   document.documentElement.style.setProperty("--table-marker-scale", scale.toFixed(2));
   syncTableMarkerAutoSize(autoSize, value);
   requestAnimationFrame(() => syncTableMarkerAutoSize(autoSize, value));
@@ -2982,6 +3017,8 @@ function hexToRgb(color) {
 
 function applyTitleColor(color) {
   const normalized = normalizeHexColor(color);
+  if (appliedTitleColor === normalized) return;
+  appliedTitleColor = normalized;
   const { r, g, b } = hexToRgb(normalized);
   document.documentElement.style.setProperty("--title-color", normalized);
   document.documentElement.style.setProperty("--title-stroke-color", `rgba(${Math.min(255, r + 35)}, ${Math.min(255, g + 35)}, ${Math.min(255, b + 35)}, .9)`);
