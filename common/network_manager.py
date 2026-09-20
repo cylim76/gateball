@@ -297,6 +297,69 @@ def scan_wifi_networks() -> dict:
     }
 
 
+def wifi_uplink_interface() -> str:
+    result = run_nmcli(["-t", "-f", "DEVICE,TYPE,STATE", "device", "status"], timeout=8)
+    connected = ""
+    fallback = ""
+    for line in result.stdout.splitlines():
+        parts = split_nmcli_terse(line)
+        if len(parts) < 2 or parts[1] != "wifi" or parts[0] == HOTSPOT_IFNAME:
+            continue
+        fallback = fallback or parts[0]
+        if len(parts) > 2 and parts[2] == "connected":
+            connected = parts[0]
+            break
+    return connected or fallback
+
+
+def preferred_24ghz_bssid(ssid: str, ifname: str) -> str:
+    args = ["-t", "-f", "SSID,BSSID,FREQ,SIGNAL", "dev", "wifi", "list"]
+    if ifname:
+        args.extend(["ifname", ifname])
+    args.extend(["--rescan", "yes"])
+    result = run_nmcli(args, timeout=18)
+    if result.returncode != 0:
+        return ""
+
+    candidates: list[tuple[int, str]] = []
+    has_5ghz = False
+    for line in result.stdout.splitlines():
+        parts = split_nmcli_terse(line)
+        if len(parts) < 4 or parts[0].strip() != ssid:
+            continue
+        frequency_text = "".join(char for char in parts[2] if char.isdigit())
+        signal_text = "".join(char for char in parts[3] if char.isdigit())
+        if not frequency_text:
+            continue
+        frequency = int(frequency_text)
+        signal = int(signal_text or "0")
+        if 2400 <= frequency < 2500 and parts[1].strip():
+            candidates.append((signal, parts[1].strip()))
+        elif frequency >= 4900:
+            has_5ghz = True
+    if not has_5ghz or not candidates:
+        return ""
+    return max(candidates)[1]
+
+
+def pin_active_wifi_connection_to_24ghz(ssid: str) -> bool:
+    result = run_nmcli(["-t", "-f", "NAME,TYPE", "connection", "show", "--active"], timeout=8)
+    for line in result.stdout.splitlines():
+        parts = split_nmcli_terse(line)
+        if len(parts) < 2 or parts[1] not in {"wifi", "802-11-wireless"} or parts[0] == HOTSPOT_CONNECTION:
+            continue
+        connection_name = parts[0]
+        profile_ssid = run_nmcli(["-g", "802-11-wireless.ssid", "connection", "show", connection_name], timeout=5)
+        if profile_ssid.returncode != 0 or profile_ssid.stdout.strip() != ssid:
+            continue
+        modified = run_nmcli(
+            ["connection", "modify", connection_name, "802-11-wireless.band", "bg", "802-11-wireless.bssid", ""],
+            timeout=8,
+        )
+        return modified.returncode == 0
+    return False
+
+
 def connect_wifi(ssid: str, password: str) -> dict:
     if platform.system().lower() != "linux" or not command_available("nmcli"):
         return {"ok": False, "supported": False, "message": "当前系统不支持 WiFi 连接"}
@@ -304,9 +367,15 @@ def connect_wifi(ssid: str, password: str) -> dict:
     if not ssid:
         return {"ok": False, "supported": True, "message": "请选择 WiFi"}
 
+    ifname = wifi_uplink_interface()
+    bssid = preferred_24ghz_bssid(ssid, ifname)
     args = ["dev", "wifi", "connect", ssid]
     if password:
         args.extend(["password", password])
+    if ifname:
+        args.extend(["ifname", ifname])
+    if bssid:
+        args.extend(["bssid", bssid])
     result = run_nmcli(args, timeout=35)
     if result.returncode != 0:
         return {
@@ -314,4 +383,6 @@ def connect_wifi(ssid: str, password: str) -> dict:
             "supported": True,
             "message": result.stderr.strip() or result.stdout.strip() or "WiFi 连接失败，热点会继续保留",
         }
-    return {"ok": True, "supported": True, "message": "WiFi 连接成功", "ssid": ssid}
+    pinned = bool(bssid) and pin_active_wifi_connection_to_24ghz(ssid)
+    message = "WiFi 连接成功，已固定使用 2.4 GHz" if pinned else "WiFi 连接成功"
+    return {"ok": True, "supported": True, "message": message, "ssid": ssid}
