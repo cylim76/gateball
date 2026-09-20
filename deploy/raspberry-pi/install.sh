@@ -24,6 +24,7 @@ RESTART_DISPLAY_MANAGER="${RESTART_DISPLAY_MANAGER:-0}"
 INSTALL_RF_SUPPORT="${INSTALL_RF_SUPPORT:-1}"
 INSTALL_AUDIO_SUPPORT="${INSTALL_AUDIO_SUPPORT:-1}"
 INSTALL_NETWORK_SUPPORT="${INSTALL_NETWORK_SUPPORT:-1}"
+FORCE_INSTALL="${FORCE_INSTALL:-0}"
 GATEBALL_HOTSPOT_SSID="${GATEBALL_HOTSPOT_SSID:-HongxingMenqiu1}"
 GATEBALL_HOTSPOT_PASSWORD="${GATEBALL_HOTSPOT_PASSWORD:-1234567890}"
 GATEBALL_HOTSPOT_CONNECTION="${GATEBALL_HOTSPOT_CONNECTION:-gateball-ap}"
@@ -48,6 +49,13 @@ AP_INTERFACE_SERVICE_FILE="/etc/systemd/system/$AP_INTERFACE_SERVICE_NAME"
 MDNS_PUBLISHER="/usr/local/bin/gateball-mdns-publish"
 MDNS_SERVICE_NAME="gateball-mdns.service"
 MDNS_SERVICE_FILE="/etc/systemd/system/$MDNS_SERVICE_NAME"
+INSTALL_MARKER="/var/lib/gateball/installed"
+
+gateball_is_installed() {
+  [ -f "$INSTALL_MARKER" ] && return 0
+  [ -f "/etc/systemd/system/$SERVICE_NAME" ] \
+    && systemctl is-enabled --quiet "$SERVICE_NAME" 2>/dev/null
+}
 
 enable_display_manager() {
   sudo systemctl set-default graphical.target
@@ -608,8 +616,13 @@ install_network_support() {
     return
   fi
 
-  echo "Installing Gateball network support: NetworkManager hotspot, nginx, Avahi mDNS names"
-  if ! sudo apt-get update || ! sudo apt-get install -y network-manager nginx dnsmasq-base avahi-daemon avahi-utils; then
+  if ! command -v nmcli >/dev/null 2>&1; then
+    echo "Warning: NetworkManager is not active on this system. Hotspot setup skipped to preserve the existing network configuration."
+    return
+  fi
+
+  echo "Installing Gateball network support: dedicated NetworkManager hotspot, nginx, Avahi mDNS names"
+  if ! sudo apt-get update || ! sudo apt-get install -y nginx dnsmasq-base avahi-daemon avahi-utils; then
     echo "Warning: failed to install network packages. mDNS names and hotspot may not work yet."
     return
   fi
@@ -650,8 +663,8 @@ EOF
     sudo systemctl enable "$AP_INTERFACE_SERVICE_NAME" >/dev/null 2>&1 || true
     sudo systemctl start "$AP_INTERFACE_SERVICE_NAME" >/dev/null 2>&1 || true
     if ! ip link show "$GATEBALL_HOTSPOT_IFNAME" >/dev/null 2>&1; then
-      echo "Warning: could not create $GATEBALL_HOTSPOT_IFNAME; falling back to $base_wifi_ifname"
-      GATEBALL_HOTSPOT_IFNAME="$base_wifi_ifname"
+      echo "Warning: could not create dedicated hotspot interface $GATEBALL_HOTSPOT_IFNAME. Hotspot setup skipped to preserve $base_wifi_ifname."
+      return
     fi
   fi
 
@@ -823,8 +836,7 @@ EOF
   fi
 
   if command -v nmcli >/dev/null 2>&1; then
-    sudo systemctl restart NetworkManager
-    wait_for_network_manager
+    sudo nmcli connection reload >/dev/null 2>&1 || true
     if [ "$GATEBALL_HOTSPOT_IFNAME" != "$base_wifi_ifname" ]; then
       sudo systemctl start "$AP_INTERFACE_SERVICE_NAME"
     fi
@@ -859,6 +871,12 @@ EOF
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required."
   exit 1
+fi
+
+if [ "$FORCE_INSTALL" != "1" ] && gateball_is_installed; then
+  echo "Gateball is already installed. No changes were made."
+  echo "Use FORCE_INSTALL=1 only when an intentional repair or reinstall is required."
+  exit 0
 fi
 
 if ! command -v curl >/dev/null 2>&1; then
@@ -907,6 +925,9 @@ fi
 if [ "$CONFIGURE_QUIET_BOOT" = "1" ]; then
   configure_quiet_boot
 fi
+
+sudo install -d -m 755 "$(dirname "$INSTALL_MARKER")"
+printf 'service=%s\nproject=%s\n' "$SERVICE_NAME" "$GATEBALL_DIR" | sudo tee "$INSTALL_MARKER" >/dev/null
 
 echo
 echo "Installed."

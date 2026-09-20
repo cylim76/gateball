@@ -33,6 +33,7 @@ AP_INTERFACE_SERVICE_FILE="/etc/systemd/system/$AP_INTERFACE_SERVICE_NAME"
 MDNS_PUBLISHER="/usr/local/bin/gateball-mdns-publish"
 MDNS_SERVICE_NAME="gateball-mdns.service"
 MDNS_SERVICE_FILE="/etc/systemd/system/$MDNS_SERVICE_NAME"
+INSTALL_MARKER="/var/lib/gateball/installed"
 
 wait_for_network_manager() {
   if ! command -v nmcli >/dev/null 2>&1; then
@@ -117,9 +118,8 @@ remove_network_support() {
   if command -v nginx >/dev/null 2>&1; then
     sudo nginx -t >/dev/null 2>&1 && sudo systemctl reload nginx >/dev/null 2>&1 || true
   fi
-  if command -v systemctl >/dev/null 2>&1; then
-    sudo systemctl restart NetworkManager >/dev/null 2>&1 || true
-    wait_for_network_manager
+  if command -v nmcli >/dev/null 2>&1; then
+    sudo nmcli connection reload >/dev/null 2>&1 || true
   fi
   sudo systemctl daemon-reload >/dev/null 2>&1 || true
   echo "Removed Gateball hotspot, nginx site, mDNS publisher, and legacy local DNS name configuration."
@@ -128,6 +128,7 @@ remove_network_support() {
 sudo systemctl disable --now "$SERVICE_NAME" 2>/dev/null || true
 sudo systemctl disable --now "$DIRECT_X_SERVICE_NAME" 2>/dev/null || true
 sudo rm -f "/etc/systemd/system/$SERVICE_NAME"
+sudo rm -f "$INSTALL_MARKER"
 sudo rm -f "$DIRECT_X_SERVICE_FILE"
 sudo systemctl daemon-reload
 
