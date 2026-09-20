@@ -104,6 +104,22 @@ The default install command is:
 sudo reboot
 ```
 
+When the board uses one physical Wi-Fi radio for both its normal network and
+the Gateball hotspot, the installer checks the currently connected SSID. If
+that SSID is advertised on both 2.4 GHz and 5 GHz, the saved connection is
+restricted to 2.4 GHz and the hotspot is placed on the matching 2.4 GHz
+channel. This prevents NetworkManager from roaming to 5 GHz while the same
+radio is serving the hotspot. The installer does not pin a router BSSID, so a
+replacement router with the same SSID can still connect. Reboot after a remote
+installation so the saved band preference is applied without interrupting the
+SSH session.
+
+To keep NetworkManager's original band selection behavior, run:
+
+```bash
+GATEBALL_WIFI_PIN_24GHZ=0 ./install.sh
+```
+
 There is also an advanced direct X kiosk mode. It backs up and updates
 `/etc/X11/Xwrapper.config`, installs `xserver-xorg`, `xinit`, and `openbox`,
 disables the normal display manager, boots to `multi-user.target`, and starts

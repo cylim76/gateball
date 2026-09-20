@@ -29,6 +29,7 @@ GATEBALL_HOTSPOT_SSID="${GATEBALL_HOTSPOT_SSID:-HongxingMenqiu1}"
 GATEBALL_HOTSPOT_PASSWORD="${GATEBALL_HOTSPOT_PASSWORD:-1234567890}"
 GATEBALL_HOTSPOT_CONNECTION="${GATEBALL_HOTSPOT_CONNECTION:-gateball-ap}"
 GATEBALL_HOTSPOT_IFNAME="${GATEBALL_HOTSPOT_IFNAME:-wlan0_ap}"
+GATEBALL_WIFI_PIN_24GHZ="${GATEBALL_WIFI_PIN_24GHZ:-1}"
 SERVICE_NAME="${SERVICE_NAME:-gateball.service}"
 DIRECT_X_SERVICE_NAME="${DIRECT_X_SERVICE_NAME:-gateball-x-kiosk.service}"
 AUTOSTART_FILE="$GATEBALL_HOME/.config/autostart/gateball-kiosk.desktop"
@@ -362,13 +363,74 @@ delete_static_hotspot_profile_if_needed() {
   fi
 }
 
+wifi_24ghz_channel_for_frequency() {
+  local frequency="${1//[^0-9]/}"
+  if [ "$frequency" = "2484" ]; then
+    printf '14\n'
+  elif [ -n "$frequency" ] && [ "$frequency" -ge 2412 ] && [ "$frequency" -le 2472 ]; then
+    printf '%s\n' "$(( (frequency - 2407) / 5 ))"
+  fi
+}
+
+prepare_shared_wifi_radio() {
+  local ifname="$1"
+  local active_connection=""
+  local active_ssid=""
+  local scan_output=""
+  local line=""
+  local rest=""
+  local ssid=""
+  local frequency=""
+  local signal=""
+  local best_24_frequency=""
+  local best_24_signal=-1
+  local has_5ghz=0
+
+  GATEBALL_SHARED_WIFI_CHANNEL=""
+  [ "$GATEBALL_WIFI_PIN_24GHZ" = "1" ] || return 0
+
+  active_connection="$(nmcli -g GENERAL.CONNECTION device show "$ifname" 2>/dev/null | head -n1 || true)"
+  active_ssid="$(iw dev "$ifname" link 2>/dev/null | sed -n 's/^[[:space:]]*SSID: //p' | head -n1)"
+  if [ -z "$active_connection" ] || [ "$active_connection" = "--" ] || [ -z "$active_ssid" ]; then
+    return 0
+  fi
+
+  scan_output="$(nmcli --escape no -t -f SSID,FREQ,SIGNAL device wifi list ifname "$ifname" --rescan yes 2>/dev/null || true)"
+  while IFS= read -r line; do
+    signal="${line##*:}"
+    rest="${line%:*}"
+    frequency="${rest##*:}"
+    ssid="${rest%:*}"
+    [ "$ssid" = "$active_ssid" ] || continue
+    frequency="${frequency//[^0-9]/}"
+    signal="${signal//[^0-9]/}"
+    if [ -n "$frequency" ] && [ "$frequency" -ge 2400 ] && [ "$frequency" -lt 2500 ]; then
+      if [ -n "$signal" ] && [ "$signal" -gt "$best_24_signal" ]; then
+        best_24_frequency="$frequency"
+        best_24_signal="$signal"
+      fi
+    elif [ -n "$frequency" ] && [ "$frequency" -ge 4900 ]; then
+      has_5ghz=1
+    fi
+  done <<< "$scan_output"
+
+  [ -n "$best_24_frequency" ] || return 0
+  GATEBALL_SHARED_WIFI_CHANNEL="$(wifi_24ghz_channel_for_frequency "$best_24_frequency")"
+  if [ "$has_5ghz" = "1" ]; then
+    echo "Same SSID is available on 2.4 GHz and 5 GHz; pinning $active_connection to 2.4 GHz to keep the hotspot stable."
+    sudo nmcli connection modify "$active_connection" 802-11-wireless.band bg 802-11-wireless.bssid ""
+  fi
+}
+
 ensure_hotspot_profile() {
   local ifname="$1"
   local connection="$2"
   local ssid="$3"
   local password="$4"
+  local channel="${5:-}"
   local create_output=""
   local up_output=""
+  local hotspot_options=()
 
   wait_for_hotspot_interface "$ifname" || return 1
   while IFS=: read -r active_name active_device; do
@@ -399,15 +461,24 @@ ensure_hotspot_profile() {
     return 1
   fi
 
-  sudo nmcli connection modify "$connection" \
+  hotspot_options=(
     connection.autoconnect yes \
     connection.interface-name "$ifname" \
     802-11-wireless.mode ap \
     802-11-wireless.ssid "$ssid" \
+    802-11-wireless.band bg \
     ipv4.method shared \
     ipv6.method ignore \
     wifi-sec.key-mgmt wpa-psk \
     wifi-sec.psk "$password"
+  )
+  if [ -n "$channel" ]; then
+    hotspot_options+=(802-11-wireless.channel "$channel")
+    echo "Aligning hotspot with the 2.4 GHz uplink on channel $channel."
+  else
+    hotspot_options+=(802-11-wireless.channel 0)
+  fi
+  sudo nmcli connection modify "$connection" "${hotspot_options[@]}"
 
   for attempt in 1 2 3; do
     echo "Starting hotspot profile $connection (attempt $attempt/3)..."
@@ -675,6 +746,9 @@ SSID="\${1:-$GATEBALL_HOTSPOT_SSID}"
 PASSWORD="\${2:-$GATEBALL_HOTSPOT_PASSWORD}"
 HOTSPOT_IFNAME="$GATEBALL_HOTSPOT_IFNAME"
 HOTSPOT_CONNECTION="$GATEBALL_HOTSPOT_CONNECTION"
+UPLINK_IFNAME="$base_wifi_ifname"
+PIN_UPLINK_24GHZ="$GATEBALL_WIFI_PIN_24GHZ"
+HOTSPOT_CHANNEL=""
 if [ -z "\$SSID" ] || [ "\${#SSID}" -gt 32 ]; then
   echo "Invalid hotspot SSID" >&2
   exit 2
@@ -683,6 +757,53 @@ if [ "\${#PASSWORD}" -lt 8 ] || [ "\${#PASSWORD}" -gt 63 ]; then
   echo "Invalid hotspot password" >&2
   exit 2
 fi
+
+wifi_24ghz_channel_for_frequency() {
+  frequency="\${1//[^0-9]/}"
+  if [ "\$frequency" = "2484" ]; then
+    printf '14\n'
+  elif [ -n "\$frequency" ] && [ "\$frequency" -ge 2412 ] && [ "\$frequency" -le 2472 ]; then
+    printf '%s\n' "\$(( (frequency - 2407) / 5 ))"
+  fi
+}
+
+prepare_shared_wifi_radio() {
+  [ "\$PIN_UPLINK_24GHZ" = "1" ] || return 0
+  active_connection="\$(nmcli -g GENERAL.CONNECTION device show "\$UPLINK_IFNAME" 2>/dev/null | head -n1 || true)"
+  active_ssid="\$(iw dev "\$UPLINK_IFNAME" link 2>/dev/null | sed -n 's/^[[:space:]]*SSID: //p' | head -n1)"
+  if [ -z "\$active_connection" ] || [ "\$active_connection" = "--" ] || [ -z "\$active_ssid" ]; then
+    return 0
+  fi
+
+  best_24_frequency=""
+  best_24_signal=-1
+  has_5ghz=0
+  scan_output="\$(nmcli --escape no -t -f SSID,FREQ,SIGNAL device wifi list ifname "\$UPLINK_IFNAME" --rescan yes 2>/dev/null || true)"
+  while IFS= read -r line; do
+    signal="\${line##*:}"
+    rest="\${line%:*}"
+    frequency="\${rest##*:}"
+    candidate_ssid="\${rest%:*}"
+    [ "\$candidate_ssid" = "\$active_ssid" ] || continue
+    frequency="\${frequency//[^0-9]/}"
+    signal="\${signal//[^0-9]/}"
+    if [ -n "\$frequency" ] && [ "\$frequency" -ge 2400 ] && [ "\$frequency" -lt 2500 ]; then
+      if [ -n "\$signal" ] && [ "\$signal" -gt "\$best_24_signal" ]; then
+        best_24_frequency="\$frequency"
+        best_24_signal="\$signal"
+      fi
+    elif [ -n "\$frequency" ] && [ "\$frequency" -ge 4900 ]; then
+      has_5ghz=1
+    fi
+  done <<< "\$scan_output"
+
+  [ -n "\$best_24_frequency" ] || return 0
+  HOTSPOT_CHANNEL="\$(wifi_24ghz_channel_for_frequency "\$best_24_frequency")"
+  if [ "\$has_5ghz" = "1" ]; then
+    echo "Same SSID is available on 2.4 GHz and 5 GHz; pinning \$active_connection to 2.4 GHz to keep the hotspot stable."
+    nmcli connection modify "\$active_connection" 802-11-wireless.band bg 802-11-wireless.bssid ""
+  fi
+}
 
 wait_for_hotspot_interface() {
   for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -730,6 +851,7 @@ delete_static_hotspot_profile_if_needed() {
 }
 
 wait_for_hotspot_interface
+prepare_shared_wifi_radio
 
 while IFS=: read -r active_name active_device; do
   if [ "\$active_device" = "\$HOTSPOT_IFNAME" ] && [ "\$active_name" != "\$HOTSPOT_CONNECTION" ]; then
@@ -764,10 +886,18 @@ nmcli connection modify "\$HOTSPOT_CONNECTION" \\
   connection.interface-name "\$HOTSPOT_IFNAME" \\
   802-11-wireless.mode ap \\
   802-11-wireless.ssid "\$SSID" \\
+  802-11-wireless.band bg \\
   ipv4.method shared \\
   ipv6.method ignore \\
   wifi-sec.key-mgmt wpa-psk \\
   wifi-sec.psk "\$PASSWORD"
+
+if [ -n "\$HOTSPOT_CHANNEL" ]; then
+  echo "Aligning hotspot with the 2.4 GHz uplink on channel \$HOTSPOT_CHANNEL."
+  nmcli connection modify "\$HOTSPOT_CONNECTION" 802-11-wireless.channel "\$HOTSPOT_CHANNEL"
+else
+  nmcli connection modify "\$HOTSPOT_CONNECTION" 802-11-wireless.channel 0
+fi
 
 for attempt in 1 2 3; do
   echo "Starting hotspot profile \$HOTSPOT_CONNECTION (attempt \$attempt/3)..."
@@ -840,11 +970,13 @@ EOF
     if [ "$GATEBALL_HOTSPOT_IFNAME" != "$base_wifi_ifname" ]; then
       sudo systemctl start "$AP_INTERFACE_SERVICE_NAME"
     fi
+    prepare_shared_wifi_radio "$base_wifi_ifname"
     ensure_hotspot_profile \
       "$GATEBALL_HOTSPOT_IFNAME" \
       "$GATEBALL_HOTSPOT_CONNECTION" \
       "$GATEBALL_HOTSPOT_SSID" \
-      "$GATEBALL_HOTSPOT_PASSWORD"
+      "$GATEBALL_HOTSPOT_PASSWORD" \
+      "$GATEBALL_SHARED_WIFI_CHANNEL"
     install_mdns_support "$GATEBALL_HOTSPOT_IFNAME"
     print_hotspot_status \
       "$GATEBALL_HOTSPOT_CONNECTION" \
