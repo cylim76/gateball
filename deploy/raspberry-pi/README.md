@@ -137,6 +137,43 @@ INSTALL_DIRECT_X_KIOSK=1 INSTALL_DESKTOP_AUTOSTART=0 ./install.sh
 sudo reboot
 ```
 
+## Kiosk Power Policy
+
+The installer disables Wi-Fi power saving and system suspend, hibernation,
+hybrid sleep, and suspend-then-hibernate by default. It adds separate Gateball
+configuration files rather than replacing the system's main configuration.
+Wi-Fi power saving is also disabled whenever NetworkManager activates or
+reapplies a wireless connection, including profiles that explicitly enable it.
+This requires `iw`; the network installer normally installs it.
+
+The X11 kiosk launcher already disables screen blanking, screen savers, and
+DPMS with `xset`. Desktop lock-screen managers and Wayland compositors may have
+their own policies; configure those separately if used. CPU frequency scaling,
+thermal protection, and normal shutdown are preserved. This policy does not
+synchronize hotspot channels when a router changes its channel.
+
+For an existing installation, apply only the power policy without restarting
+the network, display, or match service:
+
+```bash
+sudo bash deploy/raspberry-pi/configure-power.sh install
+```
+
+Sleep restrictions and current Wi-Fi power saving are applied immediately;
+the logind idle-action setting applies after its next start, normally on reboot.
+The system sleep switches require systemd 240 or later (including Ubuntu 20.04
+on GB2). To skip this policy on a fresh installation, use
+`DISABLE_POWER_SAVING=0 ./install.sh`.
+
+Uninstallation removes the added policy files and restores any pre-existing
+files at those same paths. Saved Wi-Fi profiles are not rewritten. To remove
+only the policy, run `sudo bash deploy/raspberry-pi/configure-power.sh remove`;
+normal Wi-Fi defaults resume on reconnection and idle defaults after reboot.
+
+References: [NetworkManager connection defaults](https://networkmanager.dev/docs/api/latest/NetworkManager.conf.html),
+[NetworkManager dispatcher](https://networkmanager.dev/docs/api/latest/NetworkManager-dispatcher.html),
+and [systemd sleep policy](https://www.freedesktop.org/software/systemd/man/latest/systemd-sleep.conf.html).
+
 ## Useful Commands
 
 ```bash

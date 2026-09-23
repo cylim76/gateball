@@ -20,6 +20,7 @@ INSTALL_DESKTOP_AUTOSTART="${INSTALL_DESKTOP_AUTOSTART:-1}"
 INSTALL_KIOSK_SESSION="${INSTALL_KIOSK_SESSION:-0}"
 INSTALL_DIRECT_X_KIOSK="${INSTALL_DIRECT_X_KIOSK:-0}"
 CONFIGURE_QUIET_BOOT="${CONFIGURE_QUIET_BOOT:-1}"
+DISABLE_POWER_SAVING="${DISABLE_POWER_SAVING:-1}"
 RESTART_DISPLAY_MANAGER="${RESTART_DISPLAY_MANAGER:-0}"
 INSTALL_RF_SUPPORT="${INSTALL_RF_SUPPORT:-1}"
 INSTALL_AUDIO_SUPPORT="${INSTALL_AUDIO_SUPPORT:-1}"
@@ -1008,6 +1009,7 @@ fi
 if [ "$FORCE_INSTALL" != "1" ] && gateball_is_installed; then
   echo "Gateball is already installed. No changes were made."
   echo "Use FORCE_INSTALL=1 only when an intentional repair or reinstall is required."
+  echo "To apply only the kiosk power policy: sudo bash $SCRIPT_DIR/configure-power.sh install"
   exit 0
 fi
 
@@ -1024,6 +1026,9 @@ echo "Home:    $GATEBALL_HOME"
 install_rf_support
 install_audio_support
 install_network_support
+if [ "$DISABLE_POWER_SAVING" = "1" ]; then
+  sudo bash "$SCRIPT_DIR/configure-power.sh" install
+fi
 
 sudo install -d /etc/systemd/system
 sed \

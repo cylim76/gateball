@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 SERVICE_NAME="${SERVICE_NAME:-gateball.service}"
 DIRECT_X_SERVICE_NAME="${DIRECT_X_SERVICE_NAME:-gateball-x-kiosk.service}"
 DEFAULT_GATEBALL_USER="$(id -un)"
@@ -135,6 +137,7 @@ sudo systemctl daemon-reload
 rm -f "$AUTOSTART_FILE"
 sudo rm -f "$KIOSK_SESSION_RUNNER" "$KIOSK_XSESSION_FILE" "$LIGHTDM_KIOSK_CONF"
 remove_network_support
+sudo bash "$SCRIPT_DIR/configure-power.sh" remove
 enable_display_manager
 restore_desktop_shell
 
