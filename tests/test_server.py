@@ -288,6 +288,13 @@ class ServerTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(self.s.state["voiceProfile"], before)
 
+    def test_prefixed_serial_json_matches_plain_json(self):
+        payload = json.dumps({"raw": "0x57F0FF", "bits": 24})
+        parsed = server.rf_payload_from_serial_line(payload)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(server.rf_payload_from_serial_line("RFJSON: " + payload), parsed)
+        self.assertIsNone(server.rf_payload_from_serial_line('RFJSON: {"raw":"0x57F0FF","bits":32}'))
+
     def test_static_paths_cannot_escape(self):
         static = self.root / "web/static"
         static.mkdir(parents=True)

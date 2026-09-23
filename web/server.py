@@ -1943,7 +1943,7 @@ def rf_payload_from_serial_line(line: str) -> dict | None:
     if text in {"�", "⸮"}:
         return None
     if text.startswith("RFJSON:"):
-        text = text.removeprefix("RFJSON:").strip()
+        text = text[len("RFJSON:"):].strip()
     if text.startswith("{"):
         try:
             data = json.loads(text)
@@ -2533,7 +2533,9 @@ class Handler(BaseHTTPRequestHandler):
         else:
             base = STATIC_DIR.resolve()
             target = (base / unquote(path).replace("\\", "/").lstrip("/")).resolve()
-            if not target.is_relative_to(base):
+            try:
+                target.relative_to(base)
+            except ValueError:
                 self.send_error(404)
                 return
             if target.exists() and target.is_file():
