@@ -20,6 +20,13 @@ The backend service and browser are started separately:
 This separation is more stable. If the browser crashes, the backend keeps
 running. If the backend crashes, systemd restarts it automatically.
 
+After a backend restart or power loss, unfinished scores and the latest timer
+checkpoint are restored automatically in a paused state. Press Continue to
+resume without entering settings. Downtime is not deducted. Timer checkpoints
+are written approximately once per second; score operations are saved before
+completion. Finish a cancelled match through the normal password flow before
+starting the next one.
+
 ## Install
 
 On the Raspberry Pi:

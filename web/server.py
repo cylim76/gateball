@@ -2,19 +2,23 @@ from __future__ import annotations
 
 import errno
 import json
+import logging
+import math
 import mimetypes
 import os
 import re
 import select
 import shutil
+import secrets
 import subprocess
 from dataclasses import dataclass
 from queue import SimpleQueue
 from threading import RLock, Thread
+from uuid import uuid4
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 from urllib.request import Request, urlopen
 
 import sys
@@ -33,11 +37,14 @@ from common.network_manager import (
     scan_wifi_networks,
 )
 from common.results_store import ResultsStore
+from common.settings_auth import SettingsSessions, public_data
+from common.background_jobs import BackgroundJobs
 
 
 HOST = "0.0.0.0"
 PORT = 8000
 DATA_FILE = ROOT / "data" / "web_state.json"
+TIMER_FILE = ROOT / "data" / "timer_checkpoint.json"
 RESULTS_DB_FILE = ROOT / "data" / "gateball.sqlite3"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 TEAM_NAME_AUDIO_DIR = STATIC_DIR / "audio" / "team-names"
@@ -55,6 +62,13 @@ MUSIC_TRACKS_CACHE: dict[str, object] = {"timestamp": 0.0, "tracks": []}
 MUSIC_TRACKS_CACHE_TTL = 15.0
 WEATHER_CACHE: dict = {"timestamp": 0.0, "payload": {"ok": False}}
 SELECTION_TIMEOUT_SECONDS = 30
+SETTINGS_ACTIONS = {
+    "update_settings", "update_rf_settings", "update_rf_remote_slot", "clear_rf_remote_slot",
+    "update_keyboard_settings", "clear_key_bindings", "add_rf_remote", "update_rf_remote",
+    "delete_rf_remote", "delete_music_item", "preview_title_style", "update_key_binding",
+    "begin_rf_learning", "cancel_rf_learning", "clear_rf_last_signal",
+}
+settings_sessions = SettingsSessions()
 CLIENT_DISCONNECT_ERRNOS = {
     errno.EPIPE,
     errno.ECONNABORTED,
@@ -538,6 +552,13 @@ def atomic_write_json(path: Path, payload: dict) -> None:
         handle.flush()
         os.fsync(handle.fileno())
     temp_path.replace(path)
+    if os.name == "posix":
+        # Persist the rename as well as the file contents before acknowledging a save.
+        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
 
 
 def is_client_disconnect(error: OSError) -> bool:
@@ -609,7 +630,13 @@ def warm_team_name_audio_cache(team: str, name: str) -> None:
 class Store:
     def __init__(self) -> None:
         self.lock = RLock()
-        self.state = DEFAULT_STATE.copy()
+        self.state = json.loads(json.dumps(DEFAULT_STATE))
+        self.state["matchId"] = uuid4().hex
+        self.state["remainingPreciseSeconds"] = float(self.state["remainingSeconds"])
+        self.deadline_monotonic: float | None = None
+        self.last_checkpoint = time.monotonic()
+        self.revision = 0
+        self.device_jobs = BackgroundJobs(self.apply_device_settings)
         self.preview_state: dict = {}
         self.balls = new_balls()
         self.history: list[dict] = []
@@ -663,7 +690,19 @@ class Store:
         except (OSError, json.JSONDecodeError):
             self.quarantine_broken_state_file()
             return
-        self.state.update(data.get("state", {}))
+        if not isinstance(data, dict) or not isinstance(data.get("state", {}), dict):
+            self.quarantine_broken_state_file()
+            return
+        saved_state = data.get("state", {})
+        self.state.update(saved_state)
+        try:
+            remaining = float(saved_state.get("remainingPreciseSeconds", saved_state.get("remainingSeconds", self.state["durationSeconds"])))
+            if not math.isfinite(remaining) or remaining < 0:
+                raise ValueError("invalid remaining time")
+        except (TypeError, ValueError):
+            remaining = float(DEFAULT_STATE["durationSeconds"])
+        self.state["remainingPreciseSeconds"] = remaining
+        self.state["matchId"] = str(self.state.get("matchId") or uuid4().hex)
         for key, value in DEFAULT_STATE.items():
             if key not in self.state:
                 self.state[key] = value.copy() if isinstance(value, list) else value
@@ -729,8 +768,6 @@ class Store:
             self.state["rfLearning"] = None
         if "selectedBallAt" not in self.state:
             self.state["selectedBallAt"] = None
-        if self.state.get("finishPassword") in {"0000", "1234"}:
-            self.state["finishPassword"] = "9999"
         if self.state.get("running"):
             self.state["timerStarted"] = True
         if self.state.get("lastTickRemainingSeconds") is None:
@@ -742,28 +779,36 @@ class Store:
         for number in range(1, 11):
             self.balls.setdefault(number, BallState(number))
         self.history = data.get("history", [])
-        self.reset_match_runtime_on_startup()
+        self.restore_match_runtime_on_startup()
 
-    def reset_match_runtime_on_startup(self) -> None:
-        duration = int(self.state.get("durationSeconds") or DEFAULT_STATE["durationSeconds"])
-        self.state["remainingSeconds"] = duration
-        self.state["running"] = False
-        self.state["timeExpired"] = False
-        self.state["matchFinished"] = False
-        self.state["selectedBall"] = 1
-        self.state["selectedBallAt"] = None
-        self.state["deadline"] = None
-        self.state["announcedMinuteWarnings"] = []
-        self.state["timerStarted"] = False
-        self.state["matchStartedAt"] = None
-        self.state["lastTickRemainingSeconds"] = duration
-        self.state["tenSecondCountdownId"] = None
-        self.state["tenSecondCountdownStartedAt"] = None
-        self.state["musicPlaying"] = False
-        self.balls = new_balls()
-        self.history = []
-        self.state["lastMessage"] = f"第{self.state['matchNumber']}场，等待开始"
-        self.state["lastUpdated"] = time.time()
+    def restore_match_runtime_on_startup(self) -> None:
+        # A completed match is already archived; an interrupted match resumes paused.
+        if self.state.get("matchFinished"):
+            self.reset_match()
+            return
+        try:
+            checkpoint = json.loads(TIMER_FILE.read_text(encoding="utf-8"))
+            if (checkpoint.get("matchId") == self.state["matchId"]
+                    and int(checkpoint.get("revision", 0)) > int(self.state.get("timerRevision", 0))):
+                remaining = float(checkpoint["remainingPreciseSeconds"])
+                if math.isfinite(remaining) and remaining >= 0:
+                    self.state["remainingPreciseSeconds"] = remaining
+                    self.state["timerRevision"] = int(checkpoint["revision"])
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            logging.debug("No usable timer checkpoint")
+        remaining = max(0.0, float(self.state.get("remainingPreciseSeconds", self.state["remainingSeconds"])))
+        was_started = self.state.get("timerStarted") or self.state.get("running")
+        self.state.update(running=False, deadline=None, remainingSeconds=math.ceil(remaining),
+                          remainingPreciseSeconds=remaining, timerStarted=bool(was_started),
+                          timeExpired=remaining <= 0, lastTickRemainingSeconds=math.ceil(remaining),
+                          selectedBallAt=None, tenSecondCountdownId=None, tenSecondCountdownStartedAt=None,
+                          rfFinishPasswordPending=False, rfLearning=None, rfLastSignal=None,
+                          deviceSettingsStatus=None, musicPlaying=False, musicDuckingUntil=0)
+        self.deadline_monotonic = None
+        if was_started or any(ball.history for ball in self.balls.values()):
+            message = "比赛已恢复，时间已到" if remaining <= 0 else "比赛已恢复，暂停中，请按继续"
+            self.state["lastMessage"] = message
+            self.record("restore_match", None, message)
         self.save()
 
     def save(self) -> None:
@@ -788,11 +833,13 @@ class Store:
     def tick(self) -> None:
         if not self.state["running"]:
             return
-        deadline = self.state.get("deadline")
-        if not deadline:
+        if self.deadline_monotonic is None:
             return
         previous_remaining = self.state.get("lastTickRemainingSeconds")
-        remaining = max(0, int(deadline - time.time()))
+        now = time.monotonic()
+        precise = max(0.0, self.deadline_monotonic - now)
+        self.state["remainingPreciseSeconds"] = precise
+        remaining = math.ceil(precise)
         self.state["remainingSeconds"] = remaining
         changed = False
         announced = set(self.state.get("announcedMinuteWarnings", []))
@@ -810,12 +857,20 @@ class Store:
         if remaining == 0 and not self.state.get("timeExpired"):
             self.state["timeExpired"] = True
             self.state["running"] = False
+            self.deadline_monotonic = None
             self.state["lastMessage"] = "时间到"
             self.record("time_expired", None, self.state["lastMessage"])
             changed = True
         self.state["lastTickRemainingSeconds"] = remaining
         if changed:
             self.save()
+        if now - self.last_checkpoint >= 1:
+            self.state["timerRevision"] = int(self.state.get("timerRevision", 0)) + 1
+            atomic_write_json(TIMER_FILE, {
+                "matchId": self.state["matchId"], "revision": self.state["timerRevision"],
+                "remainingPreciseSeconds": precise,
+            })
+            self.last_checkpoint = now
 
     def snapshot(self) -> dict:
         with self.lock:
@@ -823,7 +878,7 @@ class Store:
             balls = [self.balls[number].to_dict() for number in range(1, 11)]
             red_total = sum(ball.score for ball in self.balls.values() if team_for_ball(ball.number) == "red")
             white_total = sum(ball.score for ball in self.balls.values() if team_for_ball(ball.number) == "white")
-            return {
+            return public_data({
                 **self.state,
                 **self.preview_state,
                 "balls": balls,
@@ -831,10 +886,43 @@ class Store:
                 "whiteTotal": white_total,
                 "serverTime": time.time(),
                 "history": self.history[-30:],
-            }
+                "finishPasswordLength": len(str(self.state["finishPassword"])),
+                "settingsPasswordLength": len(str(self.state["settingsPassword"])),
+                "revision": self.revision,
+            })
 
     def emit(self) -> None:
+        self.revision += 1
         self.state["lastUpdated"] = time.time()
+
+    def settings_data(self) -> dict:
+        with self.lock:
+            return {"hotspotPassword": self.state["hotspotPassword"]}
+
+    def apply_device_settings(self, job: dict) -> None:
+        failures = []
+        try:
+            if "audioOutputMode" in job and not apply_audio_output_mode(job["audioOutputMode"]):
+                failures.append("音频输出切换失败")
+            if "systemVolumePercent" in job and not set_system_volume_percent(job["systemVolumePercent"]):
+                failures.append("系统音量设置失败")
+            if "hotspotSsid" in job:
+                result = configure_hotspot(job["hotspotSsid"], job["hotspotPassword"])
+                if not result.get("ok"):
+                    failures.append("热点应用失败，请检查网络设置")
+                elif result.get("supported") is False:
+                    failures.append("当前系统不支持自动应用热点")
+        except Exception:
+            logging.exception("Applying device settings failed")
+            failures.append("设备设置未能完成")
+        with self.lock:
+            if (self.state.get("deviceSettingsStatus") or {}).get("id") != job["id"]:
+                return
+            self.state["deviceSettingsStatus"] = {
+                "id": job["id"], "status": "error" if failures else "done",
+                "message": "；".join(failures) if failures else "设备设置已应用",
+            }
+            self.emit()
 
     def record(self, action: str, ball: int | None, message: str) -> None:
         self.history.append(
@@ -847,12 +935,16 @@ class Store:
                 "message": message,
             }
         )
-        self.state["lastUpdated"] = self.history[-1]["time"]
+        self.emit()
 
     def reset_match(self) -> str:
         self.balls = new_balls()
+        self.state["matchId"] = uuid4().hex
+        self.state["timerRevision"] = 0
         self.state["matchNumber"] += 1
         self.state["remainingSeconds"] = self.state["durationSeconds"]
+        self.state["remainingPreciseSeconds"] = float(self.state["durationSeconds"])
+        self.deadline_monotonic = None
         self.state["running"] = False
         self.state["timeExpired"] = False
         self.state["matchFinished"] = False
@@ -863,6 +955,9 @@ class Store:
         self.state["lastTickRemainingSeconds"] = self.state["remainingSeconds"]
         self.state["selectedBall"] = 1
         self.state["selectedBallAt"] = None
+        self.state["tenSecondCountdownId"] = None
+        self.state["tenSecondCountdownStartedAt"] = None
+        self.state["rfFinishPasswordPending"] = False
         self.state["lastMessage"] = f"第{self.state['matchNumber']}场，等待开始"
         self.record("next_match", None, self.state["lastMessage"])
         self.save()
@@ -1075,10 +1170,41 @@ class Store:
         self.emit()
         return {"ok": status in {"executed", "finish_requires_password", "finish_password_digit"}, "message": status, "state": self.snapshot()}
 
-    def action(self, payload: dict) -> dict:
+    def action(self, payload: dict, *, settings_authorized: bool = False, internal: bool = False) -> dict:
+        with self.lock:
+            if not isinstance(payload, dict) or not isinstance(payload.get("action"), str):
+                return {"ok": False, "message": "操作格式不正确", "state": self.snapshot()}
+            action = payload["action"]
+            if (action in SETTINGS_ACTIONS or (action == "simulate_rf_signal" and not internal)) and not settings_authorized:
+                return {"ok": False, "requiresSettingsLogin": True, "message": "请先输入设置密码", "state": self.snapshot()}
+            try:
+                self.validate_action(payload)
+            except (ValueError, TypeError, OverflowError) as exc:
+                return {"ok": False, "message": str(exc) or "参数不正确", "state": self.snapshot()}
+            return self._action(payload, settings_authorized=settings_authorized)
+
+    def validate_action(self, payload: dict) -> None:
+        if payload["action"] == "select" and not 1 <= int(payload.get("ball", 0)) <= 10:
+            raise ValueError("球号应为 1 到 10")
+        if payload["action"] != "update_settings":
+            return
+        if "durationMinutes" in payload and not 1 <= int(payload["durationMinutes"]) <= 120:
+            raise ValueError("比赛时长应为 1 到 120 分钟")
+        for key in ("finishPassword", "settingsPassword"):
+            if payload.get(key) and not re.fullmatch(r"[0-9]{1,6}", str(payload[key])):
+                raise ValueError("密码应为 1 到 6 位数字")
+        if "hotspotPassword" in payload and not 8 <= len(str(payload["hotspotPassword"]).strip()) <= 63:
+            raise ValueError("热点密码应为 8 到 63 位")
+        for key in ("voicePlaybackRate", "systemVolumePercent", "musicVolumePercent", "musicDuckPercent",
+                    "titleFontScale", "teamNameScale", "tableMarkerScale", "weatherLatitude", "weatherLongitude"):
+            if key in payload and str(payload[key]).strip() and not math.isfinite(float(payload[key])):
+                raise ValueError("数值必须为有限数字")
+
+    def _action(self, payload: dict, *, settings_authorized: bool = False) -> dict:
         self.tick()
         action = payload.get("action")
         message = ""
+        pending_device_job = None
 
         if action == "simulate_rf_signal":
             return self.handle_rf_signal(payload)
@@ -1135,7 +1261,7 @@ class Store:
             return {"ok": True, "message": "RF learning cancelled", "state": self.snapshot()}
 
         if action == "update_rf_settings":
-            if payload.get("password") != self.state["settingsPassword"]:
+            if not settings_authorized:
                 message = "密码错误"
             else:
                 self.state["rfRemoteEnabled"] = True
@@ -1156,7 +1282,7 @@ class Store:
             return {"ok": message != "密码错误", "message": message, "state": self.snapshot()}
 
         if action == "update_rf_remote_slot":
-            if payload.get("password") != self.state["settingsPassword"]:
+            if not settings_authorized:
                 message = "密码错误"
             else:
                 slot_id = str(payload.get("slotId") or "").strip()
@@ -1186,7 +1312,7 @@ class Store:
             return {"ok": message == "遥控器设置已保存", "message": message, "state": self.snapshot()}
 
         if action == "clear_rf_remote_slot":
-            if payload.get("password") != self.state["settingsPassword"]:
+            if not settings_authorized:
                 message = "密码错误"
             else:
                 slot_id = str(payload.get("slotId") or "").strip()
@@ -1204,7 +1330,7 @@ class Store:
             return {"ok": message == "遥控器按键已清除", "message": message, "state": self.snapshot()}
 
         if action == "update_keyboard_settings":
-            if payload.get("password") != self.state["settingsPassword"]:
+            if not settings_authorized:
                 message = "密码错误"
             else:
                 self.state["keyboardInputEnabled"] = True
@@ -1215,7 +1341,7 @@ class Store:
             return {"ok": message == "键盘设置已保存", "message": message, "state": self.snapshot()}
 
         if action == "clear_key_bindings":
-            if payload.get("password") != self.state["settingsPassword"]:
+            if not settings_authorized:
                 message = "密码错误"
             else:
                 self.state["keyBindings"] = {}
@@ -1226,7 +1352,7 @@ class Store:
             return {"ok": message == "键盘映射已恢复默认", "message": message, "state": self.snapshot()}
 
         if action == "add_rf_remote":
-            if payload.get("password") != self.state["settingsPassword"]:
+            if not settings_authorized:
                 message = "密码错误"
             else:
                 address = str(payload.get("address", "")).strip()
@@ -1260,7 +1386,7 @@ class Store:
             return {"ok": message != "密码错误" and "required" not in message, "message": message, "state": self.snapshot()}
 
         if action == "update_rf_remote":
-            if payload.get("password") != self.state["settingsPassword"]:
+            if not settings_authorized:
                 message = "密码错误"
             else:
                 remote_id = str(payload.get("id", "")).strip()
@@ -1279,7 +1405,7 @@ class Store:
             return {"ok": message == "RF remote updated", "message": message, "state": self.snapshot()}
 
         if action == "delete_rf_remote":
-            if payload.get("password") != self.state["settingsPassword"]:
+            if not settings_authorized:
                 message = "密码错误"
             else:
                 remote_id = str(payload.get("id", "")).strip()
@@ -1333,17 +1459,17 @@ class Store:
                 self.tick()
                 self.state["running"] = False
                 self.state["deadline"] = None
+                self.deadline_monotonic = None
                 message = "比赛暂停"
             else:
                 if self.state["remainingSeconds"] <= 0:
-                    self.state["remainingSeconds"] = self.state["durationSeconds"]
-                    self.state["timeExpired"] = False
-                    self.state["announcedMinuteWarnings"] = []
-                    self.state["timerStarted"] = False
-                    self.state["lastTickRemainingSeconds"] = self.state["remainingSeconds"]
+                    return {"ok": False, "message": "比赛时间已到，请先结束比赛", "state": self.snapshot()}
                 self.state["running"] = True
                 self.state["lastTickRemainingSeconds"] = self.state["remainingSeconds"]
-                self.state["deadline"] = time.time() + int(self.state["remainingSeconds"])
+                precise = float(self.state.get("remainingPreciseSeconds", self.state["remainingSeconds"]))
+                self.deadline_monotonic = time.monotonic() + precise
+                self.last_checkpoint = time.monotonic()
+                self.state["deadline"] = time.time() + precise
                 message = "比赛开始" if not self.state.get("timerStarted") else "比赛继续"
                 if not self.state.get("timerStarted"):
                     self.state["matchStartedAt"] = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -1450,9 +1576,11 @@ class Store:
                 self.state["rfFinishPasswordPending"] = False
                 finished_snapshot = self.snapshot()
                 if not self.state.get("matchFinished"):
+                    finished_snapshot.update(running=False, deadline=None, matchFinished=True)
                     results_store.save_match(finished_snapshot)
                     self.state["running"] = False
                     self.state["deadline"] = None
+                    self.deadline_monotonic = None
                     self.state["matchFinished"] = True
                     if self.state.get("musicStopWhenMatchEnds", False):
                         self.state["musicPlaying"] = False
@@ -1476,10 +1604,12 @@ class Store:
             message = self.state.get("lastMessage", "")
 
         elif action == "update_settings":
-            if payload.get("password") != self.state["settingsPassword"]:
+            if not settings_authorized:
                 message = "密码错误"
             else:
-                hotspot_changed = "hotspotSsid" in payload or "hotspotPassword" in payload
+                device_job = {"id": uuid4().hex}
+                retry_device_settings = (self.state.get("deviceSettingsStatus") or {}).get("status") == "error"
+                previous_device = {key: self.state.get(key) for key in ("hotspotSsid", "hotspotPassword", "audioOutputMode", "systemVolumePercent")}
                 for key in ["allowScoringWhenPaused", "weatherLocation", "courtName", "hotspotSsid"]:
                     if key in payload:
                         self.state[key] = str(payload[key]).strip() if key != "allowScoringWhenPaused" else payload[key]
@@ -1514,14 +1644,10 @@ class Store:
                     try:
                         volume = int(round(float(payload["systemVolumePercent"])))
                         self.state["systemVolumePercent"] = min(100, max(0, volume))
-                        set_system_volume_percent(self.state["systemVolumePercent"])
                     except (TypeError, ValueError):
                         pass
-                audio_message = ""
                 if "audioOutputMode" in payload:
                     self.state["audioOutputMode"] = normalize_audio_output_mode(payload.get("audioOutputMode"))
-                    if not apply_audio_output_mode(self.state["audioOutputMode"]):
-                        audio_message = "；音频输出切换未成功，请在系统声音设置中确认"
                 if "musicEnabled" in payload:
                     self.state["musicEnabled"] = bool(payload["musicEnabled"])
                 if "musicAutoPlayDuringMatch" in payload:
@@ -1576,8 +1702,9 @@ class Store:
                 if "durationMinutes" in payload:
                     minutes = max(1, int(payload["durationMinutes"]))
                     self.state["durationSeconds"] = minutes * 60
-                    if not self.state["running"]:
+                    if not self.state.get("timerStarted") and not self.state.get("matchFinished"):
                         self.state["remainingSeconds"] = minutes * 60
+                        self.state["remainingPreciseSeconds"] = float(minutes * 60)
                         self.state["announcedMinuteWarnings"] = []
                         self.state["lastTickRemainingSeconds"] = self.state["remainingSeconds"]
                 if payload.get("finishPassword"):
@@ -1588,19 +1715,24 @@ class Store:
                     password = "".join(ch for ch in str(payload["settingsPassword"]) if ch.isdigit())[:6]
                     if password:
                         self.state["settingsPassword"] = password
-                network_message = ""
-                if hotspot_changed:
-                    hotspot_result = configure_hotspot(self.state.get("hotspotSsid", ""), self.state.get("hotspotPassword", ""))
-                    if not hotspot_result.get("ok"):
-                        network_message = f"；{hotspot_result.get('message') or '热点同步失败'}"
-                    elif hotspot_result.get("supported") is False:
-                        network_message = "；热点配置已保存，当前系统未自动应用"
-                message = f"设置已保存{network_message}{audio_message}"
+                for key in ("audioOutputMode", "systemVolumePercent"):
+                    if self.state.get(key) != previous_device[key] or (retry_device_settings and key in payload):
+                        device_job[key] = self.state[key]
+                if "audioOutputMode" in device_job:
+                    device_job["systemVolumePercent"] = self.state["systemVolumePercent"]
+                hotspot_keys = ("hotspotSsid", "hotspotPassword")
+                if any(self.state.get(key) != previous_device[key] for key in hotspot_keys) or (retry_device_settings and any(key in payload for key in hotspot_keys)):
+                    device_job.update(hotspotSsid=self.state["hotspotSsid"], hotspotPassword=self.state["hotspotPassword"])
+                message = "设置已保存"
+                if len(device_job) > 1:
+                    message += "，正在应用设备设置"
+                    self.state["deviceSettingsStatus"] = {"id": device_job["id"], "status": "pending", "message": "正在应用设备设置…"}
+                    pending_device_job = device_job
                 self.state["lastMessage"] = message
                 self.record("settings", None, message)
 
         elif action == "delete_music_item":
-            if payload.get("password") != self.state.get("settingsPassword"):
+            if not settings_authorized:
                 return {"ok": False, "message": "密码错误", "state": self.snapshot()}
             item_id = str(payload.get("musicItemId") or "")
             resolved = resolve_music_item(item_id)
@@ -1688,6 +1820,8 @@ class Store:
             message = "未知操作"
 
         self.save()
+        if pending_device_job:
+            self.device_jobs.submit(pending_device_job)
         return {"ok": message != "密码错误", "message": message, "state": self.snapshot()}
 
 
@@ -1710,6 +1844,16 @@ def boot_wifi_info_refresh_loop() -> None:
             return
 
 
+def timer_checkpoint_loop() -> None:
+    while True:
+        time.sleep(0.2)
+        try:
+            with store.lock:
+                store.tick()
+        except Exception:
+            logging.exception("Timer checkpoint failed")
+
+
 def start_boot_wifi_info_refresher() -> None:
     global boot_wifi_info_refresher_started
     if boot_wifi_info_refresher_started or not store.boot_wifi_info_pending:
@@ -1725,7 +1869,7 @@ def enqueue_rf_signal(payload: dict) -> None:
 def rf_signal_worker_loop() -> None:
     while True:
         try:
-            store.action(rf_signal_queue.get())
+            store.action(rf_signal_queue.get(), internal=True)
         except Exception as exc:
             print(f"RF action error: {exc}")
 
@@ -2296,7 +2440,30 @@ class Handler(BaseHTTPRequestHandler):
             raise
 
     def do_GET(self) -> None:
+        try:
+            self.handle_get()
+        except (ValueError, TypeError, OverflowError):
+            self.send_json({"ok": False, "message": "请求参数不正确"}, status=400)
+        except OSError as exc:
+            if not is_client_disconnect(exc):
+                logging.exception("GET request failed")
+                self.send_json({"ok": False, "message": "读取失败"}, status=500)
+
+    def settings_token(self) -> str:
+        header = self.headers.get("Authorization", "")
+        return header[7:] if header.startswith("Bearer ") else ""
+
+    def require_settings_session(self) -> bool:
+        if settings_sessions.valid(self.settings_token()):
+            return True
+        self.send_json({"ok": False, "requiresSettingsLogin": True, "message": "请先输入设置密码"}, status=401)
+        return False
+
+    def handle_get(self) -> None:
         path = urlparse(self.path).path
+        if path in {"/api/settings/session", "/api/network/status", "/api/network/scan", "/api/rf/last", "/api/rf/learning"}:
+            if not self.require_settings_session():
+                return
         if path == "/":
             self.serve_file(STATIC_DIR / "remote.html")
         elif path == "/scoreboard":
@@ -2318,12 +2485,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send_events()
         elif path == "/api/state":
             self.send_json(store.snapshot())
+        elif path == "/api/settings/session":
+            self.send_json({"ok": True, "settings": store.settings_data(), "state": store.snapshot()})
         elif path == "/api/rf/last":
-            self.send_json({"ok": True, "signal": store.state.get("rfLastSignal"), "serverTime": time.time()})
+            with store.lock:
+                result = public_data({"ok": True, "signal": store.state.get("rfLastSignal"), "serverTime": time.time()})
+            self.send_json(result)
         elif path == "/api/rf/learning":
-            self.send_json({"ok": True, "learning": store.rf_learning_status(), "serverTime": time.time()})
+            with store.lock:
+                result = public_data({"ok": True, "learning": store.rf_learning_status(), "serverTime": time.time()})
+            self.send_json(result)
         elif path == "/api/network/status":
-            self.send_json(network_status(store.state))
+            with store.lock:
+                network_state = dict(store.state)
+            self.send_json(public_data(network_status(network_state)))
         elif path == "/api/network/scan":
             self.send_json(scan_wifi_networks())
         elif path == "/api/music/tracks":
@@ -2341,6 +2516,8 @@ class Handler(BaseHTTPRequestHandler):
             now = time.localtime()
             year = int(params.get("year", [now.tm_year])[0])
             month = int(params.get("month", [now.tm_mon])[0])
+            if not 1 <= year <= 9998 or not 1 <= month <= 12:
+                raise ValueError("invalid month")
             self.send_json(results_store.month_summary(year, month))
         elif path == "/api/results/day":
             params = parse_qs(urlparse(self.path).query)
@@ -2354,7 +2531,11 @@ class Handler(BaseHTTPRequestHandler):
             params = parse_qs(urlparse(self.path).query)
             self.send_json(search_weather_locations(params.get("q", [""])[0]))
         else:
-            target = STATIC_DIR / path.lstrip("/")
+            base = STATIC_DIR.resolve()
+            target = (base / unquote(path).replace("\\", "/").lstrip("/")).resolve()
+            if not target.is_relative_to(base):
+                self.send_error(404)
+                return
             if target.exists() and target.is_file():
                 self.serve_file(target)
             else:
@@ -2362,13 +2543,40 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
-        if path not in {"/api/action", "/api/network/connect", "/api/voice/team-name"}:
+        if path not in {"/api/action", "/api/network/connect", "/api/voice/team-name", "/api/settings/login", "/api/settings/logout"}:
             self.send_error(404)
             return
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length).decode("utf-8") if length else "{}"
-        payload = json.loads(body)
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if not 0 <= length <= 65536:
+                raise ValueError("invalid content length")
+            if self.headers.get_content_type() != "application/json":
+                raise ValueError("JSON required")
+            self.connection.settimeout(10)
+            body = self.rfile.read(length).decode("utf-8") if length else "{}"
+            payload = json.loads(body)
+            if not isinstance(payload, dict):
+                raise ValueError("object required")
+        except (ValueError, UnicodeError, OSError):
+            self.send_json({"ok": False, "message": "请求格式不正确"}, status=400)
+            return
+        if path == "/api/settings/login":
+            with store.lock:
+                password = str(payload.get("password", ""))
+                if secrets.compare_digest(password.encode("utf-8"), str(store.state["settingsPassword"]).encode("utf-8")):
+                    token = settings_sessions.issue()
+                    result = {"ok": True, "token": token, "settings": store.settings_data(), "state": store.snapshot()}
+                else:
+                    result = {"ok": False, "message": "密码错误"}
+            self.send_json(result)
+            return
+        if path == "/api/settings/logout":
+            settings_sessions.revoke(self.settings_token())
+            self.send_json({"ok": True})
+            return
         if path == "/api/network/connect":
+            if not self.require_settings_session():
+                return
             self.send_json(connect_wifi(str(payload.get("ssid", "")), str(payload.get("password", ""))))
             return
         if path == "/api/voice/team-name":
@@ -2380,8 +2588,16 @@ class Handler(BaseHTTPRequestHandler):
                 )
             )
             return
-        with store.lock:
-            self.send_json(store.action(payload))
+        token = self.settings_token()
+        authorized = settings_sessions.valid(token)
+        try:
+            result = store.action(payload, settings_authorized=authorized)
+            if result.get("ok") and authorized and payload.get("action") == "update_settings" and payload.get("settingsPassword"):
+                settings_sessions.keep_only(token)
+            self.send_json(result)
+        except Exception:
+            logging.exception("Match action failed")
+            self.send_json({"ok": False, "message": "操作未完成，请重试", "state": store.snapshot()}, status=500)
 
     def serve_file(self, path: Path) -> None:
         content_type = mimetypes.guess_type(path.name)[0] or "text/html"
@@ -2399,9 +2615,9 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, OSError):
             return
 
-    def send_json(self, payload: dict) -> None:
+    def send_json(self, payload: dict, status: int = 200) -> None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
@@ -2426,6 +2642,7 @@ class Handler(BaseHTTPRequestHandler):
             with store.lock:
                 snapshot = store.snapshot()
             event_key = (
+                snapshot.get("revision"),
                 snapshot.get("lastUpdated"),
                 snapshot.get("remainingSeconds"),
                 snapshot.get("running"),
@@ -2470,6 +2687,7 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     start_rf_listener()
     start_boot_wifi_info_refresher()
+    Thread(target=timer_checkpoint_loop, name="gateball-timer", daemon=True).start()
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"Gateball web prototype: http://127.0.0.1:{PORT}/scoreboard")
     print(f"Phone remote: http://127.0.0.1:{PORT}/remote")

@@ -90,10 +90,10 @@
     <div class="dialog" data-settings-dialog>
       <div class="dialog-box">
         <h2 class="dialog-title">设置密码</h2>
-        <div class="password-dots" data-settings-password></div>
+        <input class="dialog-input password-code-input" data-settings-password type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" aria-label="设置密码">
+        <strong class="dialog-result" data-settings-result></strong>
         <div class="dialog-actions">
-          <button class="primary">Enter 确认</button>
-          <button data-action="close-settings">再按 / 取消</button>
+          <button class="finish-cancel" type="button" data-action="close-settings">取消</button>
         </div>
       </div>
     </div>

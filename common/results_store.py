@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import sqlite3
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from threading import RLock
+from threading import RLock, Timer
 from typing import Any, Iterator
+from uuid import uuid4
+
+from common.settings_auth import public_data
 
 
 class ResultsStore:
@@ -16,6 +20,7 @@ class ResultsStore:
         self.backup_dir = db_path.parent / "backups"
         self.match_backup_limit = 30
         self.lock = RLock()
+        self.backup_retry: Timer | None = None
         self.initialize()
 
     def initialize(self) -> None:
@@ -67,6 +72,10 @@ class ResultsStore:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_matches_date ON matches(match_date)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_matches_ended ON matches(ended_at)")
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(matches)")}
+            if "match_uid" not in columns:
+                conn.execute("ALTER TABLE matches ADD COLUMN match_uid TEXT")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_uid ON matches(match_uid)")
 
     def is_healthy(self, path: Path) -> bool:
         try:
@@ -124,21 +133,43 @@ class ResultsStore:
                 pass
 
     def backup_database(self, target: Path) -> None:
+        temporary = target.with_name(f"{target.name}.{uuid4().hex}.tmp")
         source = sqlite3.connect(self.db_path, timeout=5)
         try:
-            destination = sqlite3.connect(target)
+            destination = sqlite3.connect(temporary)
             try:
                 source.backup(destination)
             finally:
                 destination.close()
+            temporary.replace(target)
         finally:
             source.close()
+            temporary.unlink(missing_ok=True)
+
+    def try_match_backup(self, attempt: int = 0) -> None:
+        with self.lock:
+            try:
+                self.backup_after_match()
+            except (OSError, sqlite3.Error):
+                logging.exception("Result saved, but match backup failed (attempt %s)", attempt + 1)
+                if attempt < 3:
+                    if self.backup_retry:
+                        self.backup_retry.cancel()
+                    self.backup_retry = Timer(30, self.try_match_backup, args=(attempt + 1,))
+                    self.backup_retry.daemon = True
+                    self.backup_retry.start()
+            else:
+                if self.backup_retry:
+                    self.backup_retry.cancel()
+                    self.backup_retry = None
 
     def save_match(self, snapshot: dict[str, Any]) -> int:
         with self.lock:
+            snapshot = public_data(snapshot)
             ended_at = time.strftime("%Y-%m-%d %H:%M:%S")
             balls = snapshot.get("balls", [])
             row = {
+                "match_uid": str(snapshot.get("matchId") or uuid4().hex),
                 "match_number": int(snapshot.get("matchNumber", 0)),
                 "title": str(snapshot.get("title", "")),
                 "match_date": ended_at[:10],
@@ -153,22 +184,25 @@ class ResultsStore:
                 "created_at": ended_at,
             }
             with self.connection() as conn:
-                cursor = conn.execute(
+                conn.execute(
                     """
                     INSERT INTO matches (
+                        match_uid,
                         match_number, title, match_date, started_at, ended_at,
                         red_team, red_score, white_score, white_team,
                         balls_json, snapshot_json, created_at
                     ) VALUES (
+                        :match_uid,
                         :match_number, :title, :match_date, :started_at, :ended_at,
                         :red_team, :red_score, :white_score, :white_team,
                         :balls_json, :snapshot_json, :created_at
                     )
+                    ON CONFLICT(match_uid) DO NOTHING
                     """,
                     row,
                 )
-                match_id = int(cursor.lastrowid)
-            self.backup_after_match()
+                match_id = int(conn.execute("SELECT id FROM matches WHERE match_uid = ?", (row["match_uid"],)).fetchone()[0])
+            self.try_match_backup()
             return match_id
 
     def month_summary(self, year: int, month: int) -> dict[str, Any]:
@@ -216,4 +250,4 @@ class ResultsStore:
         data = dict(row)
         data["balls"] = json.loads(data.pop("balls_json"))
         data["snapshot"] = json.loads(data.pop("snapshot_json"))
-        return {"ok": True, "match": data}
+        return {"ok": True, "match": public_data(data)}

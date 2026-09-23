@@ -121,6 +121,7 @@
           <button class="settings-tab" type="button" data-action="settings-tab" data-settings-tab="rf">遥控器</button>
           <button class="settings-tab" type="button" data-action="settings-tab" data-settings-tab="network">网络</button>
         </div>
+        <strong class="dialog-result" data-device-settings-result></strong>
         <section class="settings-tab-panel active" data-settings-panel="general">
           <form class="settings-form" data-settings-form>
             <label>
@@ -336,13 +337,13 @@
       </div>
     </div>
 
-    <div class="dialog" data-settings-save-password-dialog>
+    <div class="dialog" data-settings-dialog>
       <div class="dialog-box">
-        <h2 class="dialog-title">输入设置密码</h2>
-        <input class="dialog-input password-code-input" data-settings-save-password-input type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6">
-        <strong class="dialog-result" data-settings-save-password-result></strong>
+        <h2 class="dialog-title">设置密码</h2>
+        <input class="dialog-input password-code-input" data-settings-password type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" aria-label="设置密码">
+        <strong class="dialog-result" data-settings-result></strong>
         <div class="dialog-actions">
-          <button class="finish-cancel" type="button" data-action="close-settings-save-password">取消</button>
+          <button class="finish-cancel" type="button" data-action="close-settings">取消</button>
         </div>
       </div>
     </div>

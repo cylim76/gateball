@@ -1,23 +1,47 @@
 ﻿async function readJsonResponse(res, fallbackMessage = "服务返回格式不正确") {
-  const contentType = res.headers.get("content-type") || "";
-  const text = await res.text();
-  if (!res.ok) {
-    if (text.trim().startsWith("<")) {
-      return { ok: false, message: "服务接口未更新，请重启门球服务后再试" };
-    }
-    return { ok: false, message: text || fallbackMessage };
-  }
-  if (!contentType.includes("application/json")) {
-    return { ok: false, message: text.trim().startsWith("<") ? "服务接口未更新，请重启门球服务后再试" : fallbackMessage };
-  }
   try {
-    return JSON.parse(text);
+    const data = await res.json();
+    return data && typeof data === "object" ? data : { ok: false, message: fallbackMessage };
   } catch (error) {
     return { ok: false, message: fallbackMessage };
   }
 }
 
+let settingsToken = "";
+try { settingsToken = sessionStorage.getItem("gateballSettingsToken") || ""; } catch (error) {}
+let settingsConfig = {};
+let settingsEntryInFlight = false;
+let settingsEntryAttempt = 0;
+
+function settingsHeaders(json = false) {
+  const headers = json ? { "Content-Type": "application/json" } : {};
+  if (settingsToken) headers.Authorization = `Bearer ${settingsToken}`;
+  return headers;
+}
+
+function rememberSettingsToken(token) {
+  settingsToken = token || "";
+  try {
+    if (settingsToken) sessionStorage.setItem("gateballSettingsToken", settingsToken);
+    else sessionStorage.removeItem("gateballSettingsToken");
+  } catch (error) {}
+}
+
 const api = {
+  async settingsLogin(password) {
+    return readJsonResponse(await fetch("/api/settings/login", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }),
+    }));
+  },
+  async settingsSession() {
+    return readJsonResponse(await fetch("/api/settings/session", { cache: "no-store", headers: settingsHeaders() }));
+  },
+  async settingsLogout(token = settingsToken) {
+    return readJsonResponse(await fetch("/api/settings/logout", {
+      method: "POST", keepalive: true,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: "{}",
+    }));
+  },
   async state() {
     const res = await fetch("/api/state", { cache: "no-store" });
     return res.json();
@@ -25,17 +49,17 @@ const api = {
   async action(payload) {
     const res = await fetch("/api/action", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: settingsHeaders(true),
       body: JSON.stringify(payload),
     });
     return res.json();
   },
   async rfLastSignal() {
-    const res = await fetch("/api/rf/last", { cache: "no-store" });
+    const res = await fetch("/api/rf/last", { cache: "no-store", headers: settingsHeaders() });
     return res.json();
   },
   async rfLearning() {
-    const res = await fetch("/api/rf/learning", { cache: "no-store" });
+    const res = await fetch("/api/rf/learning", { cache: "no-store", headers: settingsHeaders() });
     return res.json();
   },
   async weatherSearch(query) {
@@ -55,17 +79,17 @@ const api = {
     return res.json();
   },
   async networkStatus() {
-    const res = await fetch("/api/network/status", { cache: "no-store" });
+    const res = await fetch("/api/network/status", { cache: "no-store", headers: settingsHeaders() });
     return readJsonResponse(res, "网络状态读取失败");
   },
   async networkScan() {
-    const res = await fetch("/api/network/scan", { cache: "no-store" });
+    const res = await fetch("/api/network/scan", { cache: "no-store", headers: settingsHeaders() });
     return readJsonResponse(res, "WiFi 扫描失败");
   },
   async networkConnect(payload) {
     const res = await fetch("/api/network/connect", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: settingsHeaders(true),
       body: JSON.stringify(payload),
     });
     return readJsonResponse(res, "WiFi 连接失败，热点会继续保留");
@@ -77,7 +101,7 @@ const api = {
   async teamNameAudio(payload) {
     const res = await fetch("/api/voice/team-name", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: settingsHeaders(true),
       body: JSON.stringify(payload),
     });
     return readJsonResponse(res, "队名语音生成失败");
@@ -128,8 +152,6 @@ let editTeamDialogOpen = false;
 let editTeamTarget = "";
 let editTitleDialogOpen = false;
 let remoteSettingsDialogOpen = false;
-let settingsSavePasswordDialogOpen = false;
-let pendingSettingsPayload = null;
 let settingsSaveInFlight = false;
 let keyCaptureAction = "";
 let pendingRfLearn = null;
@@ -273,13 +295,11 @@ function formatTime(seconds) {
 }
 
 function finishPasswordLength() {
-  const length = String(currentState?.finishPassword || "").length;
-  return Math.min(6, Math.max(4, length || 4));
+  return Math.min(6, Math.max(1, Number(currentState?.finishPasswordLength) || 4));
 }
 
 function settingsPasswordLength() {
-  const length = String(currentState?.settingsPassword || "").length;
-  return Math.min(6, Math.max(4, length || 4));
+  return Math.min(6, Math.max(1, Number(currentState?.settingsPasswordLength) || 4));
 }
 
 function escapeHtml(value) {
@@ -1740,7 +1760,8 @@ function scheduleReadySpeech() {
 }
 
 function renderSettings() {
-  if (!currentState) return;
+  if (!currentState || !remoteSettingsDialogOpen || !settingsToken) return;
+  renderSettingsStatus();
   loadMusicTracks();
   const forms = document.querySelectorAll("[data-settings-form]");
   forms.forEach((form) => enhanceSettingsForm(form));
@@ -1910,12 +1931,17 @@ function renderNetworkSettings() {
   enhanceNetworkForm(form);
   form.courtName.value = currentState.courtName || "红星门球场1";
   if (form.hotspotSsid) form.hotspotSsid.value = currentState.hotspotSsid || DEFAULT_HOTSPOT_SSID;
-  form.hotspotPassword.value = currentState.hotspotPassword || DEFAULT_HOTSPOT_PASSWORD;
+  form.hotspotPassword.value = settingsConfig.hotspotPassword || "";
   if (form.showBootWifiInfo) form.showBootWifiInfo.checked = currentState.showBootWifiInfo !== false;
 }
 
+const renderedKeyBindings = new WeakMap();
 function renderKeyBindings() {
+  if (!remoteSettingsDialogOpen) return;
+  const key = JSON.stringify([currentState?.keyBindings, keyCaptureAction]);
   document.querySelectorAll("[data-key-binding-list]").forEach((list) => {
+    if (renderedKeyBindings.get(list) === key) return;
+    renderedKeyBindings.set(list, key);
     list.replaceChildren();
     keyboardBindableActions.forEach((spec) => {
       const row = document.createElement("div");
@@ -1965,7 +1991,7 @@ function renderNetworkStatus(status) {
   const fallback = status.fallbackAddress || "等待热点 IP";
   box.innerHTML = `
     <div><strong>球场：</strong>${escapeHtml(status.courtName || "红星门球场1")}</div>
-    <div><strong>热点：</strong>${escapeHtml(status.hotspotSsid || DEFAULT_HOTSPOT_SSID)} / ${escapeHtml(status.hotspotPassword || DEFAULT_HOTSPOT_PASSWORD)}</div>
+    <div><strong>热点：</strong>${escapeHtml(status.hotspotSsid || DEFAULT_HOTSPOT_SSID)} / ${escapeHtml(settingsConfig.hotspotPassword || "")}</div>
     <div><strong>推荐入口：</strong>${escapeHtml(status.hotspotAddress || "http://gateball.local")} / ${escapeHtml(status.secondaryHotspotAddress || "http://menqiu.local")}</div>
     <div><strong>备用地址：</strong>${escapeHtml(fallback)}</div>
     <div><strong>本机地址：</strong>${escapeHtml(local)}</div>
@@ -3138,7 +3164,7 @@ function resetHotspotDefaults(button) {
   if (form.hotspotPassword) form.hotspotPassword.value = DEFAULT_HOTSPOT_PASSWORD;
   if (form.showBootWifiInfo) form.showBootWifiInfo.checked = true;
   if (!validateNetworkSettings(form)) return;
-  openSettingsSavePasswordDialog(collectNetworkSettingsPayload(form));
+  saveSettings(collectNetworkSettingsPayload(form));
 }
 
 async function connectSelectedWifi() {
@@ -3501,7 +3527,12 @@ function startStateEvents() {
 
 async function sendAction(payload, shouldSpeak = true, applyOptions = {}) {
   const result = await api.action(payload);
-  if (!applyOptions.noApply) {
+  if (result.requiresSettingsLogin) {
+    expireSettingsSession();
+    openSettingsDialog();
+    return result;
+  }
+  if (!applyOptions.noApply && result.state) {
     applyState(result.state, { speakEvents: false, ...applyOptions });
   }
   if (shouldSpeak) {
@@ -3560,20 +3591,80 @@ function closeFinishDialog() {
   if (wasOpen) sendAction({ action: "cancel_finish_dialog" }, false, { noApply: true }).catch(() => {});
 }
 
-function openSettingsDialog() {
+async function openSettingsDialog() {
+  if (settingsDialogOpen || settingsEntryInFlight) return;
+  const attempt = ++settingsEntryAttempt;
+  if (settingsToken) {
+    settingsEntryInFlight = true;
+    try {
+      const result = await api.settingsSession();
+      if (attempt !== settingsEntryAttempt) return;
+      if (result.ok) {
+        enterSettings(result);
+        return;
+      }
+      rememberSettingsToken("");
+    } catch (error) {
+      rememberSettingsToken("");
+    } finally {
+      settingsEntryInFlight = false;
+    }
+  }
   settingsDialogOpen = true;
   settingsPassword = "";
+  const input = document.querySelector("[data-settings-password]");
+  if (input) { input.value = ""; input.maxLength = settingsPasswordLength(); input.disabled = false; }
+  const result = document.querySelector("[data-settings-result]");
+  if (result) result.textContent = "";
   document.querySelector("[data-settings-dialog]")?.classList.add("open");
-  document.querySelector("[data-settings-password]").textContent = "";
+  window.setTimeout(() => { if (settingsDialogOpen) input?.focus({ preventScroll: true }); }, 80);
 }
 
 function closeSettingsDialog() {
+  settingsEntryAttempt += 1;
   settingsDialogOpen = false;
+  settingsEntryInFlight = false;
   settingsPassword = "";
+  const input = document.querySelector("[data-settings-password]");
+  if (input) { input.value = ""; input.disabled = false; }
   document.querySelector("[data-settings-dialog]")?.classList.remove("open");
 }
 
-function openRemoteSettingsDialog() {
+async function tryEnterSettings() {
+  if (!settingsDialogOpen || settingsEntryInFlight || settingsPassword.length < settingsPasswordLength()) return;
+  settingsEntryInFlight = true;
+  const attempt = ++settingsEntryAttempt;
+  const input = document.querySelector("[data-settings-password]");
+  if (input) input.disabled = true;
+  const status = document.querySelector("[data-settings-result]");
+  if (status) status.textContent = "正在检查…";
+  try {
+    const result = await api.settingsLogin(settingsPassword);
+    if (attempt !== settingsEntryAttempt) {
+      if (result.token) api.settingsLogout(result.token).catch(() => {});
+      return;
+    }
+    closeSettingsDialog();
+    if (result.ok) {
+      rememberSettingsToken(result.token);
+      enterSettings(result);
+    } else {
+      speakWithError("密码错误");
+    }
+  } catch (error) {
+    if (attempt !== settingsEntryAttempt) return;
+    closeSettingsDialog();
+    playPromptAudio(getErrorPromptAudio(), "Settings login failed");
+  }
+}
+
+function enterSettings(result) {
+  settingsConfig = result.settings || {};
+  if (result.state) currentState = result.state;
+  if (!document.querySelector("[data-remote-settings-dialog]")) {
+    window.location.href = "/remote?settings=1&return=scoreboard";
+    return;
+  }
   remoteSettingsDialogOpen = true;
   keyCaptureAction = "";
   settingsHydrated = false;
@@ -3582,14 +3673,40 @@ function openRemoteSettingsDialog() {
   renderKeyBindings();
 }
 
-function closeRemoteSettingsDialog() {
+function openRemoteSettingsDialog() {
+  return openSettingsDialog();
+}
+
+function expireSettingsSession() {
   remoteSettingsDialogOpen = false;
   keyCaptureAction = "";
+  clearRfLearnPolling();
+  clearRfLearnTimeout();
+  pendingRfLearn = null;
+  settingsConfig = {};
+  rememberSettingsToken("");
   document.querySelector("[data-remote-settings-dialog]")?.classList.remove("open");
-  renderKeyBindings();
-  if (settingsReturnTarget === "scoreboard") {
-    window.location.href = "/scoreboard";
+  document.querySelectorAll("input[name='hotspotPassword'], input[name='settingsPassword'], input[name='finishPassword'], [data-wifi-password]").forEach((input) => { input.value = ""; });
+  const network = document.querySelector("[data-network-status]");
+  if (network) network.textContent = "";
+}
+
+function closeRemoteSettingsDialog() {
+  cancelPendingRfLearn("学习已取消");
+  const token = settingsToken;
+  expireSettingsSession();
+  if (token) api.settingsLogout(token).catch(() => {});
+  if (settingsReturnTarget === "scoreboard") window.location.href = "/scoreboard";
+}
+
+function renderSettingsStatus() {
+  const status = currentState?.deviceSettingsStatus;
+  const output = document.querySelector("[data-device-settings-result]");
+  if (output) {
+    output.textContent = status?.message || "";
+    output.classList.toggle("error", status?.status === "error");
   }
+
 }
 
 function collectSettingsPayload(form) {
@@ -3640,71 +3757,44 @@ function validateWeatherLocation(form) {
   return false;
 }
 
-function openSettingsSavePasswordDialog(payload) {
-  pendingSettingsPayload = payload;
-  settingsSavePasswordDialogOpen = true;
-  const dialog = document.querySelector("[data-settings-save-password-dialog]");
-  const input = document.querySelector("[data-settings-save-password-input]");
-  const result = document.querySelector("[data-settings-save-password-result]");
-  if (input) input.value = "";
-  if (result) {
-    result.textContent = "";
-    result.classList.remove("error");
-  }
-  dialog?.classList.add("open");
-  window.setTimeout(() => {
-    input?.focus({ preventScroll: true });
-    input?.select?.();
-  }, 120);
-}
-
-function closeSettingsSavePasswordDialog() {
-  settingsSavePasswordDialogOpen = false;
-  pendingSettingsPayload = null;
-  settingsSaveInFlight = false;
-  document.querySelector("[data-settings-save-password-dialog]")?.classList.remove("open");
-}
-
-async function trySavePendingSettings() {
-  const input = document.querySelector("[data-settings-save-password-input]");
-  const resultEl = document.querySelector("[data-settings-save-password-result]");
-  const password = (input?.value || "").replace(/\D/g, "").slice(0, settingsPasswordLength());
-  if (input) input.value = password;
-  if (!pendingSettingsPayload || settingsSaveInFlight || password.length < settingsPasswordLength()) return;
+async function saveSettings(pendingPayload) {
+  if (settingsSaveInFlight) return;
+  if (!settingsToken) { openSettingsDialog(); return; }
   settingsSaveInFlight = true;
-  if (resultEl) {
-    resultEl.textContent = "正在检查...";
-    resultEl.classList.remove("error");
-  }
+  const requestToken = settingsToken;
+  const { _resultSelector, ...payload } = pendingPayload;
+  const selector = _resultSelector || "[data-save-result]";
+  const output = document.querySelector(selector);
+  if (output) { output.textContent = "正在保存…"; output.classList.remove("error"); }
   try {
-    const { _resultSelector, ...payload } = pendingSettingsPayload;
-    const result = await sendAction({ ...payload, password }, false);
-    if (result.ok) {
-      settingsHydrated = false;
-      currentState = result.state;
-      if (payload.action === "update_rf_remote_slot" || payload.action === "clear_rf_remote_slot") {
-        delete rfDraftBindings[payload.slotId || activeRfTab];
-        delete rfSlotDrafts[payload.slotId || activeRfTab];
-        if (pendingRfLearn?.slotId === (payload.slotId || activeRfTab)) cancelPendingRfLearn("学习已取消");
-      }
-      if (payload.action === "delete_music_item") {
-        musicTracksLoaded = false;
-        await loadMusicTracks();
-      }
-      renderSettings();
-      if (payload.action === "update_rf_remote_slot" || payload.action === "clear_rf_remote_slot") {
-        delete rfSlotDrafts[payload.slotId || activeRfTab];
-      }
-      const saveResult = document.querySelector(_resultSelector || "[data-save-result]");
-      if (saveResult) {
-        saveResult.textContent = result.message;
-        saveResult.classList.remove("error");
-      }
-      closeSettingsSavePasswordDialog();
-    } else if (resultEl) {
-      resultEl.textContent = "密码错误";
-      resultEl.classList.add("error");
+    const result = await sendAction(payload, false);
+    if (requestToken !== settingsToken || !remoteSettingsDialogOpen) return;
+    if (!result.ok) {
+      if (output) { output.textContent = result.message || "保存失败"; output.classList.add("error"); }
+      return;
     }
+    if (payload.action === "update_rf_remote_slot" || payload.action === "clear_rf_remote_slot") {
+      delete rfDraftBindings[payload.slotId || activeRfTab];
+      delete rfSlotDrafts[payload.slotId || activeRfTab];
+      if (pendingRfLearn?.slotId === (payload.slotId || activeRfTab)) cancelPendingRfLearn("学习已取消");
+    }
+    if (payload.action === "delete_music_item") { musicTracksLoaded = false; await loadMusicTracks(); }
+    const session = await api.settingsSession();
+    if (requestToken !== settingsToken || !remoteSettingsDialogOpen) return;
+    if (!session.ok) { expireSettingsSession(); openSettingsDialog(); return; }
+    settingsConfig = session.settings || {};
+    if (session.state) currentState = session.state;
+    settingsHydrated = false;
+    renderSettings();
+    renderKeyBindings();
+    if (payload.action === "update_rf_remote_slot" || payload.action === "clear_rf_remote_slot") {
+      delete rfSlotDrafts[payload.slotId || activeRfTab];
+    }
+    document.querySelectorAll("input[name='settingsPassword'], input[name='finishPassword']").forEach((input) => { input.value = ""; });
+    const resultOutput = document.querySelector(selector);
+    if (resultOutput) { resultOutput.textContent = result.message; resultOutput.classList.remove("error"); }
+  } catch (error) {
+    if (output) { output.textContent = "保存未完成，请重试"; output.classList.add("error"); }
   } finally {
     settingsSaveInFlight = false;
   }
@@ -3866,10 +3956,6 @@ function handlePasswordKey(event) {
     if (event.key === "Escape") closeEditTitleDialog();
     return event.key === "Enter" || event.code === "NumpadEnter" || event.key === "Escape";
   }
-  if (settingsSavePasswordDialogOpen) {
-    if (event.key === "Escape") closeSettingsSavePasswordDialog();
-    return event.key === "Escape";
-  }
   if (finishDialogOpen) {
     if (eventMatchesBindingSpec(event, keyBindingSpecById.finish_dialog)) return closeFinishDialog();
     if (eventMatchesBindingSpec(event, keyBindingSpecById.finish_cancel)) return closeFinishDialog();
@@ -3890,17 +3976,16 @@ function handlePasswordKey(event) {
     return true;
   }
   if (settingsDialogOpen) {
-    if (event.key === "Escape") return closeSettingsDialog();
-    if (event.key === "/") return closeSettingsDialog();
+    if (event.key === "Escape") { closeSettingsDialog(); return true; }
+    if (settingsEntryInFlight) return true;
     if (digit && settingsPassword.length < settingsPasswordLength()) settingsPassword += digit;
     if (event.key === "Backspace") settingsPassword = settingsPassword.slice(0, -1);
-    document.querySelector("[data-settings-password]").textContent = "●".repeat(settingsPassword.length);
-    if (event.key === "Enter" || event.code === "NumpadEnter") {
-      const returnParam = document.querySelector("[data-scoreboard]") ? "&return=scoreboard" : "";
-      window.location.href = `/set?password=${encodeURIComponent(settingsPassword)}${returnParam}`;
-    }
+    const input = document.querySelector("[data-settings-password]");
+    if (input) input.value = settingsPassword;
+    if (settingsPassword.length >= settingsPasswordLength()) tryEnterSettings();
     return true;
   }
+
   return false;
 }
 
@@ -3910,11 +3995,9 @@ document.addEventListener("keydown", (event) => {
     saveKeyBindingFromEvent(event);
     return;
   }
-  if (settingsSavePasswordDialogOpen && isEditableTarget(event.target)) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeSettingsSavePasswordDialog();
-    }
+  if (settingsDialogOpen && isEditableTarget(event.target)) {
+    if (event.key === "Escape") { event.preventDefault(); closeSettingsDialog(); }
+    if (event.key === "Enter") event.preventDefault();
     return;
   }
   if (editTitleDialogOpen && isEditableTarget(event.target)) {
@@ -3986,7 +4069,6 @@ document.addEventListener("click", (event) => {
   if (action === "close-finish") return closeFinishDialog();
   if (action === "close-settings") return closeSettingsDialog();
   if (action === "close-remote-settings") return closeRemoteSettingsDialog();
-  if (action === "close-settings-save-password") return closeSettingsSavePasswordDialog();
   if (action === "close-swap-team") return closeSwapTeamDialog();
   if (action === "close-edit-team") return closeEditTeamDialog();
   if (action === "close-edit-title") return closeEditTitleDialog();
@@ -4028,7 +4110,7 @@ document.addEventListener("click", (event) => {
   }
   if (action === "clear-rf-slot") {
     if (!window.confirm("清除这个遥控器的全部按键？")) return;
-    openSettingsSavePasswordDialog({
+    saveSettings({
       action: "clear_rf_remote_slot",
       slotId: target.dataset.slotId || activeRfTab,
       _resultSelector: "[data-rf-slot-result]",
@@ -4037,14 +4119,14 @@ document.addEventListener("click", (event) => {
   }
   if (action === "clear-key-bindings") {
     if (!window.confirm("恢复键盘默认映射？")) return;
-    openSettingsSavePasswordDialog({
+    saveSettings({
       action: "clear_key_bindings",
       _resultSelector: "[data-keyboard-save-result]",
     });
     return;
   }
   if (action === "toggle-rf-remote") {
-    openSettingsSavePasswordDialog({
+    saveSettings({
       action: "update_rf_remote",
       id: target.dataset.rfId || "",
       enabled: target.dataset.rfEnabled === "1",
@@ -4056,7 +4138,7 @@ document.addEventListener("click", (event) => {
     const remote = (currentState?.rfRemotes || []).find((item) => item.id === target.dataset.rfId);
     const name = window.prompt("遥控器名称", remote?.name || "遥控器");
     if (!name) return;
-    openSettingsSavePasswordDialog({
+    saveSettings({
       action: "update_rf_remote",
       id: target.dataset.rfId || "",
       name,
@@ -4066,7 +4148,7 @@ document.addEventListener("click", (event) => {
   }
   if (action === "delete-rf-remote") {
     if (!window.confirm("删除这个遥控器？")) return;
-    openSettingsSavePasswordDialog({
+    saveSettings({
       action: "delete_rf_remote",
       id: target.dataset.rfId || "",
       _resultSelector: "[data-rf-save-result]",
@@ -4143,7 +4225,7 @@ document.addEventListener("click", (event) => {
     if (!item || item.deletable === false) return;
     const itemTypeText = item.type === "directory" ? "目录" : "音乐";
     if (!window.confirm(`确定删除当前${itemTypeText}：${item.name || item.fileName}？`)) return;
-    openSettingsSavePasswordDialog({
+    saveSettings({
       action: "delete_music_item",
       musicItemId: item.id,
       _resultSelector: "[data-music-save-result]",
@@ -4229,8 +4311,12 @@ document.addEventListener("input", (event) => {
     numericPasswordInput.value = numericPasswordInput.value.replace(/\D/g, "").slice(0, 6);
     return;
   }
-  if (!event.target.closest("[data-settings-save-password-input]")) return;
-  trySavePendingSettings();
+  const settingsInput = event.target.closest("[data-settings-password]");
+  if (settingsInput && settingsDialogOpen && !settingsEntryInFlight) {
+    settingsPassword = settingsInput.value.replace(/\D/g, "").slice(0, settingsPasswordLength());
+    settingsInput.value = settingsPassword;
+    if (settingsPassword.length >= settingsPasswordLength()) tryEnterSettings();
+  }
 });
 
 document.addEventListener("change", (event) => {
@@ -4282,7 +4368,7 @@ document.addEventListener("submit", async (event) => {
   if (networkForm) {
     event.preventDefault();
     if (!validateNetworkSettings(networkForm)) return;
-    openSettingsSavePasswordDialog(collectNetworkSettingsPayload(networkForm));
+    saveSettings(collectNetworkSettingsPayload(networkForm));
     return;
   }
 
@@ -4290,7 +4376,7 @@ document.addEventListener("submit", async (event) => {
   if (rfSettingsForm) {
     event.preventDefault();
     setRfResult("");
-    openSettingsSavePasswordDialog(collectRfSettingsPayload(rfSettingsForm));
+    saveSettings(collectRfSettingsPayload(rfSettingsForm));
     return;
   }
 
@@ -4298,14 +4384,14 @@ document.addEventListener("submit", async (event) => {
   if (rfSlotForm) {
     event.preventDefault();
     setRfResult("");
-    openSettingsSavePasswordDialog(collectRfSlotPayload(rfSlotForm));
+    saveSettings(collectRfSlotPayload(rfSlotForm));
     return;
   }
 
   const keyboardSettingsForm = event.target.closest("[data-keyboard-settings-form]");
   if (keyboardSettingsForm) {
     event.preventDefault();
-    openSettingsSavePasswordDialog(collectKeyboardSettingsPayload(keyboardSettingsForm));
+    saveSettings(collectKeyboardSettingsPayload(keyboardSettingsForm));
     return;
   }
 
@@ -4320,7 +4406,7 @@ document.addEventListener("submit", async (event) => {
     resultEl.classList.remove("error");
   }
   if (!validateWeatherLocation(form)) return;
-  openSettingsSavePasswordDialog(collectSettingsPayload(form));
+  saveSettings(collectSettingsPayload(form));
 });
 
 window.addEventListener("resize", () => {
