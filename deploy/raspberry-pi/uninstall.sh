@@ -30,6 +30,15 @@ NM_DNSMASQ_CONF="/etc/NetworkManager/dnsmasq.d/gateball.conf"
 NM_DNSMASQ_SHARED_CONF="/etc/NetworkManager/dnsmasq-shared.d/gateball.conf"
 NETWORK_APPLY_HELPER="/usr/local/bin/gateball-network-apply"
 NETWORK_SUDOERS_FILE="/etc/sudoers.d/gateball-network"
+NETWORK_SYNC_BIN="/usr/local/sbin/gateball-network-sync"
+NETWORK_SYNC_CONFIG="/etc/default/gateball-network-sync"
+NETWORK_SYNC_DISPATCHER="/etc/NetworkManager/dispatcher.d/91-gateball-network-sync"
+NETWORK_SYNC_SERVICE_NAME="gateball-network-sync.service"
+NETWORK_SYNC_SERVICE_FILE="/etc/systemd/system/$NETWORK_SYNC_SERVICE_NAME"
+NETWORK_RECOVERY_SERVICE_NAME="gateball-network-recovery.service"
+NETWORK_RECOVERY_SERVICE_FILE="/etc/systemd/system/$NETWORK_RECOVERY_SERVICE_NAME"
+NETWORK_SYNC_TIMER_NAME="gateball-network-sync.timer"
+NETWORK_SYNC_TIMER_FILE="/etc/systemd/system/$NETWORK_SYNC_TIMER_NAME"
 AP_INTERFACE_SERVICE_NAME="gateball-wlan-ap.service"
 AP_INTERFACE_SERVICE_FILE="/etc/systemd/system/$AP_INTERFACE_SERVICE_NAME"
 MDNS_PUBLISHER="/usr/local/bin/gateball-mdns-publish"
@@ -111,12 +120,17 @@ remove_network_support() {
     sudo nmcli connection delete "$GATEBALL_HOTSPOT_CONNECTION" >/dev/null 2>&1 || true
   fi
   sudo systemctl disable --now "$MDNS_SERVICE_NAME" >/dev/null 2>&1 || true
+  sudo systemctl disable --now "$NETWORK_SYNC_TIMER_NAME" >/dev/null 2>&1 || true
+  sudo systemctl stop "$NETWORK_SYNC_SERVICE_NAME" >/dev/null 2>&1 || true
+  sudo systemctl stop "$NETWORK_RECOVERY_SERVICE_NAME" >/dev/null 2>&1 || true
   sudo systemctl disable --now "$AP_INTERFACE_SERVICE_NAME" >/dev/null 2>&1 || true
   sudo rm -f "$MDNS_SERVICE_FILE" "$MDNS_PUBLISHER"
   sudo rm -f "$AP_INTERFACE_SERVICE_FILE"
   sudo rm -f "$NGINX_GATEBALL_SITE_ENABLED" "$NGINX_GATEBALL_SITE"
   sudo rm -f "$NM_DNSMASQ_CONF" "$NM_DNSMASQ_SHARED_CONF"
   sudo rm -f "$NETWORK_APPLY_HELPER" "$NETWORK_SUDOERS_FILE"
+  sudo rm -f "$NETWORK_SYNC_BIN" "$NETWORK_SYNC_CONFIG" "$NETWORK_SYNC_DISPATCHER"
+  sudo rm -f "$NETWORK_SYNC_SERVICE_FILE" "$NETWORK_RECOVERY_SERVICE_FILE" "$NETWORK_SYNC_TIMER_FILE"
   if command -v nginx >/dev/null 2>&1; then
     sudo nginx -t >/dev/null 2>&1 && sudo systemctl reload nginx >/dev/null 2>&1 || true
   fi

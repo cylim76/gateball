@@ -46,6 +46,15 @@ LEGACY_NM_DNSMASQ_CONF="/etc/NetworkManager/dnsmasq.d/gateball.conf"
 LEGACY_NM_DNSMASQ_SHARED_CONF="/etc/NetworkManager/dnsmasq-shared.d/gateball.conf"
 NETWORK_APPLY_HELPER="/usr/local/bin/gateball-network-apply"
 NETWORK_SUDOERS_FILE="/etc/sudoers.d/gateball-network"
+NETWORK_SYNC_BIN="/usr/local/sbin/gateball-network-sync"
+NETWORK_SYNC_CONFIG="/etc/default/gateball-network-sync"
+NETWORK_SYNC_DISPATCHER="/etc/NetworkManager/dispatcher.d/91-gateball-network-sync"
+NETWORK_SYNC_SERVICE_NAME="gateball-network-sync.service"
+NETWORK_SYNC_SERVICE_FILE="/etc/systemd/system/$NETWORK_SYNC_SERVICE_NAME"
+NETWORK_RECOVERY_SERVICE_NAME="gateball-network-recovery.service"
+NETWORK_RECOVERY_SERVICE_FILE="/etc/systemd/system/$NETWORK_RECOVERY_SERVICE_NAME"
+NETWORK_SYNC_TIMER_NAME="gateball-network-sync.timer"
+NETWORK_SYNC_TIMER_FILE="/etc/systemd/system/$NETWORK_SYNC_TIMER_NAME"
 AP_INTERFACE_SERVICE_NAME="gateball-wlan-ap.service"
 AP_INTERFACE_SERVICE_FILE="/etc/systemd/system/$AP_INTERFACE_SERVICE_NAME"
 MDNS_PUBLISHER="/usr/local/bin/gateball-mdns-publish"
@@ -677,6 +686,76 @@ EOF
   fi
 }
 
+install_network_sync() {
+  local uplink_ifname="$1"
+  sudo install -m 755 "$SCRIPT_DIR/network-sync.sh" "$NETWORK_SYNC_BIN"
+  sudo install -d /etc/default /etc/NetworkManager/dispatcher.d
+
+  sudo tee "$NETWORK_SYNC_CONFIG" >/dev/null <<EOF
+GATEBALL_UPLINK_IFNAME=$uplink_ifname
+GATEBALL_HOTSPOT_IFNAME=$GATEBALL_HOTSPOT_IFNAME
+GATEBALL_HOTSPOT_CONNECTION=$GATEBALL_HOTSPOT_CONNECTION
+EOF
+
+  sudo tee "$NETWORK_SYNC_DISPATCHER" >/dev/null <<EOF
+#!/bin/sh
+if [ "\${1:-}" = "$uplink_ifname" ]; then
+  case "\${2:-}" in
+    up|reapply|dhcp4-change|connectivity-change)
+      systemctl start --no-block $NETWORK_SYNC_SERVICE_NAME >/dev/null 2>&1 || true
+      ;;
+    down)
+      systemctl start --no-block $NETWORK_RECOVERY_SERVICE_NAME >/dev/null 2>&1 || true
+      ;;
+  esac
+fi
+EOF
+  sudo chmod 755 "$NETWORK_SYNC_DISPATCHER"
+
+  sudo tee "$NETWORK_SYNC_SERVICE_FILE" >/dev/null <<EOF
+[Unit]
+Description=Keep Gateball hotspot on the Wi-Fi uplink channel
+After=NetworkManager.service $AP_INTERFACE_SERVICE_NAME
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-$NETWORK_SYNC_CONFIG
+ExecStart=$NETWORK_SYNC_BIN
+EOF
+
+  sudo tee "$NETWORK_RECOVERY_SERVICE_FILE" >/dev/null <<EOF
+[Unit]
+Description=Give the Gateball Wi-Fi uplink priority while reconnecting
+After=NetworkManager.service $AP_INTERFACE_SERVICE_NAME
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-$NETWORK_SYNC_CONFIG
+ExecStart=$NETWORK_SYNC_BIN --recover-uplink
+TimeoutStartSec=45s
+EOF
+
+  sudo tee "$NETWORK_SYNC_TIMER_FILE" >/dev/null <<EOF
+[Unit]
+Description=Periodically verify the Gateball hotspot channel
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=60s
+AccuracySec=10s
+Unit=$NETWORK_SYNC_SERVICE_NAME
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now "$NETWORK_SYNC_TIMER_NAME"
+  echo "Gateball Wi-Fi channel synchronization installed."
+}
+
 install_network_support() {
   if [ "$INSTALL_NETWORK_SUPPORT" != "1" ]; then
     echo "Gateball network support skipped: INSTALL_NETWORK_SUPPORT=$INSTALL_NETWORK_SUPPORT"
@@ -978,6 +1057,8 @@ EOF
       "$GATEBALL_HOTSPOT_SSID" \
       "$GATEBALL_HOTSPOT_PASSWORD" \
       "$GATEBALL_SHARED_WIFI_CHANNEL"
+    install_network_sync "$base_wifi_ifname"
+    sudo systemctl start "$NETWORK_SYNC_SERVICE_NAME" || true
     install_mdns_support "$GATEBALL_HOTSPOT_IFNAME"
     print_hotspot_status \
       "$GATEBALL_HOTSPOT_CONNECTION" \

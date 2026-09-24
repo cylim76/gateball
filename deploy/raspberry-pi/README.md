@@ -149,8 +149,17 @@ This requires `iw`; the network installer normally installs it.
 The X11 kiosk launcher already disables screen blanking, screen savers, and
 DPMS with `xset`. Desktop lock-screen managers and Wayland compositors may have
 their own policies; configure those separately if used. CPU frequency scaling,
-thermal protection, and normal shutdown are preserved. This policy does not
-synchronize hotspot channels when a router changes its channel.
+thermal protection, and normal shutdown are preserved.
+
+The network installer also installs `gateball-network-sync.timer` and a
+NetworkManager dispatcher hook. They read the uplink's actual connected
+frequency without requesting a scan, remove a saved router BSSID restriction,
+and restart the Gateball hotspot only when its channel no longer matches the
+2.4 GHz uplink. This handles routers that automatically change channel after
+installation while avoiding periodic hotspot interruptions when the channel is
+already correct. If the uplink disconnects, the dispatcher temporarily pauses
+the hotspot so the physical radio can reconnect first, then restores the
+hotspot. Phones may need to reconnect to the hotspot after this recovery.
 
 For an existing installation, apply only the power policy without restarting
 the network, display, or match service:
