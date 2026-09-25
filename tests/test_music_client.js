@@ -27,6 +27,19 @@ function musicFixture() {
   return { directory, first, second };
 }
 
+test("scoreboard can play a newly selected track before its catalog refreshes", () => {
+  const trackId = "project:new-album/01.wav";
+  const context = runFunctions({
+    currentState: { selectedMusicTrack: trackId },
+    musicTracks: [],
+  }, "selectedMusicTrack");
+
+  assert.equal(context.selectedMusicTrack().id, trackId);
+  assert.equal(context.selectedMusicTrack().url, `/api/music/file?id=${encodeURIComponent(trackId)}`);
+  context.musicTracks = [{ id: trackId, url: "/listed.wav" }];
+  assert.equal(context.selectedMusicTrack().url, "/listed.wav");
+});
+
 test("saving a chosen music directory keeps the directory as the playlist", () => {
   const { directory, first, second } = musicFixture();
   const form = {

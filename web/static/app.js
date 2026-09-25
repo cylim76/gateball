@@ -2106,7 +2106,18 @@ function applyMusicVolume() {
 
 function selectedMusicTrack() {
   const trackId = currentState?.selectedMusicTrack || "";
-  return musicTracks.find((track) => track.id === trackId) || null;
+  if (!trackId) return null;
+  const listed = musicTracks.find((track) => track.id === trackId);
+  if (listed) return listed;
+  // A song can be copied to the device after the kiosk loaded its catalog.
+  // The server still validates this URL; playback need not wait for a page reload.
+  const relativeName = trackId.includes(":") ? trackId.slice(trackId.indexOf(":") + 1) : trackId;
+  return {
+    id: trackId,
+    name: relativeName,
+    fileName: relativeName.split("/").pop(),
+    url: `/api/music/file?id=${encodeURIComponent(trackId)}`,
+  };
 }
 
 function musicItemForId(itemId) {
@@ -2526,7 +2537,7 @@ function syncMusicPlayback() {
     stopMusicPlayback();
     return;
   }
-  if (!currentState || !musicTracksLoaded) return;
+  if (!currentState) return;
   if (!currentState.musicEnabled || !currentState.selectedMusicTrack || !currentState.musicPlaying) {
     if (!currentState.musicPlaying) musicPlaybackBlockedTrackId = "";
     stopMusicPlayback();
