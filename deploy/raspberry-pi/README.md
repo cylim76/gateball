@@ -174,10 +174,12 @@ The system sleep switches require systemd 240 or later (including Ubuntu 20.04
 on GB2). To skip this policy on a fresh installation, use
 `DISABLE_POWER_SAVING=0 ./install.sh`.
 
-Uninstallation removes the added policy files and restores any pre-existing
-files at those same paths. Saved Wi-Fi profiles are not rewritten. To remove
-only the policy, run `sudo bash deploy/raspberry-pi/configure-power.sh remove`;
-normal Wi-Fi defaults resume on reconnection and idle defaults after reboot.
+Uninstallation keeps the no-sleep and Wi-Fi power-saving policy by default, so
+an appliance remains awake even if the Gateball service is removed. To restore
+pre-installation power settings while uninstalling, run
+`REMOVE_POWER_POLICY=1 ./uninstall.sh`. To remove only the policy, run
+`sudo bash deploy/raspberry-pi/configure-power.sh remove`; normal Wi-Fi
+defaults resume on reconnection and idle defaults after reboot.
 
 References: [NetworkManager connection defaults](https://networkmanager.dev/docs/api/latest/NetworkManager.conf.html),
 [NetworkManager dispatcher](https://networkmanager.dev/docs/api/latest/NetworkManager-dispatcher.html),

@@ -23,6 +23,7 @@ XWRAPPER_CONFIG="/etc/X11/Xwrapper.config"
 REMOVE_KIOSK_PACKAGES="${REMOVE_KIOSK_PACKAGES:-0}"
 RESTART_DISPLAY_MANAGER="${RESTART_DISPLAY_MANAGER:-0}"
 REMOVE_NETWORK_SUPPORT="${REMOVE_NETWORK_SUPPORT:-1}"
+REMOVE_POWER_POLICY="${REMOVE_POWER_POLICY:-0}"
 GATEBALL_HOTSPOT_CONNECTION="${GATEBALL_HOTSPOT_CONNECTION:-gateball-ap}"
 NGINX_GATEBALL_SITE="/etc/nginx/sites-available/gateball"
 NGINX_GATEBALL_SITE_ENABLED="/etc/nginx/sites-enabled/gateball"
@@ -151,7 +152,11 @@ sudo systemctl daemon-reload
 rm -f "$AUTOSTART_FILE"
 sudo rm -f "$KIOSK_SESSION_RUNNER" "$KIOSK_XSESSION_FILE" "$LIGHTDM_KIOSK_CONF"
 remove_network_support
-sudo bash "$SCRIPT_DIR/configure-power.sh" remove
+if [ "$REMOVE_POWER_POLICY" = "1" ]; then
+  sudo bash "$SCRIPT_DIR/configure-power.sh" remove
+else
+  echo "Keeping the Gateball no-sleep and Wi-Fi power-saving policy."
+fi
 enable_display_manager
 restore_desktop_shell
 
