@@ -238,6 +238,15 @@ The running scoreboard also prefers the `lgpio` GPIO listener when available,
 so RF learning in Settings uses the same 24-bit GPIO edge decoder as the Linux
 test tool instead of relying only on `rpi-rf`.
 
+The remote settings can run up to four independent 433 MHz receiver sources.
+Each source keeps its own GPIO or UART device, and each of the three remotes can
+select one or more permitted sources. One ESP32 UART receiver may therefore
+serve all remotes, while separate ESP32 devices can be assigned to individual
+remotes. Serial paths discovered under `/dev/serial/by-id`, `/dev/ttyUSB*`,
+`/dev/ttyACM*`, and `/dev/ttyS*` appear as suggestions; previously saved paths
+remain available after switching devices or receiver types. The installer adds
+the service user to `dialout` when that group exists.
+
 ## Background Music
 
 For production music on Raspberry Pi, put audio files in:

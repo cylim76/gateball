@@ -13,7 +13,7 @@ import secrets
 import subprocess
 from dataclasses import dataclass
 from queue import SimpleQueue
-from threading import RLock, Thread
+from threading import Event, RLock, Thread
 from uuid import uuid4
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -131,6 +131,11 @@ DEFAULT_RF_REMOTE_SLOTS = [
     {"id": "rf1", "name": "遥控器1", "enabled": False, "bindings": {}},
     {"id": "rf2", "name": "遥控器2", "enabled": False, "bindings": {}},
     {"id": "rf3", "name": "遥控器3", "enabled": False, "bindings": {}},
+]
+DEFAULT_RF_RECEIVERS = [
+    {"id": "rx1", "name": "接收器1", "enabled": True, "type": "serial", "gpio": 27, "serialDevice": ""},
+    {"id": "rx2", "name": "接收器2", "enabled": False, "type": "serial", "gpio": 17, "serialDevice": ""},
+    {"id": "rx3", "name": "接收器3", "enabled": False, "type": "serial", "gpio": 22, "serialDevice": ""},
 ]
 
 
@@ -504,10 +509,15 @@ def default_rf_remote_slots() -> list[dict]:
             "id": slot["id"],
             "name": slot["name"],
             "enabled": parse_bool(slot.get("enabled")),
+            "receiverIds": ["rx1"],
             "bindings": {},
         }
         for slot in DEFAULT_RF_REMOTE_SLOTS
     ]
+
+
+def default_rf_receivers() -> list[dict]:
+    return [dict(receiver) for receiver in DEFAULT_RF_RECEIVERS]
 
 
 def parse_bool(value, default: bool = False) -> bool:
@@ -526,12 +536,39 @@ def parse_bool(value, default: bool = False) -> bool:
     return default
 
 
+_rf_serial_device_cache: tuple[float, list[str]] = (0.0, [])
+
+
+def available_rf_serial_devices(state: dict) -> list[str]:
+    global _rf_serial_device_cache
+    now = time.monotonic()
+    detected = _rf_serial_device_cache[1]
+    if now - _rf_serial_device_cache[0] >= 5:
+        paths: set[str] = set()
+        for pattern in ("/dev/serial/by-id/*", "/dev/ttyUSB*", "/dev/ttyACM*", "/dev/ttyS*"):
+            try:
+                paths.update(str(path) for path in Path("/").glob(pattern.lstrip("/")) if path.exists())
+            except OSError:
+                pass
+        detected = sorted(paths)
+        _rf_serial_device_cache = (now, detected)
+    configured = [
+        str(receiver.get("serialDevice") or "").strip()
+        for receiver in state.get("rfReceivers", [])
+        if isinstance(receiver, dict)
+    ]
+    history = state.get("rfSerialDeviceHistory") if isinstance(state.get("rfSerialDeviceHistory"), list) else []
+    return list(dict.fromkeys(item for item in [*detected, *configured, *map(str, history)] if item))
+
+
 DEFAULT_STATE.update(
     {
         "rfRemoteEnabled": True,
         "rfReceiverType": "gpio",
         "rfReceiverGpio": 27,
         "rfReceiverSerialDevice": "",
+        "rfReceivers": default_rf_receivers(),
+        "rfSerialDeviceHistory": [],
         "rfRemoteModel": "gateball-10key",
         "rfRemotes": [],
         "rfRemoteSlots": default_rf_remote_slots(),
@@ -642,6 +679,7 @@ class Store:
         self.history: list[dict] = []
         self.last_rf_music_raw = ""
         self.last_rf_music_at = 0.0
+        self.last_rf_signal_by_raw: dict[str, tuple[float, str]] = {}
         self.boot_wifi_info_pending = False
         self.load()
         apply_audio_output_mode(self.state.get("audioOutputMode", "auto"))
@@ -759,6 +797,17 @@ class Store:
         if self.state.get("rfReceiverType") not in {"gpio", "serial", "keyboard"}:
             self.state["rfReceiverType"] = "gpio"
         self.state["rfReceiverSerialDevice"] = str(self.state.get("rfReceiverSerialDevice") or "").strip()[:160]
+        if "rfReceivers" not in saved_state:
+            legacy_type = str(self.state.get("rfReceiverType") or "gpio")
+            if legacy_type == "keyboard":
+                legacy_type = "serial"
+            self.state["rfReceivers"] = default_rf_receivers()
+            self.state["rfReceivers"][0].update(
+                type=legacy_type,
+                gpio=self.state.get("rfReceiverGpio", 27),
+                serialDevice=self.state.get("rfReceiverSerialDevice", ""),
+            )
+        self.normalize_rf_receivers()
         self.normalize_rf_remote_slots()
         if not isinstance(self.state.get("rfLastSignal"), dict):
             self.state["rfLastSignal"] = None
@@ -888,6 +937,7 @@ class Store:
                 "history": self.history[-30:],
                 "finishPasswordLength": len(str(self.state["finishPassword"])),
                 "settingsPasswordLength": len(str(self.state["settingsPassword"])),
+                "rfSerialDevices": available_rf_serial_devices(self.state),
                 "revision": self.revision,
             })
 
@@ -999,11 +1049,53 @@ class Store:
             "label": label[:80],
         }
 
+    def normalize_rf_receivers(self) -> list[dict]:
+        raw_receivers = self.state.get("rfReceivers")
+        if not isinstance(raw_receivers, list):
+            raw_receivers = []
+        normalized = []
+        seen = set()
+        for index, raw in enumerate(raw_receivers[:4]):
+            if not isinstance(raw, dict):
+                continue
+            receiver_id = str(raw.get("id") or f"rx{index + 1}").strip()[:24]
+            if not receiver_id or receiver_id in seen:
+                continue
+            seen.add(receiver_id)
+            receiver_type = str(raw.get("type") or "serial")
+            if receiver_type not in {"gpio", "serial"}:
+                receiver_type = "serial"
+            try:
+                gpio = min(255, max(0, int(raw.get("gpio", 27))))
+            except (TypeError, ValueError):
+                gpio = 27
+            normalized.append({
+                "id": receiver_id,
+                "name": str(raw.get("name") or f"接收器{index + 1}").strip()[:40],
+                "enabled": parse_bool(raw.get("enabled"), index == 0),
+                "type": receiver_type,
+                "gpio": gpio,
+                "serialDevice": str(raw.get("serialDevice") or "").strip()[:200],
+            })
+        if not normalized:
+            normalized = default_rf_receivers()
+        history = self.state.get("rfSerialDeviceHistory")
+        if not isinstance(history, list):
+            history = []
+        for receiver in normalized:
+            device = receiver["serialDevice"]
+            if device and device not in history:
+                history.append(device)
+        self.state["rfSerialDeviceHistory"] = [str(item)[:200] for item in history if str(item).strip()][-12:]
+        self.state["rfReceivers"] = normalized
+        return normalized
+
     def normalize_rf_remote_slots(self) -> list[dict]:
         raw_slots = self.state.get("rfRemoteSlots")
         if not isinstance(raw_slots, list):
             raw_slots = []
         by_id = {str(slot.get("id")): slot for slot in raw_slots if isinstance(slot, dict)}
+        valid_receiver_ids = {receiver["id"] for receiver in self.normalize_rf_receivers()}
         normalized = []
         for default_slot in default_rf_remote_slots():
             existing = by_id.get(default_slot["id"], {})
@@ -1022,6 +1114,10 @@ class Store:
                     "id": default_slot["id"],
                     "name": str(existing.get("name") or default_slot["name"]).strip()[:40] if isinstance(existing, dict) else default_slot["name"],
                     "enabled": parse_bool(existing.get("enabled"), default_slot["enabled"]) if isinstance(existing, dict) else default_slot["enabled"],
+                    "receiverIds": [
+                        str(item) for item in (existing.get("receiverIds", ["rx1"]) if isinstance(existing, dict) else ["rx1"])
+                        if str(item) in valid_receiver_ids
+                    ],
                     "bindings": bindings,
                 }
             )
@@ -1071,7 +1167,8 @@ class Store:
         self.state["rfRemotes"] = normalized
         return normalized
 
-    def record_rf_signal(self, *, raw: str, address: str, button: str, remote: dict | None, action_id: str, status: str, bits: int | None = None) -> dict:
+    def record_rf_signal(self, *, raw: str, address: str, button: str, remote: dict | None, action_id: str,
+                         status: str, bits: int | None = None, receiver_id: str = "", receiver_name: str = "") -> dict:
         now = time.time()
         self.state["rfLastSignal"] = {
             "id": f"{now:.6f}",
@@ -1080,6 +1177,8 @@ class Store:
             "address": address,
             "button": button,
             "bits": bits,
+            "receiverId": receiver_id or None,
+            "receiverName": receiver_name or None,
             "remoteId": remote.get("id") if remote else None,
             "remoteName": remote.get("name") if remote else None,
             "action": action_id,
@@ -1108,13 +1207,23 @@ class Store:
             bits = int(payload.get("bits")) if payload.get("bits") is not None else None
         except (TypeError, ValueError):
             bits = None
+        receiver_id = str(payload.get("receiverId") or "").strip()
+        receiver = next((item for item in self.normalize_rf_receivers() if item["id"] == receiver_id), None)
+        receiver_name = receiver.get("name", "") if receiver else ""
         if not address and raw:
             address = raw[:-1] if len(raw) > 1 else raw
         if not button and raw:
             button = raw[-1:]
         learning = self.rf_learning_status()
         if learning and not learning.get("signal"):
-            signal = self.record_rf_signal(raw=raw, address=address, button=button, remote=None, action_id="", status="learning", bits=bits)
+            allowed = learning.get("receiverIds") if isinstance(learning.get("receiverIds"), list) else []
+            if receiver_id and allowed and receiver_id not in allowed:
+                self.record_rf_signal(raw=raw, address=address, button=button, remote=None, action_id="",
+                                      status="wrong_receiver", bits=bits, receiver_id=receiver_id, receiver_name=receiver_name)
+                self.emit()
+                return {"ok": False, "message": "wrong_receiver", "state": self.snapshot()}
+            signal = self.record_rf_signal(raw=raw, address=address, button=button, remote=None, action_id="",
+                                           status="learning", bits=bits, receiver_id=receiver_id, receiver_name=receiver_name)
             learning["signal"] = signal
             self.state["rfLearning"] = learning
             self.save()
@@ -1128,6 +1237,8 @@ class Store:
         for slot in slots:
             if not slot.get("enabled"):
                 continue
+            if receiver_id and receiver_id not in slot.get("receiverIds", []):
+                continue
             for candidate_action, binding in slot.get("bindings", {}).items():
                 if raw and binding.get("raw") == raw:
                     remote = slot
@@ -1139,6 +1250,15 @@ class Store:
                     break
             if remote:
                 break
+        if remote and raw and receiver_id:
+            now = time.monotonic()
+            last_at, last_receiver = self.last_rf_signal_by_raw.get(raw, (0.0, ""))
+            self.last_rf_signal_by_raw[raw] = (now, receiver_id)
+            if last_receiver and last_receiver != receiver_id and now - last_at < 0.2:
+                self.record_rf_signal(raw=raw, address=address, button=button, remote=remote, action_id=action_id,
+                                      status="duplicate", bits=bits, receiver_id=receiver_id, receiver_name=receiver_name)
+                self.emit()
+                return {"ok": False, "message": "duplicate", "state": self.snapshot()}
         if not remote:
             status = "unknown_remote"
         elif not action_id:
@@ -1165,7 +1285,8 @@ class Store:
             self.action(RF_ACTION_PAYLOADS[action_id])
         elif action_id:
             status = "unknown_button"
-        self.record_rf_signal(raw=raw, address=address, button=button, remote=remote, action_id=action_id, status=status, bits=bits)
+        self.record_rf_signal(raw=raw, address=address, button=button, remote=remote, action_id=action_id,
+                              status=status, bits=bits, receiver_id=receiver_id, receiver_name=receiver_name)
         self.save()
         self.emit()
         return {"ok": status in {"executed", "finish_requires_password", "finish_password_digit"}, "message": status, "state": self.snapshot()}
@@ -1242,10 +1363,13 @@ class Store:
 
         if action == "begin_rf_learning":
             now = time.time()
+            valid_receiver_ids = {receiver["id"] for receiver in self.normalize_rf_receivers()}
+            requested_receivers = payload.get("receiverIds") if isinstance(payload.get("receiverIds"), list) else []
             self.state["rfLearning"] = {
                 "id": f"{now:.6f}",
                 "slotId": str(payload.get("slotId") or ""),
                 "actionId": str(payload.get("bindingAction") or ""),
+                "receiverIds": [str(item) for item in requested_receivers if str(item) in valid_receiver_ids],
                 "startedAt": now,
                 "expiresAt": now + 10,
                 "signal": None,
@@ -1273,6 +1397,23 @@ class Store:
                 except (TypeError, ValueError):
                     pass
                 self.state["rfReceiverSerialDevice"] = str(payload.get("rfReceiverSerialDevice") or "").strip()[:160]
+                if isinstance(payload.get("rfReceivers"), list):
+                    previous_devices = [
+                        str(item.get("serialDevice") or "").strip()
+                        for item in self.normalize_rf_receivers()
+                        if isinstance(item, dict)
+                    ]
+                    self.state["rfReceivers"] = payload["rfReceivers"]
+                    receivers = self.normalize_rf_receivers()
+                    history = self.state.get("rfSerialDeviceHistory", [])
+                    for device in [*previous_devices, *(item["serialDevice"] for item in receivers)]:
+                        if device and device not in history:
+                            history.append(device)
+                    self.state["rfSerialDeviceHistory"] = history[-12:]
+                    first = receivers[0]
+                    self.state["rfReceiverType"] = first["type"]
+                    self.state["rfReceiverGpio"] = first["gpio"]
+                    self.state["rfReceiverSerialDevice"] = first["serialDevice"]
                 model = str(payload.get("rfRemoteModel") or "gateball-10key")
                 self.state["rfRemoteModel"] = model if model in RF_REMOTE_MODELS else "gateball-10key"
                 message = "RF remote settings saved"
@@ -1293,6 +1434,12 @@ class Store:
                 else:
                     slot["name"] = str(payload.get("name") or slot["name"]).strip()[:40]
                     slot["enabled"] = parse_bool(payload.get("enabled"))
+                    valid_receiver_ids = {receiver["id"] for receiver in self.normalize_rf_receivers()}
+                    requested_receiver_ids = payload.get("receiverIds")
+                    if isinstance(requested_receiver_ids, list):
+                        slot["receiverIds"] = list(dict.fromkeys(
+                            str(item) for item in requested_receiver_ids if str(item) in valid_receiver_ids
+                        ))
                     bindings = {}
                     raw_bindings = payload.get("bindings")
                     if isinstance(raw_bindings, dict):
@@ -2129,144 +2276,111 @@ class LgpioRfReceiver:
             self.lgpio.gpiochip_close(self.handle)
 
 
-def rf_listener_loop() -> None:
+def enqueue_receiver_signal(receiver: dict, payload: dict) -> None:
+    tagged = dict(payload)
+    tagged["receiverId"] = receiver["id"]
+    enqueue_rf_signal(tagged)
+
+
+def serial_rf_receiver_loop(receiver: dict, stop_event: Event) -> None:
+    serial_device = str(receiver.get("serialDevice") or "").strip()
+    while not stop_event.is_set():
+        if not serial_device:
+            stop_event.wait(2.0)
+            continue
+        serial_file = None
+        try:
+            serial_file = open(serial_device, "r", encoding="utf-8", errors="replace", buffering=1)
+            configure_rf_serial_device(serial_file)
+            print(f"RF receiver {receiver['name']} active on {serial_device}")
+            while not stop_event.is_set():
+                readable, _, _ = select.select([serial_file], [], [], 0.25)
+                if not readable:
+                    continue
+                payload = rf_payload_from_serial_line(serial_file.readline())
+                if payload:
+                    enqueue_receiver_signal(receiver, payload)
+        except Exception as exc:
+            print(f"RF receiver {receiver['name']} serial error on {serial_device}: {exc}")
+            stop_event.wait(3.0)
+        finally:
+            cleanup_rf_device(serial_file)
+
+
+def gpio_rf_receiver_loop(receiver: dict, stop_event: Event) -> None:
+    gpio = int(receiver.get("gpio", 27))
+    if not is_raspberry_pi():
+        print(f"RF receiver {receiver['name']} GPIO disabled: this device is not a Raspberry Pi")
+        stop_event.wait()
+        return
     rfdevice = None
-    serial_file = None
-    rf_device_class = None
-    rpi_rf_missing_logged = False
-    lgpio_missing_logged = False
-    gpio_unsupported_logged = False
-    active_gpio = None
-    active_serial_device = ""
-    active_mode = ""
-    last_timestamp = None
-    last_code = None
-    last_at = 0.0
+    try:
+        try:
+            rfdevice = LgpioRfReceiver(
+                gpio,
+                lambda code: enqueue_receiver_signal(receiver, rf_payload_from_24bit_code(code)),
+            )
+            print(f"RF receiver {receiver['name']} active with lgpio on BCM GPIO {gpio}")
+            stop_event.wait()
+            return
+        except Exception as exc:
+            cleanup_rf_device(rfdevice)
+            rfdevice = None
+            print(f"RF receiver {receiver['name']} lgpio unavailable on BCM GPIO {gpio}: {exc}")
+
+        from rpi_rf import RFDevice  # type: ignore
+        rfdevice = RFDevice(gpio)
+        rfdevice.enable_rx()
+        print(f"RF receiver {receiver['name']} active with rpi-rf on BCM GPIO {gpio}")
+        last_timestamp = None
+        last_code = None
+        last_at = 0.0
+        while not stop_event.wait(0.01):
+            timestamp = rfdevice.rx_code_timestamp
+            if not timestamp or timestamp == last_timestamp:
+                continue
+            last_timestamp = timestamp
+            now = time.monotonic()
+            code = rfdevice.rx_code
+            if code != last_code or now - last_at >= 0.3:
+                enqueue_receiver_signal(receiver, rf_payload_from_code(code))
+                last_code = code
+                last_at = now
+    except Exception as exc:
+        print(f"RF receiver {receiver['name']} GPIO error on BCM GPIO {gpio}: {exc}")
+        stop_event.wait(3.0)
+    finally:
+        cleanup_rf_device(rfdevice)
+
+
+def rf_receiver_manager_loop() -> None:
+    workers: dict[str, tuple[tuple, Event, Thread]] = {}
     while True:
         try:
-            store.state["rfRemoteEnabled"] = True
-            receiver_type = str(store.state.get("rfReceiverType") or "gpio")
-            gpio = int(store.state.get("rfReceiverGpio", 27))
-            serial_device = str(store.state.get("rfReceiverSerialDevice") or "").strip()
-            if receiver_type == "keyboard":
-                if rfdevice or serial_file:
-                    cleanup_rf_device(rfdevice)
-                    cleanup_rf_device(serial_file)
-                    rfdevice = None
-                    serial_file = None
-                    active_gpio = None
-                    active_serial_device = ""
-                    active_mode = ""
-                    print("RF listener paused")
-                time.sleep(1.0)
-                continue
-            if receiver_type == "gpio":
-                if not is_raspberry_pi():
-                    if rfdevice or serial_file:
-                        cleanup_rf_device(rfdevice)
-                        cleanup_rf_device(serial_file)
-                        rfdevice = None
-                        serial_file = None
-                        active_gpio = None
-                        active_serial_device = ""
-                        active_mode = ""
-                    if not gpio_unsupported_logged:
-                        print("RF GPIO listener disabled: this device is not a Raspberry Pi")
-                        gpio_unsupported_logged = True
-                    time.sleep(5.0)
+            with store.lock:
+                receivers = [dict(item) for item in store.normalize_rf_receivers()]
+            wanted = {item["id"]: item for item in receivers if item.get("enabled")}
+            for receiver_id, (signature, stop_event, thread) in list(workers.items()):
+                receiver = wanted.get(receiver_id)
+                next_signature = (
+                    receiver.get("type"), receiver.get("gpio"), receiver.get("serialDevice"), receiver.get("name")
+                ) if receiver else None
+                if next_signature != signature or not thread.is_alive():
+                    stop_event.set()
+                    thread.join(timeout=1.0)
+                    workers.pop(receiver_id, None)
+            for receiver_id, receiver in wanted.items():
+                if receiver_id in workers:
                     continue
-                if serial_file:
-                    cleanup_rf_device(serial_file)
-                    serial_file = None
-                    active_serial_device = ""
-                if rfdevice is None or active_mode not in {"gpio", "gpio-rpi-rf"} or active_gpio != gpio:
-                    cleanup_rf_device(rfdevice)
-                    try:
-                        rfdevice = LgpioRfReceiver(gpio, lambda code: enqueue_rf_signal(rf_payload_from_24bit_code(code)))
-                        active_mode = "gpio"
-                        active_gpio = gpio
-                        last_timestamp = None
-                        print(f"RF GPIO listener active with lgpio on BCM GPIO {gpio}")
-                    except Exception as exc:
-                        cleanup_rf_device(rfdevice)
-                        rfdevice = None
-                        if not lgpio_missing_logged:
-                            print(f"RF GPIO lgpio listener unavailable on BCM GPIO {gpio}: {exc}")
-                            lgpio_missing_logged = True
-                        if rf_device_class is None:
-                            try:
-                                from rpi_rf import RFDevice  # type: ignore
-                                rf_device_class = RFDevice
-                            except ImportError:
-                                if not rpi_rf_missing_logged:
-                                    print("RF GPIO listener disabled: neither lgpio nor rpi-rf is available")
-                                    rpi_rf_missing_logged = True
-                                time.sleep(5.0)
-                                continue
-                        try:
-                            rfdevice = rf_device_class(gpio)
-                            rfdevice.enable_rx()
-                            active_mode = "gpio-rpi-rf"
-                            active_gpio = gpio
-                            last_timestamp = None
-                            print(f"RF GPIO listener active with rpi-rf on BCM GPIO {gpio}")
-                        except Exception as exc:
-                            cleanup_rf_device(rfdevice)
-                            rfdevice = None
-                            active_mode = ""
-                            active_gpio = None
-                            print(f"RF GPIO listener disabled: rpi-rf cannot start on BCM GPIO {gpio}: {exc}")
-                            time.sleep(5.0)
-                            continue
-                if active_mode == "gpio-rpi-rf":
-                    timestamp = rfdevice.rx_code_timestamp
-                    if timestamp and timestamp != last_timestamp:
-                        last_timestamp = timestamp
-                        now = time.monotonic()
-                        code = rfdevice.rx_code
-                        if code != last_code or (now - last_at) >= 0.3:
-                            enqueue_rf_signal(rf_payload_from_code(code))
-                            last_code = code
-                            last_at = now
-                    time.sleep(0.01)
-                else:
-                    time.sleep(1.0)
-                continue
-            if receiver_type == "serial":
-                if rfdevice:
-                    cleanup_rf_device(rfdevice)
-                    rfdevice = None
-                active_gpio = None
-                if not serial_device:
-                    cleanup_rf_device(serial_file)
-                    serial_file = None
-                    active_serial_device = ""
-                    time.sleep(1.0)
-                    continue
-                if serial_file is None or active_mode != "serial" or active_serial_device != serial_device:
-                    cleanup_rf_device(serial_file)
-                    serial_file = open(serial_device, "r", encoding="utf-8", errors="replace", buffering=1)
-                    configure_rf_serial_device(serial_file)
-                    active_mode = "serial"
-                    active_serial_device = serial_device
-                    print(f"RF serial listener active on {serial_device}")
-                readable, _, _ = select.select([serial_file], [], [], 0.25)
-                if readable:
-                    payload = rf_payload_from_serial_line(serial_file.readline())
-                    if payload:
-                        enqueue_rf_signal(payload)
-                continue
-            time.sleep(1.0)
-        except Exception as exc:
-            print(f"RF listener error: {exc}")
-            cleanup_rf_device(rfdevice)
-            cleanup_rf_device(serial_file)
-            rfdevice = None
-            serial_file = None
-            active_gpio = None
-            active_serial_device = ""
-            active_mode = ""
-            time.sleep(3.0)
+                signature = (receiver.get("type"), receiver.get("gpio"), receiver.get("serialDevice"), receiver.get("name"))
+                stop_event = Event()
+                target = serial_rf_receiver_loop if receiver.get("type") == "serial" else gpio_rf_receiver_loop
+                thread = Thread(target=target, args=(receiver, stop_event), name=f"gateball-rf-{receiver_id}", daemon=True)
+                workers[receiver_id] = (signature, stop_event, thread)
+                thread.start()
+        except Exception:
+            logging.exception("RF receiver manager failed")
+        time.sleep(1.0)
 
 
 def is_raspberry_pi() -> bool:
@@ -2291,7 +2405,7 @@ def start_rf_listener() -> None:
         return
     rf_listener_started = True
     Thread(target=rf_signal_worker_loop, name="gateball-rf-worker", daemon=True).start()
-    Thread(target=rf_listener_loop, name="gateball-rf-listener", daemon=True).start()
+    Thread(target=rf_receiver_manager_loop, name="gateball-rf-manager", daemon=True).start()
 
 
 def weather_icon(code: int) -> str:

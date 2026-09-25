@@ -249,6 +249,51 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.s.snapshot()["redTotal"], 0)
         self.assertEqual(self.db.match_detail(1)["match"]["red_score"], 0)
 
+    def test_rf_remote_uses_only_assigned_receiver_and_deduplicates_sources(self):
+        receivers = [
+            {"id": "rx1", "name": "UART 1", "enabled": True, "type": "serial", "serialDevice": "/dev/ttyS1"},
+            {"id": "rx2", "name": "UART 2", "enabled": True, "type": "serial", "serialDevice": "/dev/ttyUSB0"},
+        ]
+        self.assertTrue(self.s.action({"action": "update_rf_settings", "rfReceivers": receivers}, settings_authorized=True)["ok"])
+        self.assertTrue(self.s.action({
+            "action": "update_rf_remote_slot", "slotId": "rf1", "name": "遥控器1", "enabled": True,
+            "receiverIds": ["rx2"], "bindings": {"toggle_timer": {"raw": "code-1"}},
+        }, settings_authorized=True)["ok"])
+        ignored = self.s.action({"action": "simulate_rf_signal", "raw": "code-1", "receiverId": "rx1"}, internal=True)
+        self.assertFalse(ignored["ok"])
+        self.assertFalse(self.s.state["running"])
+        accepted = self.s.action({"action": "simulate_rf_signal", "raw": "code-1", "receiverId": "rx2"}, internal=True)
+        self.assertTrue(accepted["ok"])
+        self.assertTrue(self.s.state["running"])
+
+        self.s.state["rfRemoteSlots"][0]["receiverIds"] = ["rx1", "rx2"]
+        self.s.last_rf_signal_by_raw.clear()
+        self.s.action({"action": "simulate_rf_signal", "raw": "code-1", "receiverId": "rx1"}, internal=True)
+        running_after_first = self.s.state["running"]
+        duplicate = self.s.action({"action": "simulate_rf_signal", "raw": "code-1", "receiverId": "rx2"}, internal=True)
+        self.assertEqual(duplicate["message"], "duplicate")
+        self.assertEqual(self.s.state["running"], running_after_first)
+
+    def test_serial_device_history_preserves_long_by_id_path(self):
+        stable = "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0"
+        for device in (stable, "/dev/ttyS1"):
+            result = self.s.action({
+                "action": "update_rf_settings",
+                "rfReceivers": [{"id": "rx1", "name": "ESP32", "enabled": True, "type": "serial", "serialDevice": device}],
+            }, settings_authorized=True)
+            self.assertTrue(result["ok"])
+        self.assertIn(stable, self.s.state["rfSerialDeviceHistory"])
+        self.assertIn("/dev/ttyS1", self.s.snapshot()["rfSerialDevices"])
+
+    def test_legacy_single_receiver_migrates_without_losing_serial_path(self):
+        self.s.state.pop("rfReceivers", None)
+        self.s.state.update(rfReceiverType="serial", rfReceiverSerialDevice="/dev/ttyS1", rfReceiverGpio=18)
+        self.s.save()
+        resumed = server.Store()
+        self.assertEqual(resumed.state["rfReceivers"][0]["type"], "serial")
+        self.assertEqual(resumed.state["rfReceivers"][0]["serialDevice"], "/dev/ttyS1")
+        self.assertEqual(resumed.state["rfRemoteSlots"][0]["receiverIds"], ["rx1"])
+
     def test_backup_failure_does_not_fail_finish_or_duplicate_result(self):
         with patch.object(self.db, "backup_after_match", side_effect=OSError("test failure")), self.assertLogs(level="ERROR"):
             response = self.s.action({"action": "finish", "password": "9999"})

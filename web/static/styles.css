@@ -2913,6 +2913,57 @@ body.scoreboard.finish-summary-active .celebration-canvas {
   margin-bottom: 0;
 }
 
+.rf-receiver-list {
+  display: grid;
+  gap: 8px;
+}
+
+.rf-receiver-card {
+  display: grid;
+  grid-template-columns: minmax(120px, .7fr) 86px minmax(150px, .8fr) minmax(180px, 1.4fr);
+  align-items: end;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #111;
+}
+
+.rf-receiver-save-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #bbb;
+  font-size: 13px;
+}
+
+.rf-slot-receivers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 8px 10px 10px;
+  border: 1px solid #333;
+  border-radius: 8px;
+}
+
+.rf-source-choice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 7px;
+  align-items: center;
+  min-width: 180px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #171717;
+}
+
+.rf-source-choice small {
+  grid-column: 2;
+  color: #999;
+}
+
 .rf-receiver-row,
 .rf-slot-head {
   display: grid;
@@ -2947,6 +2998,21 @@ body.scoreboard.finish-summary-active .celebration-canvas {
   background: #111;
   font-size: 13px;
   font-weight: 800;
+}
+
+@media (max-width: 820px) {
+  .rf-receiver-card {
+    grid-template-columns: 1fr 86px;
+  }
+
+  .rf-receiver-field {
+    grid-column: 1 / -1;
+  }
+
+  .rf-receiver-save-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 .icon-save-button {

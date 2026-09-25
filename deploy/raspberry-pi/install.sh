@@ -249,6 +249,12 @@ install_rf_support() {
     return
   fi
 
+  for device_group in dialout gpio; do
+    if getent group "$device_group" >/dev/null 2>&1; then
+      sudo usermod -aG "$device_group" "$GATEBALL_USER"
+    fi
+  done
+
   echo "Installing RF GPIO decoder dependencies: python3-pip python3-rpi.gpio python3-lgpio rpi-rf"
   if ! sudo apt-get update || ! sudo apt-get install -y python3-pip python3-rpi.gpio python3-lgpio; then
     echo "Warning: failed to install RF GPIO apt dependencies. GPIO remote learning may not work yet."
