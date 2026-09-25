@@ -43,6 +43,15 @@ class SettingsSessions:
             self.tokens[token] = now + self.idle_seconds
             return True
 
+    def peek_valid(self, token: str) -> bool:
+        """Check a session without extending its idle lifetime."""
+        with self.lock:
+            now = time.monotonic()
+            if self.tokens.get(token, 0) <= now:
+                self.tokens.pop(token, None)
+                return False
+            return True
+
     def revoke(self, token: str) -> None:
         with self.lock:
             self.tokens.pop(token, None)

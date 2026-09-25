@@ -36,6 +36,8 @@ def load_server():
 
 server = load_server()
 DEFAULTS = copy.deepcopy(server.DEFAULT_STATE)
+APPLY_AUDIO_OUTPUT_MODE = server.apply_audio_output_mode
+SET_SYSTEM_VOLUME_PERCENT = server.set_system_volume_percent
 
 
 class ServerTests(unittest.TestCase):
@@ -51,10 +53,13 @@ class ServerTests(unittest.TestCase):
         server.settings_sessions = server.SettingsSessions()
         self.audio = patch.object(server, "apply_audio_output_mode", return_value=True)
         self.volume = patch.object(server, "set_system_volume_percent", return_value=True)
-        self.audio.start()
-        self.volume.start()
+        self.default_sink = patch.object(server, "current_audio_sink", return_value="")
+        self.audio_mock = self.audio.start()
+        self.volume_mock = self.volume.start()
+        self.default_sink.start()
         self.addCleanup(self.audio.stop)
         self.addCleanup(self.volume.stop)
+        self.addCleanup(self.default_sink.stop)
         server.store = self.s = server.Store()
         server.results_store = self.db = server.ResultsStore(self.root / "results.sqlite3")
         self.addCleanup(self.stop_backup_retry)
@@ -94,6 +99,140 @@ class ServerTests(unittest.TestCase):
 
     def settings(self, **values):
         return self.s.action({"action": "update_settings", **values}, settings_authorized=True)
+
+    def music_library(self):
+        music_root = self.root / "music"
+        music_root.mkdir(exist_ok=True)
+        external = patch.object(server, "EXTERNAL_MUSIC_DIRS", [])
+        project = patch.object(server, "PROJECT_MUSIC_DIR", music_root)
+        external.start()
+        project.start()
+        self.addCleanup(external.stop)
+        self.addCleanup(project.stop)
+        server.MUSIC_TRACKS_CACHE.update(timestamp=0, tracks=[])
+        return music_root
+
+    def add_music(self, relative_path):
+        path = self.music_library_root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"fake music")
+        server.MUSIC_TRACKS_CACHE.update(timestamp=0, tracks=[])
+        return path
+
+    def music_action(self, action, **values):
+        return self.s.action({"action": action,
+                              "trackId": self.s.state["selectedMusicTrack"],
+                              "musicPlaybackEpoch": self.s.state["musicPlaybackEpoch"],
+                              **values})
+
+    def test_sequence_stays_in_selected_directory_and_resumes_after_reboot(self):
+        self.music_library_root = self.music_library()
+        for name in ("album/01.mp3", "album/02.mp3", "album/03.mp3", "other/99.mp3"):
+            self.add_music(name)
+        selection = "dir:project:album"
+        result = self.settings(musicEnabled=True, selectedMusicItem=selection, musicMode="sequence")
+        self.assertTrue(result["ok"])
+        self.assertEqual(self.s.state["selectedMusicTrack"], "project:album/01.mp3")
+        self.s.state["musicPlaying"] = True
+        self.assertTrue(self.music_action("music_track_ended")["ok"])
+        self.assertEqual(self.s.state["selectedMusicTrack"], "project:album/02.mp3")
+        self.assertTrue(self.music_action("music_track_ended")["ok"])
+        self.assertEqual(self.s.state["selectedMusicTrack"], "project:album/03.mp3")
+        self.assertTrue(self.music_action("music_progress", positionSeconds=37.5)["ok"])
+        self.settings(selectedMusicItem=selection, musicMode="sequence", musicVolumePercent=62)
+        self.assertEqual(self.s.state["selectedMusicTrack"], "project:album/03.mp3")
+        self.assertEqual(self.s.state["musicPositionSeconds"], 37.5)
+        resumed = server.Store()
+        self.assertEqual(resumed.state["selectedMusicItem"], selection)
+        self.assertEqual(resumed.state["selectedMusicTrack"], "project:album/03.mp3")
+        self.assertEqual(resumed.state["musicPositionSeconds"], 37.5)
+        resumed.state["musicPlaying"] = True
+        self.assertTrue(resumed.action({"action": "music_track_ended", "trackId": "project:album/03.mp3",
+                                        "musicPlaybackEpoch": resumed.state["musicPlaybackEpoch"]})["ok"])
+        self.assertEqual(resumed.state["selectedMusicTrack"], "project:album/01.mp3")
+
+    def test_random_cycle_persists_and_rejects_stale_progress_and_ended(self):
+        self.music_library_root = self.music_library()
+        for name in ("01.mp3", "02.mp3", "03.mp3", "04.mp3"):
+            self.add_music(name)
+        self.settings(musicEnabled=True, selectedMusicItem="dir:project:.", musicMode="random")
+        self.s.state["musicPlaying"] = True
+        first_queue = list(self.s.state["musicShuffleQueue"])
+        self.assertEqual(len(first_queue), 4)
+        stale = {"trackId": self.s.state["selectedMusicTrack"],
+                 "musicPlaybackEpoch": self.s.state["musicPlaybackEpoch"]}
+        self.assertTrue(self.music_action("music_track_ended")["ok"])
+        self.assertFalse(self.s.action({"action": "music_track_ended", **stale})["ok"])
+        self.assertFalse(self.s.action({"action": "music_progress", **stale,
+                                        "positionSeconds": 99})["ok"])
+        self.assertEqual(self.s.state["musicPositionSeconds"], 0)
+        self.assertEqual(self.s.state["musicShuffleIndex"], 1)
+        resumed = server.Store()
+        self.assertEqual(resumed.state["musicShuffleQueue"], first_queue)
+        self.assertEqual(resumed.state["musicShuffleIndex"], 1)
+        resumed.state["musicPlaying"] = True
+        played = first_queue[:2]
+        for _ in range(2):
+            current = resumed.state["selectedMusicTrack"]
+            self.assertTrue(resumed.action({"action": "music_track_ended", "trackId": current,
+                                            "musicPlaybackEpoch": resumed.state["musicPlaybackEpoch"]})["ok"])
+            played.append(resumed.state["selectedMusicTrack"])
+        self.assertEqual(set(played), set(first_queue))
+        last = resumed.state["selectedMusicTrack"]
+        self.assertTrue(resumed.action({"action": "music_track_ended", "trackId": last,
+                                        "musicPlaybackEpoch": resumed.state["musicPlaybackEpoch"]})["ok"])
+        self.assertNotEqual(resumed.state["selectedMusicTrack"], last)
+        self.assertEqual(resumed.state["musicShuffleIndex"], 0)
+
+    def test_track_selection_uses_its_parent_directory_and_legacy_state_migrates(self):
+        self.music_library_root = self.music_library()
+        for name in ("album/01.mp3", "album/02.mp3", "other/01.mp3"):
+            self.add_music(name)
+        track = "project:album/02.mp3"
+        self.settings(musicEnabled=True, selectedMusicItem=track, musicMode="sequence")
+        self.assertEqual(self.s.state["selectedMusicTrack"], track)
+        self.s.state["musicPlaying"] = True
+        self.music_action("music_track_ended")
+        self.assertEqual(self.s.state["selectedMusicTrack"], "project:album/01.mp3")
+        self.s.state.pop("selectedMusicItem")
+        self.s.state["selectedMusicTrack"] = track
+        self.s.save()
+        migrated = server.Store()
+        self.assertEqual(migrated.state["selectedMusicItem"], track)
+        self.assertEqual(migrated.state["selectedMusicTrack"], track)
+
+    def test_loop_replay_epoch_rejects_delayed_progress(self):
+        self.music_library_root = self.music_library()
+        self.add_music("one.mp3")
+        self.settings(musicEnabled=True, selectedMusicItem="project:one.mp3", musicMode="loop")
+        self.s.state["musicPlaying"] = True
+        old = {"trackId": self.s.state["selectedMusicTrack"],
+               "musicPlaybackEpoch": self.s.state["musicPlaybackEpoch"]}
+        self.assertTrue(self.s.action({"action": "music_track_ended", **old})["ok"])
+        self.assertEqual(self.s.state["selectedMusicTrack"], old["trackId"])
+        self.assertFalse(self.s.action({"action": "music_progress", **old,
+                                        "positionSeconds": 100})["ok"])
+        self.assertFalse(self.s.action({"action": "music_track_ended", **old})["ok"])
+        self.assertEqual(self.s.state["musicPositionSeconds"], 0)
+
+    def test_music_file_supports_range_requests_for_saved_position(self):
+        self.music_library_root = self.music_library()
+        track = self.add_music("seek.mp3")
+        track.write_bytes(b"0123456789")
+        with self.http_server():
+            for range_header, expected_status, expected_body, expected_range in (
+                ("bytes=4-7", 206, b"4567", "bytes 4-7/10"),
+                ("bytes=8-", 206, b"89", "bytes 8-9/10"),
+                ("bytes=-3", 206, b"789", "bytes 7-9/10"),
+                ("bytes=20-", 416, b"", "bytes */10"),
+            ):
+                conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=3)
+                conn.request("GET", "/api/music/file?id=project%3Aseek.mp3", headers={"Range": range_header})
+                response = conn.getresponse()
+                self.assertEqual(response.status, expected_status)
+                self.assertEqual(response.getheader("Content-Range"), expected_range)
+                self.assertEqual(response.read(), expected_body)
+                conn.close()
 
     def count_matches(self):
         with self.db.connection() as conn:
@@ -138,6 +277,77 @@ class ServerTests(unittest.TestCase):
             self.assertTrue(denied["requiresSettingsLogin"])
             self.assertFalse(self.request("/api/settings/login", {"password": "1234"})[1]["ok"])
             self.assertTrue(self.request("/api/settings/login", {"password": "12"})[1]["ok"])
+
+    def test_preview_clears_only_for_authorized_request_or_logout(self):
+        with self.http_server():
+            token = self.request("/api/settings/login", {"password": "1234"})[1]["token"]
+            self.assertTrue(self.request("/api/action", {"action": "preview_title_style",
+                                                     "titleColor": "#123456"}, token)[1]["ok"])
+            self.assertEqual(self.s.snapshot()["titleColor"], "#123456")
+            denied = self.request("/api/action", {"action": "clear_appearance_preview"})[1]
+            self.assertTrue(denied["requiresSettingsLogin"])
+            self.request("/api/settings/logout", {}, "invalid")
+            self.assertEqual(self.s.snapshot()["titleColor"], "#123456")
+            self.request("/api/settings/logout", {}, token)
+            self.assertEqual(self.s.snapshot()["titleColor"], self.s.state["titleColor"])
+
+    def test_preview_expires_without_extending_settings_session(self):
+        with self.http_server():
+            token = self.request("/api/settings/login", {"password": "1234"})[1]["token"]
+            self.request("/api/action", {"action": "preview_title_style", "titleColor": "#123456"}, token)
+            session_expiry = server.settings_sessions.tokens[token]
+            self.assertEqual(self.s.snapshot()["titleColor"], "#123456")
+            self.assertEqual(server.settings_sessions.tokens[token], session_expiry)
+            self.s.preview_expires_at = server.time.monotonic() - 1
+            self.assertEqual(self.s.snapshot()["titleColor"], self.s.state["titleColor"])
+            self.request("/api/action", {"action": "preview_title_style", "titleColor": "#654321"}, token)
+            server.settings_sessions.tokens[token] = server.time.monotonic() - 1
+            self.assertEqual(self.s.snapshot()["titleColor"], self.s.state["titleColor"])
+            self.assertFalse(self.s.preview_state)
+
+    def test_other_settings_session_cannot_clear_active_preview(self):
+        with self.http_server():
+            first = self.request("/api/settings/login", {"password": "1234"})[1]["token"]
+            second = self.request("/api/settings/login", {"password": "1234"})[1]["token"]
+            self.request("/api/action", {"action": "preview_title_style", "titleColor": "#111111"}, first)
+            self.request("/api/action", {"action": "preview_title_style", "titleColor": "#222222"}, second)
+            self.assertEqual(self.s.snapshot()["titleColor"], "#222222")
+            self.request("/api/action", {"action": "update_settings", "voiceProfile": "male"}, first)
+            self.assertEqual(self.s.snapshot()["titleColor"], "#222222")
+            self.request("/api/settings/logout", {}, first)
+            self.assertEqual(self.s.snapshot()["titleColor"], "#222222")
+            self.request("/api/settings/logout", {}, second)
+            self.assertEqual(self.s.snapshot()["titleColor"], self.s.state["titleColor"])
+
+    def test_saved_volume_restored_at_boot_and_default_sink_passed_to_device_job(self):
+        self.volume_mock.assert_called_with(100)
+        self.s.state["defaultAudioSink"] = "original-sink"
+        self.assertTrue(self.settings(audioOutputMode="default")["ok"])
+        self.s.device_jobs.queue.join()
+        self.audio_mock.assert_any_call("default", "original-sink")
+        self.volume_mock.assert_called_with(100)
+
+    def test_default_audio_mode_restores_recorded_sink(self):
+        calls = []
+        def run(command, **kwargs):
+            calls.append((command, kwargs))
+            return types.SimpleNamespace(returncode=0, stdout="")
+        with patch.object(server, "available_pactl_sinks", return_value=["original-sink", "hdmi-sink"]), \
+                patch.object(server.subprocess, "run", side_effect=run):
+            self.assertTrue(APPLY_AUDIO_OUTPUT_MODE("default", "original-sink"))
+            self.assertFalse(APPLY_AUDIO_OUTPUT_MODE("default", "missing-sink"))
+        self.assertIn(["pactl", "set-default-sink", "original-sink"], [command for command, _ in calls])
+        self.assertTrue(all("env" in kwargs for _, kwargs in calls))
+
+    def test_system_volume_uses_audio_session_environment(self):
+        calls = []
+        def run(command, **kwargs):
+            calls.append((command, kwargs))
+            return types.SimpleNamespace(returncode=1 if command[0] == "wpctl" else 0)
+        with patch.object(server.subprocess, "run", side_effect=run):
+            self.assertTrue(SET_SYSTEM_VOLUME_PERCENT(42))
+        self.assertIn(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "42%"], [command for command, _ in calls])
+        self.assertTrue(all("env" in kwargs for _, kwargs in calls))
 
     def test_all_settings_actions_require_session_not_raw_password(self):
         before = copy.deepcopy(self.s.state)

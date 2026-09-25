@@ -6,6 +6,7 @@ import logging
 import math
 import mimetypes
 import os
+import random
 import re
 import select
 import shutil
@@ -60,12 +61,13 @@ EXTERNAL_MUSIC_DIRS = [
 MUSIC_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a"}
 MUSIC_TRACKS_CACHE: dict[str, object] = {"timestamp": 0.0, "tracks": []}
 MUSIC_TRACKS_CACHE_TTL = 15.0
+APPEARANCE_PREVIEW_TTL_SECONDS = 10 * 60
 WEATHER_CACHE: dict = {"timestamp": 0.0, "payload": {"ok": False}}
 SELECTION_TIMEOUT_SECONDS = 30
 SETTINGS_ACTIONS = {
     "update_settings", "update_rf_settings", "update_rf_remote_slot", "clear_rf_remote_slot",
     "update_keyboard_settings", "clear_key_bindings", "add_rf_remote", "update_rf_remote",
-    "delete_rf_remote", "delete_music_item", "preview_title_style", "update_key_binding",
+    "delete_rf_remote", "delete_music_item", "preview_title_style", "clear_appearance_preview", "update_key_binding",
     "begin_rf_learning", "cancel_rf_learning", "clear_rf_last_signal",
 }
 settings_sessions = SettingsSessions()
@@ -168,6 +170,7 @@ DEFAULT_STATE = {
     "voicePlaybackRate": 1.2,
     "systemVolumePercent": 100,
     "audioOutputMode": "auto",
+    "defaultAudioSink": "",
     "musicEnabled": False,
     "musicVolumePercent": 35,
     "musicMode": "random",
@@ -175,7 +178,12 @@ DEFAULT_STATE = {
     "musicStopWhenMatchEnds": False,
     "musicDuckDuringSpeech": True,
     "musicDuckPercent": 30,
+    "selectedMusicItem": "",
     "selectedMusicTrack": "",
+    "musicPositionSeconds": 0,
+    "musicShuffleQueue": [],
+    "musicShuffleIndex": -1,
+    "musicPlaybackEpoch": 1,
     "musicPlaying": False,
     "musicDuckingUntil": 0,
     "lastMusicToggleAt": 0,
@@ -229,6 +237,26 @@ def available_pactl_sinks() -> list[str]:
     return sinks
 
 
+def current_audio_sink() -> str:
+    for command in (["pactl", "get-default-sink"], ["pactl", "info"]):
+        try:
+            result = subprocess.run(
+                command, capture_output=True, check=False, env=audio_subprocess_env(),
+                text=True, timeout=3,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if result.returncode != 0:
+            continue
+        if command[-1] == "info":
+            for line in result.stdout.splitlines():
+                if line.startswith("Default Sink:"):
+                    return line.partition(":")[2].strip()
+        else:
+            return result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+    return ""
+
+
 def choose_audio_sink(mode: str, sinks: list[str]) -> str:
     mode = normalize_audio_output_mode(mode)
     if mode == "default" or not sinks:
@@ -248,12 +276,10 @@ def choose_audio_sink(mode: str, sinks: list[str]) -> str:
     return sinks[0] if mode == "auto" else ""
 
 
-def apply_audio_output_mode(mode: str) -> bool:
+def apply_audio_output_mode(mode: str, original_sink: str = "") -> bool:
     mode = normalize_audio_output_mode(mode)
-    if mode == "default":
-        return True
     sinks = available_pactl_sinks()
-    sink = choose_audio_sink(mode, sinks)
+    sink = original_sink if mode == "default" and original_sink in sinks else choose_audio_sink(mode, sinks)
     if not sink:
         return False
     try:
@@ -304,7 +330,8 @@ def set_system_volume_percent(percent: int) -> bool:
     ]
     for command in commands:
         try:
-            result = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+            result = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                    env=audio_subprocess_env(), timeout=2)
         except (OSError, subprocess.SubprocessError):
             continue
         if result.returncode == 0:
@@ -314,6 +341,7 @@ def set_system_volume_percent(percent: int) -> bool:
                         ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "1" if percent == 0 else "0"],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
+                        env=audio_subprocess_env(),
                         timeout=2,
                     )
                 except (OSError, subprocess.SubprocessError):
@@ -324,6 +352,7 @@ def set_system_volume_percent(percent: int) -> bool:
                         ["pactl", "set-sink-mute", "@DEFAULT_SINK@", "1" if percent == 0 else "0"],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
+                        env=audio_subprocess_env(),
                         timeout=2,
                     )
                 except (OSError, subprocess.SubprocessError):
@@ -433,20 +462,43 @@ def list_music_tracks() -> list[dict]:
     return tracks
 
 
-def next_music_track_id(current_track_id: str, mode: str = "loop") -> str:
-    tracks = list_music_tracks()
-    if not tracks:
-        return ""
-    if len(tracks) == 1:
-        return str(tracks[0].get("id") or "")
-    if mode == "random":
-        choices = [str(track.get("id") or "") for track in tracks if track.get("id") != current_track_id]
-        return random.choice(choices) if choices else str(tracks[0].get("id") or "")
-    current_index = next(
-        (index for index, track in enumerate(tracks) if track.get("id") == current_track_id),
-        -1,
-    )
-    return str(tracks[(current_index + 1) % len(tracks)].get("id") or "")
+def music_track_ids_for_selection(item_id: str) -> list[str]:
+    if not item_id:
+        return []
+    if item_id.startswith("dir:"):
+        rest = item_id[4:]
+        if ":" not in rest:
+            return []
+        source, relative_text = rest.split(":", 1)
+        relative = Path(relative_text)
+        if not relative_text or relative.is_absolute() or ".." in relative.parts:
+            return []
+        base = next((directory for candidate, directory in music_directories() if candidate == source), None)
+        if base is None:
+            return []
+        try:
+            target = (base.resolve() / relative).resolve()
+            target.relative_to(base.resolve())
+        except (OSError, ValueError):
+            return []
+        if not target.is_dir():
+            return []
+    else:
+        if resolve_music_track(item_id) is None:
+            return []
+        source, relative_text = item_id.split(":", 1)
+        relative = Path(relative_text).parent
+    eligible = []
+    for track in list_music_tracks():
+        track_id = str(track.get("id") or "")
+        if not track_id.startswith(f"{source}:"):
+            continue
+        try:
+            Path(track_id.split(":", 1)[1]).relative_to(relative)
+        except ValueError:
+            continue
+        eligible.append(track_id)
+    return eligible
 
 
 def resolve_music_track(track_id: str) -> Path | None:
@@ -667,6 +719,7 @@ def warm_team_name_audio_cache(team: str, name: str) -> None:
 class Store:
     def __init__(self) -> None:
         self.lock = RLock()
+        self.audio_lock = RLock()
         self.state = json.loads(json.dumps(DEFAULT_STATE))
         self.state["matchId"] = uuid4().hex
         self.state["remainingPreciseSeconds"] = float(self.state["remainingSeconds"])
@@ -675,6 +728,8 @@ class Store:
         self.revision = 0
         self.device_jobs = BackgroundJobs(self.apply_device_settings)
         self.preview_state: dict = {}
+        self.preview_owner: str | None = None
+        self.preview_expires_at = 0.0
         self.balls = new_balls()
         self.history: list[dict] = []
         self.last_rf_music_raw = ""
@@ -682,13 +737,121 @@ class Store:
         self.last_rf_signal_by_raw: dict[str, tuple[float, str]] = {}
         self.boot_wifi_info_pending = False
         self.load()
-        apply_audio_output_mode(self.state.get("audioOutputMode", "auto"))
+        if not self.restore_audio_settings():
+            Thread(target=self.retry_boot_audio_settings, daemon=True).start()
         self.apply_boot_music_autoplay()
         self.record_boot_wifi_info()
+
+    def restore_audio_settings(self) -> bool:
+        with self.audio_lock:
+            sink = current_audio_sink() if not self.state.get("defaultAudioSink") else ""
+            with self.lock:
+                if not self.state.get("defaultAudioSink") and sink:
+                    self.state["defaultAudioSink"] = sink
+                    self.save()
+                mode = self.state.get("audioOutputMode", "auto")
+                original_sink = str(self.state.get("defaultAudioSink") or "")
+                volume = self.state.get("systemVolumePercent", 100)
+            output_ok = apply_audio_output_mode(mode, original_sink)
+            volume_ok = set_system_volume_percent(volume)
+            return output_ok and volume_ok
+
+    def retry_boot_audio_settings(self) -> None:
+        for _ in range(10):
+            time.sleep(2)
+            if self.restore_audio_settings():
+                return
+        logging.warning("Could not restore saved audio settings after device startup")
 
     def apply_boot_music_autoplay(self) -> None:
         if self.state.get("musicEnabled") and self.state.get("musicAutoPlayDuringMatch") and self.state.get("selectedMusicTrack"):
             self.state["musicPlaying"] = True
+
+    def normalize_music_state(self, saved_state: dict) -> None:
+        item_id = str(self.state.get("selectedMusicItem") or "")
+        legacy_track = str(self.state.get("selectedMusicTrack") or "")
+        if not item_id and "selectedMusicItem" not in saved_state and legacy_track:
+            item_id = legacy_track
+        self.state["selectedMusicItem"] = item_id
+        try:
+            self.state["musicPlaybackEpoch"] = max(1, int(self.state.get("musicPlaybackEpoch") or 1))
+        except (TypeError, ValueError):
+            self.state["musicPlaybackEpoch"] = 1
+        try:
+            position = float(self.state.get("musicPositionSeconds") or 0)
+            self.state["musicPositionSeconds"] = position if math.isfinite(position) and 0 <= position <= 86400 else 0
+        except (TypeError, ValueError):
+            self.state["musicPositionSeconds"] = 0
+        self.set_music_selection(item_id, preserve_track=True, reset_queue=False)
+
+    def set_music_selection(self, item_id: str, *, preserve_track: bool, reset_queue: bool) -> None:
+        tracks = music_track_ids_for_selection(item_id)
+        previous_track = str(self.state.get("selectedMusicTrack") or "")
+        current = previous_track if preserve_track and previous_track in tracks else ""
+        if not current and not preserve_track and item_id in tracks:
+            current = item_id
+        self.state["selectedMusicItem"] = item_id
+        if not tracks:
+            self.state.update(selectedMusicTrack="", musicPositionSeconds=0,
+                              musicShuffleQueue=[], musicShuffleIndex=-1, musicPlaying=False)
+            if previous_track:
+                self.state["musicPlaybackEpoch"] = int(self.state.get("musicPlaybackEpoch") or 1) + 1
+            return
+        if self.state.get("musicMode") == "random":
+            queue = self.state.get("musicShuffleQueue")
+            valid_queue = (not reset_queue and isinstance(queue, list) and all(isinstance(item, str) for item in queue)
+                           and len(queue) == len(tracks)
+                           and set(queue) == set(tracks) and current in queue)
+            if valid_queue:
+                index = queue.index(current)
+            else:
+                queue = list(tracks)
+                random.shuffle(queue)
+                if current:
+                    queue.remove(current)
+                    queue.insert(0, current)
+                index = 0
+                current = queue[0]
+            self.state["musicShuffleQueue"] = queue
+            self.state["musicShuffleIndex"] = index
+        else:
+            self.state["musicShuffleQueue"] = []
+            self.state["musicShuffleIndex"] = -1
+            current = current or tracks[0]
+        self.state["selectedMusicTrack"] = current
+        if current != previous_track:
+            self.state["musicPositionSeconds"] = 0
+            self.state["musicPlaybackEpoch"] = int(self.state.get("musicPlaybackEpoch") or 1) + 1
+
+    def advance_music_track(self) -> str:
+        item_id = str(self.state.get("selectedMusicItem") or "")
+        self.set_music_selection(item_id, preserve_track=True, reset_queue=False)
+        tracks = music_track_ids_for_selection(item_id)
+        current = str(self.state.get("selectedMusicTrack") or "")
+        if not tracks or not current:
+            return ""
+        mode = self.state.get("musicMode")
+        if mode == "sequence":
+            next_track = tracks[(tracks.index(current) + 1) % len(tracks)]
+        elif mode == "random":
+            queue = self.state["musicShuffleQueue"]
+            index = self.state["musicShuffleIndex"] + 1
+            if index >= len(queue):
+                queue = list(tracks)
+                random.shuffle(queue)
+                if len(queue) > 1 and queue[0] == current:
+                    swap_index = next(i for i, track in enumerate(queue) if track != current)
+                    queue[0], queue[swap_index] = queue[swap_index], queue[0]
+                self.state["musicShuffleQueue"] = queue
+                index = 0
+            self.state["musicShuffleIndex"] = index
+            next_track = queue[index]
+        else:
+            next_track = current
+        self.state["selectedMusicTrack"] = next_track
+        self.state["musicPositionSeconds"] = 0
+        self.state["musicPlaybackEpoch"] = int(self.state.get("musicPlaybackEpoch") or 1) + 1
+        return next_track
 
     def record_boot_wifi_info(self) -> None:
         if not self.state.get("showBootWifiInfo", True):
@@ -772,6 +935,7 @@ class Store:
         except (TypeError, ValueError):
             self.state["systemVolumePercent"] = 100
         self.state["audioOutputMode"] = normalize_audio_output_mode(self.state.get("audioOutputMode"))
+        self.state["defaultAudioSink"] = str(self.state.get("defaultAudioSink") or "")
         try:
             self.state["teamNameScale"] = min(1.6, max(0.6, round(float(self.state.get("teamNameScale", 1.0)), 2)))
         except (TypeError, ValueError):
@@ -785,6 +949,7 @@ class Store:
                 self.state[key] = fallback
         if self.state.get("musicMode") not in {"loop", "sequence", "random"}:
             self.state["musicMode"] = "random"
+        self.normalize_music_state(saved_state)
         if not self.state.get("musicEnabled") or not self.state.get("selectedMusicTrack"):
             self.state["musicPlaying"] = False
         try:
@@ -924,6 +1089,7 @@ class Store:
     def snapshot(self) -> dict:
         with self.lock:
             self.tick()
+            self.expire_appearance_preview()
             balls = [self.balls[number].to_dict() for number in range(1, 11)]
             red_total = sum(ball.score for ball in self.balls.values() if team_for_ball(ball.number) == "red")
             white_total = sum(ball.score for ball in self.balls.values() if team_for_ball(ball.number) == "white")
@@ -945,6 +1111,23 @@ class Store:
         self.revision += 1
         self.state["lastUpdated"] = time.time()
 
+    def expire_appearance_preview(self) -> None:
+        if not self.preview_state:
+            self.preview_owner = None
+            self.preview_expires_at = 0.0
+            return
+        expired = time.monotonic() >= self.preview_expires_at
+        session_ended = bool(self.preview_owner) and not settings_sessions.peek_valid(self.preview_owner)
+        if expired or session_ended:
+            self.clear_appearance_preview()
+
+    def clear_appearance_preview(self) -> None:
+        if self.preview_state:
+            self.preview_state.clear()
+            self.emit()
+        self.preview_owner = None
+        self.preview_expires_at = 0.0
+
     def settings_data(self) -> dict:
         with self.lock:
             return {"hotspotPassword": self.state["hotspotPassword"]}
@@ -952,10 +1135,18 @@ class Store:
     def apply_device_settings(self, job: dict) -> None:
         failures = []
         try:
-            if "audioOutputMode" in job and not apply_audio_output_mode(job["audioOutputMode"]):
-                failures.append("音频输出切换失败")
-            if "systemVolumePercent" in job and not set_system_volume_percent(job["systemVolumePercent"]):
-                failures.append("系统音量设置失败")
+            with self.audio_lock:
+                if "audioOutputMode" in job:
+                    sink = current_audio_sink() if not self.state.get("defaultAudioSink") else ""
+                    with self.lock:
+                        if not self.state.get("defaultAudioSink") and sink:
+                            self.state["defaultAudioSink"] = sink
+                            self.save()
+                        original_sink = str(self.state.get("defaultAudioSink") or "")
+                    if not apply_audio_output_mode(job["audioOutputMode"], original_sink):
+                        failures.append("音频输出切换失败")
+                if "systemVolumePercent" in job and not set_system_volume_percent(job["systemVolumePercent"]):
+                    failures.append("系统音量设置失败")
             if "hotspotSsid" in job:
                 result = configure_hotspot(job["hotspotSsid"], job["hotspotPassword"])
                 if not result.get("ok"):
@@ -1291,7 +1482,8 @@ class Store:
         self.emit()
         return {"ok": status in {"executed", "finish_requires_password", "finish_password_digit"}, "message": status, "state": self.snapshot()}
 
-    def action(self, payload: dict, *, settings_authorized: bool = False, internal: bool = False) -> dict:
+    def action(self, payload: dict, *, settings_authorized: bool = False,
+               settings_token: str | None = None, internal: bool = False) -> dict:
         with self.lock:
             if not isinstance(payload, dict) or not isinstance(payload.get("action"), str):
                 return {"ok": False, "message": "操作格式不正确", "state": self.snapshot()}
@@ -1302,7 +1494,8 @@ class Store:
                 self.validate_action(payload)
             except (ValueError, TypeError, OverflowError) as exc:
                 return {"ok": False, "message": str(exc) or "参数不正确", "state": self.snapshot()}
-            return self._action(payload, settings_authorized=settings_authorized)
+            return self._action(payload, settings_authorized=settings_authorized,
+                                settings_token=settings_token)
 
     def validate_action(self, payload: dict) -> None:
         if payload["action"] == "select" and not 1 <= int(payload.get("ball", 0)) <= 10:
@@ -1320,9 +1513,16 @@ class Store:
                     "titleFontScale", "teamNameScale", "tableMarkerScale", "weatherLatitude", "weatherLongitude"):
             if key in payload and str(payload[key]).strip() and not math.isfinite(float(payload[key])):
                 raise ValueError("数值必须为有限数字")
+        music_item = payload.get("selectedMusicItem", payload.get("selectedMusicTrack"))
+        if music_item:
+            item_ids = {item["id"] for item in list_music_items()[1]}
+            if str(music_item) not in item_ids:
+                raise ValueError("所选音乐不存在")
 
-    def _action(self, payload: dict, *, settings_authorized: bool = False) -> dict:
+    def _action(self, payload: dict, *, settings_authorized: bool = False,
+                settings_token: str | None = None) -> dict:
         self.tick()
+        self.expire_appearance_preview()
         action = payload.get("action")
         message = ""
         pending_device_job = None
@@ -1360,6 +1560,32 @@ class Store:
                 self.state["musicDuckingUntil"] = 0
             self.emit()
             return {"ok": True, "message": "music ducking updated", "state": self.snapshot()}
+
+        if action == "music_progress":
+            track_id = str(payload.get("trackId") or "")
+            if (not track_id or track_id != self.state.get("selectedMusicTrack")
+                    or payload.get("musicPlaybackEpoch") != self.state.get("musicPlaybackEpoch")):
+                return {"ok": False, "message": "当前歌曲已改变", "state": self.snapshot()}
+            try:
+                position = float(payload.get("positionSeconds"))
+            except (TypeError, ValueError):
+                return {"ok": False, "message": "播放进度无效", "state": self.snapshot()}
+            if not math.isfinite(position) or not 0 <= position <= 86400:
+                return {"ok": False, "message": "播放进度无效", "state": self.snapshot()}
+            self.state["musicPositionSeconds"] = max(float(self.state.get("musicPositionSeconds") or 0), position)
+            self.save()
+            return {"ok": True, "message": "播放进度已保存", "state": self.snapshot()}
+
+        if action == "music_track_ended":
+            track_id = str(payload.get("trackId") or "")
+            if (not self.state.get("musicPlaying") or not track_id
+                    or track_id != self.state.get("selectedMusicTrack")
+                    or payload.get("musicPlaybackEpoch") != self.state.get("musicPlaybackEpoch")):
+                return {"ok": False, "message": "当前歌曲已改变", "state": self.snapshot()}
+            self.advance_music_track()
+            self.emit()
+            self.save()
+            return {"ok": True, "message": "音乐下一首", "state": self.snapshot()}
 
         if action == "begin_rf_learning":
             now = time.time()
@@ -1636,12 +1862,7 @@ class Store:
                     self.state["lastMusicToggleAt"] = now
                     message = "音乐暂停"
                 elif resume_to_next:
-                    next_track_id = next_music_track_id(
-                        str(self.state.get("selectedMusicTrack") or ""),
-                        str(self.state.get("musicMode") or "loop"),
-                    )
-                    if next_track_id:
-                        self.state["selectedMusicTrack"] = next_track_id
+                    self.advance_music_track()
                     self.state["musicPlaying"] = True
                     self.state["lastMusicToggleAt"] = 0
                     message = "音乐下一首"
@@ -1803,12 +2024,26 @@ class Store:
                     self.state["musicStopWhenMatchEnds"] = bool(payload["musicStopWhenMatchEnds"])
                 if "musicDuckDuringSpeech" in payload:
                     self.state["musicDuckDuringSpeech"] = bool(payload["musicDuckDuringSpeech"])
-                if "selectedMusicTrack" in payload:
-                    track_id = str(payload.get("selectedMusicTrack") or "")
-                    self.state["selectedMusicTrack"] = track_id if not track_id or resolve_music_track(track_id) else ""
+                previous_music_item = str(self.state.get("selectedMusicItem") or "")
+                previous_music_mode = str(self.state.get("musicMode") or "random")
                 if "musicMode" in payload:
                     mode = str(payload.get("musicMode") or "random")
                     self.state["musicMode"] = mode if mode in {"loop", "sequence", "random"} else "random"
+                music_item_key = "selectedMusicItem" if "selectedMusicItem" in payload else "selectedMusicTrack"
+                music_item = (str(payload.get(music_item_key) or "") if music_item_key in payload
+                              else previous_music_item)
+                if music_item != previous_music_item or self.state["musicMode"] != previous_music_mode:
+                    previous_epoch = int(self.state.get("musicPlaybackEpoch") or 1)
+                    self.set_music_selection(
+                        music_item, preserve_track=music_item == previous_music_item,
+                        reset_queue=True,
+                    )
+                    if self.state["musicPlaybackEpoch"] == previous_epoch:
+                        self.state["musicPlaybackEpoch"] = previous_epoch + 1
+                    if music_item != previous_music_item:
+                        self.state["musicPositionSeconds"] = 0
+                elif music_item_key in payload:
+                    self.set_music_selection(music_item, preserve_track=True, reset_queue=False)
                 if "musicVolumePercent" in payload:
                     try:
                         volume = int(round(float(payload["musicVolumePercent"])))
@@ -1845,7 +2080,8 @@ class Store:
                         self.state["tableMarkerScale"] = min(1.8, max(0.5, scale))
                     except (TypeError, ValueError):
                         pass
-                self.preview_state.clear()
+                if self.preview_owner == settings_token:
+                    self.clear_appearance_preview()
                 if "durationMinutes" in payload:
                     minutes = max(1, int(payload["durationMinutes"]))
                     self.state["durationSeconds"] = minutes * 60
@@ -1886,28 +2122,22 @@ class Store:
             if not resolved:
                 return {"ok": False, "message": "音乐项目不存在", "state": self.snapshot()}
             item_type, target = resolved
-            selected_target = resolve_music_track(str(self.state.get("selectedMusicTrack") or ""))
             try:
                 if item_type == "directory":
-                    if selected_target:
-                        try:
-                            selected_target.relative_to(target)
-                            self.state["selectedMusicTrack"] = ""
-                            self.state["musicPlaying"] = False
-                        except ValueError:
-                            pass
                     shutil.rmtree(target)
                     message = "音乐目录已删除"
                 else:
-                    if selected_target and selected_target == target:
-                        self.state["selectedMusicTrack"] = ""
-                        self.state["musicPlaying"] = False
                     target.unlink()
                     message = "音乐文件已删除"
             except OSError as exc:
                 return {"ok": False, "message": f"删除失败: {exc}", "state": self.snapshot()}
             MUSIC_TRACKS_CACHE["timestamp"] = 0.0
             MUSIC_TRACKS_CACHE["tracks"] = []
+            selected_item = str(self.state.get("selectedMusicItem") or "")
+            item_ids = {item["id"] for item in list_music_items()[1]}
+            if selected_item not in item_ids:
+                selected_item = ""
+            self.set_music_selection(selected_item, preserve_track=True, reset_queue=True)
             self.state["lastMessage"] = message
             self.state["lastUpdated"] = time.time()
             self.save()
@@ -1916,6 +2146,10 @@ class Store:
             return {"ok": True, "message": message, "state": self.snapshot()}
 
         elif action == "preview_title_style":
+            if self.preview_owner != settings_token:
+                self.clear_appearance_preview()
+            self.preview_owner = settings_token
+            self.preview_expires_at = time.monotonic() + APPEARANCE_PREVIEW_TTL_SECONDS
             if "titleColor" in payload:
                 color = str(payload["titleColor"]).strip()
                 self.preview_state["titleColor"] = color if re.fullmatch(r"#[0-9a-fA-F]{6}", color) else DEFAULT_STATE["titleColor"]
@@ -1941,8 +2175,16 @@ class Store:
                     self.preview_state["tableMarkerScale"] = min(1.8, max(0.5, scale))
                 except (TypeError, ValueError):
                     pass
-            self.state["lastUpdated"] = time.time()
+            self.emit()
             message = self.state.get("lastMessage", "")
+            return {"ok": True, "message": message, "state": self.snapshot()}
+
+        elif action == "clear_appearance_preview":
+            if self.preview_owner == settings_token:
+                self.clear_appearance_preview()
+                message = "外观预览已取消"
+            else:
+                message = "另一设置会话正在预览外观"
             return {"ok": True, "message": message, "state": self.snapshot()}
 
         elif action == "update_key_binding":
@@ -2622,7 +2864,7 @@ class Handler(BaseHTTPRequestHandler):
             params = parse_qs(urlparse(self.path).query)
             target = resolve_music_track(params.get("id", [""])[0])
             if target:
-                self.serve_file(target)
+                self.serve_music_file(target)
             else:
                 self.send_error(404)
         elif path == "/api/results/month":
@@ -2687,7 +2929,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(result)
             return
         if path == "/api/settings/logout":
-            settings_sessions.revoke(self.settings_token())
+            token = self.settings_token()
+            if settings_sessions.valid(token):
+                store.action({"action": "clear_appearance_preview"}, settings_authorized=True,
+                             settings_token=token)
+            settings_sessions.revoke(token)
             self.send_json({"ok": True})
             return
         if path == "/api/network/connect":
@@ -2707,13 +2953,61 @@ class Handler(BaseHTTPRequestHandler):
         token = self.settings_token()
         authorized = settings_sessions.valid(token)
         try:
-            result = store.action(payload, settings_authorized=authorized)
+            result = store.action(payload, settings_authorized=authorized,
+                                  settings_token=token if authorized else None)
             if result.get("ok") and authorized and payload.get("action") == "update_settings" and payload.get("settingsPassword"):
                 settings_sessions.keep_only(token)
             self.send_json(result)
         except Exception:
             logging.exception("Match action failed")
             self.send_json({"ok": False, "message": "操作未完成，请重试", "state": store.snapshot()}, status=500)
+
+    def serve_music_file(self, path: Path) -> None:
+        size = path.stat().st_size
+        start, end = 0, size - 1
+        range_header = self.headers.get("Range", "")
+        if range_header:
+            match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header.strip())
+            if not match or (not match[1] and not match[2]):
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            if match[1]:
+                start = int(match[1])
+                if match[2]:
+                    end = min(int(match[2]), size - 1)
+            else:
+                suffix_length = int(match[2])
+                start = max(0, size - suffix_length)
+            if start >= size or end < start or (not match[1] and not suffix_length):
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+        length = max(0, end - start + 1)
+        self.send_response(206 if range_header else 200)
+        self.send_header("Content-Type", mimetypes.guess_type(path.name)[0] or "application/octet-stream")
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(length))
+        if range_header:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            with path.open("rb") as source:
+                source.seek(start)
+                remaining = length
+                while remaining:
+                    chunk = source.read(min(256 * 1024, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return
 
     def serve_file(self, path: Path) -> None:
         content_type = mimetypes.guess_type(path.name)[0] or "text/html"

@@ -145,16 +145,17 @@
               </div>
             </label>
             <label>
-              系统音量
+              系统音量（保存后在球场设备生效）
               <div class="range-control volume-control">
                 <input name="systemVolumePercent" type="range" min="0" max="100" step="5">
                 <output data-system-volume-output>100%</output>
                 <div class="volume-buttons">
                   <button class="secondary" type="button" data-action="system-volume-down">-</button>
                   <button class="secondary" type="button" data-action="system-volume-up">+</button>
-                  <button class="secondary" type="button" data-action="test-system-volume">测试音量</button>
+                  <button class="secondary" type="button" data-action="test-system-volume">本机试听</button>
                 </div>
               </div>
+              <small>试听只在当前设备发声；请保存后在球场大屏确认实际音量和输出。</small>
             </label>
             <label>
               音频输出
@@ -239,13 +240,14 @@
                 启用背景音乐
               </label>
               <label>
-                音乐文件
+                音乐文件或目录
                 <div class="music-file-control">
                   <select name="selectedMusicTrack">
                     <option value="">正在读取音乐...</option>
                   </select>
                   <button class="music-delete-button" type="button" data-action="delete-music-item" aria-label="删除当前音乐或目录" title="删除当前音乐或目录">🗑</button>
                 </div>
+                <small data-current-music-track>当前未选定曲目</small>
               </label>
               <label>
                 播放模式
@@ -281,7 +283,8 @@
                   <output data-music-duck-output>30%</output>
                 </div>
               </label>
-              <button class="secondary" type="button" data-action="test-music">测试播放</button>
+              <button class="secondary" type="button" data-action="test-music">本机试听</button>
+              <small>试听只在当前设备播放，音量滑块立即影响试听；保存后由球场大屏按选定模式播放。</small>
             </fieldset>
             <button class="primary" type="submit">保存背景音乐设置</button>
             <strong data-music-save-result></strong>

@@ -96,9 +96,13 @@ test("closing settings during save does not reopen the password prompt", async (
   let sessions = 0;
   const context = {
     settingsSaveInFlight: false, settingsToken: "test-token", remoteSettingsDialogOpen: true,
+    appearancePreviewRevision: 0,
     document: { querySelector: () => null },
-    sendAction: () => new Promise(done => { resolve = done; }),
-    api: { settingsSession: async () => { sessions++; return { ok: true }; } },
+    rememberVisibleRfReceiverDraft() {}, rememberVisibleRfSlotDraft() {},
+    api: {
+      action: () => new Promise(done => { resolve = done; }),
+      settingsSession: async () => { sessions++; return { ok: true }; },
+    },
   };
   vm.createContext(context);
   vm.runInContext(functionSource("saveSettings"), context);

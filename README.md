@@ -61,13 +61,19 @@ background, with their status displayed in settings.
 
 ```text
 python -B -m unittest discover -s tests -v
-node --test tests/test_client.js
+node --test tests/test_client.js tests/test_music_client.js
 node --check web/static/app.js
 ```
 
 The checks use temporary databases and simulated clocks/devices. They do not
 change live match data, Wi-Fi settings, or audio devices. Node is needed only for
 the JavaScript checks; the backend still uses Python's standard library.
+
+Background music remembers the selected file or directory, the current track,
+and playback position. Sequence mode continues with the next track in the
+selected directory. Random mode saves its shuffled queue so a restart does not
+begin the same order again. The scoreboard reports progress about every 25
+seconds; a sudden power loss may replay up to roughly that much audio.
 
 ## Raspberry Pi Deployment
 

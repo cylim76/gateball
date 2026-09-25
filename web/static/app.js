@@ -46,10 +46,12 @@ const api = {
     const res = await fetch("/api/state", { cache: "no-store" });
     return res.json();
   },
-  async action(payload) {
+  async action(payload, token = settingsToken) {
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetch("/api/action", {
       method: "POST",
-      headers: settingsHeaders(true),
+      headers,
       body: JSON.stringify(payload),
     });
     return res.json();
@@ -159,20 +161,39 @@ let rfLearnPollTimer = null;
 let rfLearnTimeoutTimer = null;
 let rfDraftBindings = {};
 let rfSlotDrafts = {};
+let rfReceiverDraft = null;
 let alertPromptAudio = null;
 let errorPromptAudio = null;
 let finishPromptAudio = null;
 let voiceManifestCache = {};
 let voiceAudio = null;
 let musicAudio = null;
+let musicTestAudio = null;
 let musicTracks = [];
 let musicItems = [];
 let musicTracksLoaded = false;
+let musicTracksRequest = null;
 let musicDuckDepth = 0;
 let lastMusicTrackId = "";
-let lastSyncedSelectedMusicTrack = "";
+let lastMusicPlaybackEpoch = 0;
+let lastMusicItemForAudio = "";
+let lastMusicModeForAudio = "";
 let musicTestPlaying = false;
+let musicTestTrackId = "";
+let musicTestGeneration = 0;
+let musicSelectedItemDraft = null;
+let musicProgressTimer = null;
+let musicProgressTask = Promise.resolve();
+let musicPendingStartKey = "";
+let musicPlaybackBlockedTrackId = "";
+let musicTrackEndInFlight = false;
+let musicAdvanceRetryAfter = 0;
+let musicAdvanceRetryTimer = null;
 let musicDuckingUpdateTimer = null;
+let appearancePreviewTask = Promise.resolve();
+let savedAppearanceStyle = null;
+let appearancePreviewDirty = false;
+let appearancePreviewRevision = 0;
 let tenSecondCountdownIntroAudio = null;
 let tenSecondCountdownAudio = null;
 let tenSecondCountdownTimer = null;
@@ -653,21 +674,14 @@ function voiceKeyForText(text) {
 }
 
 function playbackRateForVoiceKey(key) {
-  if (/^(ball|undo_ball)_/.test(key)) {
-    const rate = Number(currentState?.voicePlaybackRate);
-    return Number.isFinite(rate) ? Math.min(2, Math.max(0.8, rate)) : DEFAULT_GAMEPLAY_PLAYBACK_RATE;
-  }
-  return 1;
+  const rate = Number(currentState?.voicePlaybackRate);
+  return Number.isFinite(rate) ? Math.min(2, Math.max(0.8, rate)) : DEFAULT_GAMEPLAY_PLAYBACK_RATE;
 }
 
 function normalizeSystemVolumePercent(value) {
   const volume = Number(value);
   if (!Number.isFinite(volume)) return DEFAULT_SYSTEM_VOLUME_PERCENT;
   return Math.min(100, Math.max(0, Math.round(volume)));
-}
-
-function systemVolumeMultiplier() {
-  return normalizeSystemVolumePercent(currentState?.systemVolumePercent) / 100;
 }
 
 function setManagedAudioBaseVolume(audio, baseVolume) {
@@ -680,13 +694,7 @@ function setManagedAudioBaseVolume(audio, baseVolume) {
 function applyManagedAudioVolume(audio) {
   if (!audio) return;
   const baseVolume = Number(audio.dataset?.baseVolume ?? 1);
-  audio.volume = Math.min(1, Math.max(0, baseVolume * systemVolumeMultiplier()));
-}
-
-function applyAllManagedAudioVolumes() {
-  [voiceAudio, finishPromptAudio, alertPromptAudio, errorPromptAudio, tenSecondCountdownAudio, tenSecondCountdownIntroAudio]
-    .filter(Boolean)
-    .forEach(applyManagedAudioVolume);
+  audio.volume = Math.min(1, Math.max(0, baseVolume));
 }
 
 function isErrorVoiceKey(key) {
@@ -754,12 +762,12 @@ function playVoiceFile(file, playbackRate = 1, tailCutMs = 0) {
   });
 }
 
-async function playVoiceKey(key, playbackRate = 1, tailCutMs = 0) {
+async function playVoiceKey(key, playbackRate = playbackRateForVoiceKey(key), tailCutMs = 0) {
   const manifest = await getVoiceManifest(voiceProfilePath());
   await playVoiceFile(manifest.items?.[key]?.file, playbackRate, tailCutMs);
 }
 
-async function playVoiceItems(items, playbackRate = 1, tailCutMs = 0) {
+async function playVoiceItems(items, playbackRate = playbackRateForVoiceKey(""), tailCutMs = 0) {
   for (const item of items.filter(Boolean)) {
     if (item.key) {
       await playVoiceKey(item.key, playbackRate, tailCutMs);
@@ -769,7 +777,7 @@ async function playVoiceItems(items, playbackRate = 1, tailCutMs = 0) {
   }
 }
 
-function playVoiceItemsWithCallback(items, onComplete, playbackRate = 1, tailCutMs = 0) {
+function playVoiceItemsWithCallback(items, onComplete, playbackRate = playbackRateForVoiceKey(""), tailCutMs = 0) {
   playVoiceItems(items, playbackRate, tailCutMs).then(() => onComplete?.()).catch((error) => {
     console.warn("Voice queue failed", error);
     onComplete?.();
@@ -999,8 +1007,8 @@ function speakWithBrowser(text, onComplete) {
   speechSynthesis.cancel();
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = "zh-CN";
-  utter.rate = 1;
-  utter.volume = systemVolumeMultiplier();
+  utter.rate = playbackRateForVoiceKey("");
+  utter.volume = 1;
   beginSpeechAudio();
   utter.onend = () => {
     endSpeechAudio();
@@ -1128,11 +1136,13 @@ function hideScoreboardSoundPrompt() {
 
 function enableScoreboardSound() {
   scoreboardAudioEnabled = true;
+  musicPlaybackBlockedTrackId = "";
   hideScoreboardSoundPrompt();
   prepareAudio(getAlertPromptAudio());
   prepareAudio(getErrorPromptAudio());
   prepareAudio(getFinishPromptAudio());
   prepareTenSecondCountdownAudio();
+  syncMusicPlayback();
   speak("声音已启用");
 }
 
@@ -1782,7 +1792,6 @@ function renderSettings() {
     syncMusicModeRadios(form);
     updateVoicePlaybackRateOutput(form);
     updateSystemVolumeOutput(form);
-    renderMusicSettings();
     updateTitleFontScaleOutput(form);
     updateTeamNameScaleOutput(form);
     updateTeamNameControls(form);
@@ -1793,14 +1802,24 @@ function renderSettings() {
     if (form.weatherLongitude) form.weatherLongitude.value = currentState.weatherLongitude ?? "";
     if (form.allowScoringWhenPaused) form.allowScoringWhenPaused.checked = currentState.allowScoringWhenPaused;
     });
+    renderMusicSettings({ hydrate: true });
   }
-  applyTitleColor(currentState.titleColor);
-  applyTitleFontScale(currentState.titleFontScale);
-  applyTeamNameScale(currentState.teamNameScale, currentState.teamNameAutoSize);
-  applyTableMarkerScale(currentState.tableMarkerAutoSize, currentState.tableMarkerScale);
+  const appearanceForm = document.querySelector("[data-settings-panel='general'] [data-settings-form]");
+  if (appearancePreviewDirty && appearanceForm) {
+    applyTitleColor(appearanceForm.titleColor?.value);
+    applyTitleFontScale(appearanceForm.titleFontScale?.value);
+    applyTeamNameScale(appearanceForm.teamNameScale?.value, appearanceForm.teamNameAutoSize?.checked);
+    applyTableMarkerScale(appearanceForm.tableMarkerAutoSize?.checked, appearanceForm.tableMarkerScale?.value);
+  } else {
+    applyTitleColor(currentState.titleColor);
+    applyTitleFontScale(currentState.titleFontScale);
+    applyTeamNameScale(currentState.teamNameScale, currentState.teamNameAutoSize);
+    applyTableMarkerScale(currentState.tableMarkerAutoSize, currentState.tableMarkerScale);
+  }
   renderNetworkSettings();
-  if (!settingsHydrated) renderRfSettings();
+  if (!settingsHydrated) renderRfSettings({ captureDrafts: false });
   settingsHydrated = true;
+  updateMusicOutput(musicSettingsForm());
 }
 
 function setFirstTextNode(element, text) {
@@ -1974,7 +1993,7 @@ function switchSettingsTab(tabName) {
     panel.classList.toggle("active", panel.dataset.settingsPanel === tabName);
   });
   if (tabName === "network") loadNetworkStatus();
-  if (tabName === "music") loadMusicTracks();
+  if (tabName === "music") loadMusicTracks({ force: true });
   if (tabName === "rf") renderRfSettings();
 }
 
@@ -1992,7 +2011,8 @@ function renderNetworkStatus(status) {
   const fallback = status.fallbackAddress || "等待热点 IP";
   box.innerHTML = `
     <div><strong>球场：</strong>${escapeHtml(status.courtName || "红星门球场1")}</div>
-    <div><strong>热点：</strong>${escapeHtml(status.hotspotSsid || DEFAULT_HOTSPOT_SSID)} / ${escapeHtml(settingsConfig.hotspotPassword || "")}</div>
+    <div><strong>已保存热点配置：</strong>${escapeHtml(status.hotspotSsid || DEFAULT_HOTSPOT_SSID)} / ${escapeHtml(settingsConfig.hotspotPassword || "")}</div>
+    <div><strong>热点地址检测：</strong>${escapeHtml(status.hotspotIp || "尚未检测到热点 IP")}</div>
     <div><strong>推荐入口：</strong>${escapeHtml(status.hotspotAddress || "http://gateball.local")} / ${escapeHtml(status.secondaryHotspotAddress || "http://menqiu.local")}</div>
     <div><strong>备用地址：</strong>${escapeHtml(fallback)}</div>
     <div><strong>本机地址：</strong>${escapeHtml(local)}</div>
@@ -2044,9 +2064,7 @@ function previewSystemVolume(form) {
   if (!form?.systemVolumePercent) return;
   const volume = normalizeSystemVolumePercent(form.systemVolumePercent.value);
   form.systemVolumePercent.value = volume;
-  if (currentState) currentState.systemVolumePercent = volume;
   updateSystemVolumeOutput(form);
-  applyAllManagedAudioVolumes();
 }
 
 function stepSystemVolume(form, delta) {
@@ -2096,20 +2114,28 @@ function musicItemForId(itemId) {
 }
 
 function musicTrackIdFromForm(form) {
+  // A directory ID must stay a directory ID so the server can keep its playlist scope.
   const itemId = form?.selectedMusicTrack?.value || "";
-  const item = musicItemForId(itemId);
-  if (!item) return "";
-  if (item.type === "track") return item.id;
-  if (item.type !== "directory") return "";
+  return musicItemForId(itemId) ? itemId : "";
+}
+
+function musicTestTrackFromForm(form) {
+  const item = musicItemForId(musicTrackIdFromForm(form));
+  if (!item) return null;
+  if (item.type === "track") return musicTracks.find((track) => track.id === item.id) || null;
+  if (item.type !== "directory") return null;
   const marker = item.id.match(/^dir:([^:]+):(.+)$/);
-  if (!marker) return "";
+  if (!marker) return null;
   const source = marker[1];
   const relative = marker[2] === "." ? "" : `${marker[2].replace(/\/+$/, "")}/`;
-  const firstTrack = musicTracks.find((track) => {
+  return musicTracks.find((track) => {
     if (!track.id.startsWith(`${source}:`)) return false;
     return !relative || track.name?.startsWith(relative);
-  });
-  return firstTrack?.id || "";
+  }) || null;
+}
+
+function musicSettingsForm() {
+  return document.querySelector(".music-settings-form");
 }
 
 function getMusicAudio() {
@@ -2117,6 +2143,16 @@ function getMusicAudio() {
     musicAudio = new Audio();
     musicAudio.preload = "auto";
     musicAudio.addEventListener("ended", handleMusicEnded);
+    musicAudio.addEventListener("pause", () => {
+      stopMusicProgressTimer();
+      sendMusicProgress();
+    });
+    musicAudio.addEventListener("error", () => {
+      musicPlaybackBlockedTrackId = lastMusicTrackId;
+      musicPendingStartKey = "";
+      stopMusicProgressTimer();
+      loadMusicTracks({ force: true });
+    });
   }
   applyMusicVolume();
   return musicAudio;
@@ -2145,31 +2181,37 @@ function endSpeechAudio() {
   }, MUSIC_DUCK_RELEASE_MS);
 }
 
-async function loadMusicTracks() {
-  if (musicTracksLoaded) return;
-  musicTracksLoaded = true;
-  try {
-    const result = await api.musicTracks();
-    musicTracks = Array.isArray(result.tracks) ? result.tracks : [];
-    musicItems = Array.isArray(result.items)
-      ? result.items
-      : musicTracks.map((track) => ({ ...track, type: "track" }));
-  } catch (error) {
-    musicTracks = [];
-    musicItems = [];
-    musicTracksLoaded = false;
-  }
-  renderMusicSettings();
-  syncMusicPlayback();
+function loadMusicTracks({ force = false } = {}) {
+  if (musicTracksRequest) return musicTracksRequest;
+  if (musicTracksLoaded && !force) return Promise.resolve();
+  musicTracksRequest = (async () => {
+    try {
+      const result = await api.musicTracks();
+      if (result.ok === false) throw new Error(result.message || "音乐列表读取失败");
+      musicTracks = Array.isArray(result.tracks) ? result.tracks : [];
+      musicItems = Array.isArray(result.items)
+        ? result.items
+        : musicTracks.map((track) => ({ ...track, type: "track" }));
+      musicTracksLoaded = true;
+      if (musicTestPlaying && !musicTracks.some((track) => track.id === musicTestTrackId)) stopMusicTest();
+      renderMusicSettings({ hydrate: false });
+      syncMusicPlayback();
+    } catch (error) {
+      console.warn("Music list refresh failed", error);
+      if (!musicTracksLoaded) { musicTracks = []; musicItems = []; }
+    } finally {
+      musicTracksRequest = null;
+    }
+  })();
+  return musicTracksRequest;
 }
 
-function renderMusicSettings() {
+function renderMusicSettings({ hydrate = !settingsHydrated } = {}) {
   if (!currentState) return;
   document.querySelectorAll("[data-settings-form]").forEach((form) => {
     if (!form.selectedMusicTrack && !form.musicEnabled) return;
-    if (form.musicEnabled) form.musicEnabled.checked = Boolean(currentState.musicEnabled);
+    if (hydrate && form.musicEnabled) form.musicEnabled.checked = Boolean(currentState.musicEnabled);
     if (form.selectedMusicTrack) {
-      const currentValue = form.selectedMusicTrack.value;
       form.selectedMusicTrack.replaceChildren();
       const emptyOption = document.createElement("option");
       emptyOption.value = "";
@@ -2184,15 +2226,15 @@ function renderMusicSettings() {
           : `♪ ${item.name || item.displayName || item.fileName} (${sourceText})`;
         form.selectedMusicTrack.appendChild(option);
       });
-      form.selectedMusicTrack.value = currentState.selectedMusicTrack || currentValue || "";
+      form.selectedMusicTrack.value = musicSelectedItemDraft ?? currentState.selectedMusicItem ?? currentState.selectedMusicTrack ?? "";
     }
-    if (form.musicMode) form.musicMode.value = currentState.musicMode || "random";
+    if (hydrate && form.musicMode) form.musicMode.value = currentState.musicMode || "random";
     syncMusicModeRadios(form);
-    if (form.musicVolumePercent) form.musicVolumePercent.value = normalizeMusicVolumePercent(currentState.musicVolumePercent);
-    if (form.musicAutoPlayDuringMatch) form.musicAutoPlayDuringMatch.checked = currentState.musicAutoPlayDuringMatch !== false;
-    if (form.musicStopWhenMatchEnds) form.musicStopWhenMatchEnds.checked = Boolean(currentState.musicStopWhenMatchEnds);
-    if (form.musicDuckDuringSpeech) form.musicDuckDuringSpeech.checked = currentState.musicDuckDuringSpeech !== false;
-    if (form.musicDuckPercent) form.musicDuckPercent.value = normalizeMusicDuckPercent(currentState.musicDuckPercent);
+    if (hydrate && form.musicVolumePercent) form.musicVolumePercent.value = normalizeMusicVolumePercent(currentState.musicVolumePercent);
+    if (hydrate && form.musicAutoPlayDuringMatch) form.musicAutoPlayDuringMatch.checked = currentState.musicAutoPlayDuringMatch !== false;
+    if (hydrate && form.musicStopWhenMatchEnds) form.musicStopWhenMatchEnds.checked = Boolean(currentState.musicStopWhenMatchEnds);
+    if (hydrate && form.musicDuckDuringSpeech) form.musicDuckDuringSpeech.checked = currentState.musicDuckDuringSpeech !== false;
+    if (hydrate && form.musicDuckPercent) form.musicDuckPercent.value = normalizeMusicDuckPercent(currentState.musicDuckPercent);
     updateMusicOutput(form);
     });
 }
@@ -2204,8 +2246,15 @@ function updateMusicOutput(form) {
   if (duckOutput) duckOutput.textContent = `${normalizeMusicDuckPercent(form.musicDuckPercent?.value)}%`;
   const testButton = form?.querySelector?.("[data-action='test-music']");
   if (testButton) {
-    testButton.textContent = musicAudio && !musicAudio.paused ? "停止测试" : "测试播放";
-    testButton.disabled = !musicTrackIdFromForm(form);
+    testButton.textContent = musicTestPlaying && musicTestAudio ? "停止本机试听" : "本机试听";
+    testButton.disabled = !musicTestPlaying && !musicTestTrackFromForm(form);
+  }
+  const currentTrackOutput = form?.querySelector?.("[data-current-music-track]");
+  if (currentTrackOutput) {
+    const track = selectedMusicTrack();
+    const seconds = Math.max(0, Math.floor(Number(currentState?.musicPositionSeconds) || 0));
+    const position = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    currentTrackOutput.textContent = track ? `当前曲目：${track.name || track.fileName}（续播位置 ${position}）` : "当前未选定曲目";
   }
   const deleteButton = form?.querySelector?.("[data-action='delete-music-item']");
   if (deleteButton) {
@@ -2219,99 +2268,271 @@ function updateMusicOutput(form) {
 }
 
 function previewMusicSettings(form) {
-  if (!form || !currentState) return;
-  currentState.musicEnabled = form.musicEnabled?.checked || false;
-  currentState.selectedMusicTrack = musicTrackIdFromForm(form);
-  currentState.musicMode = form.musicMode?.value || "random";
-  currentState.musicVolumePercent = normalizeMusicVolumePercent(form.musicVolumePercent?.value);
-  currentState.musicAutoPlayDuringMatch = form.musicAutoPlayDuringMatch?.checked !== false;
-  currentState.musicStopWhenMatchEnds = Boolean(form.musicStopWhenMatchEnds?.checked);
-  currentState.musicDuckDuringSpeech = form.musicDuckDuringSpeech?.checked !== false;
-  currentState.musicDuckPercent = normalizeMusicDuckPercent(form.musicDuckPercent?.value);
+  if (!form) return;
   updateMusicOutput(form);
-  applyMusicVolume();
+  if (musicTestAudio) musicTestAudio.volume = normalizeMusicVolumePercent(form.musicVolumePercent?.value) / 100;
 }
 
-function stopMusicPlayback({ reset = true } = {}) {
-  musicTestPlaying = false;
-  if (!musicAudio) return;
-  musicAudio.pause();
-  if (reset) {
-    musicAudio.currentTime = 0;
-    lastMusicTrackId = "";
+function stopMusicProgressTimer() {
+  if (musicProgressTimer) window.clearInterval(musicProgressTimer);
+  musicProgressTimer = null;
+}
+
+function startMusicProgressTimer() {
+  if (musicProgressTimer || !document.querySelector("[data-scoreboard]")) return;
+  musicProgressTimer = window.setInterval(() => { sendMusicProgress(); }, 25000);
+}
+
+function musicProgressPayload() {
+  if (!document.querySelector("[data-scoreboard]") || !musicAudio || musicAudio.ended || musicTrackEndInFlight || musicPendingStartKey) return null;
+  if (!lastMusicTrackId || lastMusicTrackId !== currentState?.selectedMusicTrack) return null;
+  if (lastMusicPlaybackEpoch !== (Number(currentState?.musicPlaybackEpoch) || 0)) return null;
+  const positionSeconds = Number(musicAudio.currentTime);
+  if (!Number.isFinite(positionSeconds) || positionSeconds < 0) return null;
+  return {
+    action: "music_progress",
+    trackId: lastMusicTrackId,
+    musicPlaybackEpoch: lastMusicPlaybackEpoch,
+    positionSeconds,
+  };
+}
+
+function sendMusicProgress({ keepalive = false } = {}) {
+  const payload = musicProgressPayload();
+  if (!payload) return musicProgressTask;
+  if (keepalive) {
+    fetch("/api/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => {});
+    return musicProgressTask;
   }
-  updateMusicOutput(document.querySelector("[data-settings-form]"));
+  musicProgressTask = musicProgressTask.catch(() => {})
+    .then(() => withTimeout(api.action(payload), 5000, "音乐进度保存超时"))
+    .catch((error) => { console.warn("Music progress save failed", error); });
+  return musicProgressTask;
+}
+
+function stopMusicPlayback({ reset = false } = {}) {
+  musicPendingStartKey = "";
+  stopMusicProgressTimer();
+  if (!musicAudio) return;
+  if (!musicAudio.paused) musicAudio.pause();
+  if (reset) {
+    musicAudio.removeAttribute("src");
+    musicAudio.load();
+    lastMusicTrackId = "";
+    lastMusicPlaybackEpoch = 0;
+    lastMusicItemForAudio = "";
+    lastMusicModeForAudio = "";
+  }
+}
+
+function playMusicAudio(audio, trackId) {
+  if (!currentState?.musicPlaying || currentState.selectedMusicTrack !== trackId) return;
+  let playResult;
+  try {
+    playResult = audio.play();
+  } catch (error) {
+    musicPlaybackBlockedTrackId = trackId;
+    console.warn("Music playback failed", error);
+    showScoreboardSoundPrompt();
+    return;
+  }
+  const started = () => {
+    if (!audio.paused) startMusicProgressTimer();
+  };
+  if (playResult?.then) {
+    playResult.then(started).catch((error) => {
+      musicPlaybackBlockedTrackId = trackId;
+      stopMusicProgressTimer();
+      console.warn("Music playback failed", error);
+      showScoreboardSoundPrompt();
+    });
+  } else {
+    started();
+  }
 }
 
 function startMusicPlayback(track = selectedMusicTrack()) {
-  if (!document.querySelector("[data-scoreboard]") && !document.querySelector("[data-settings-form]")) return;
-  if (!currentState?.musicEnabled || !track) {
+  if (!document.querySelector("[data-scoreboard]")) return;
+  if (!currentState?.musicEnabled || !currentState.musicPlaying || !track) {
     stopMusicPlayback();
     return;
   }
   const audio = getMusicAudio();
-  if (lastMusicTrackId !== track.id || audio.src !== new URL(track.url, window.location.href).href) {
-    audio.src = track.url;
-    lastMusicTrackId = track.id;
-  }
-  audio.loop = currentState.musicMode === "loop";
+  const epoch = Number(currentState.musicPlaybackEpoch) || 0;
+  const sourceKey = `${track.id}:${epoch}`;
+  const sourceUrl = new URL(track.url, window.location.href).href;
+  audio.loop = false;
   applyMusicVolume();
-  const playResult = audio.play();
-  if (playResult?.catch) {
-    playResult.catch((error) => {
-      console.warn("Music playback failed", error);
-      showScoreboardSoundPrompt();
-    });
-  }
-  updateMusicOutput(document.querySelector("[data-settings-form]"));
-}
-
-function nextMusicTrack() {
-  if (!musicTracks.length) return null;
-  const currentId = currentState?.selectedMusicTrack || "";
-  if (currentState?.musicMode === "random") {
-    return musicTracks[Math.floor(Math.random() * musicTracks.length)];
-  }
-  const currentIndex = Math.max(0, musicTracks.findIndex((track) => track.id === currentId));
-  return musicTracks[(currentIndex + 1) % musicTracks.length];
-}
-
-function handleMusicEnded() {
-  if (musicTestPlaying && !currentState?.musicPlaying) {
-    musicTestPlaying = false;
-    updateMusicOutput(document.querySelector("[data-settings-form]"));
+  if (musicPendingStartKey === sourceKey) return;
+  const modeOnlyEpochChange = lastMusicTrackId === track.id
+    && lastMusicPlaybackEpoch !== epoch
+    && !musicPendingStartKey
+    && audio.src === sourceUrl
+    && !audio.ended
+    && lastMusicItemForAudio === (currentState.selectedMusicItem || "")
+    && lastMusicModeForAudio !== currentState.musicMode;
+  if (modeOnlyEpochChange) {
+    lastMusicPlaybackEpoch = epoch;
+    lastMusicModeForAudio = currentState.musicMode;
+    if (!audio.paused) startMusicProgressTimer();
+    else playMusicAudio(audio, track.id);
     return;
   }
-  if (!currentState?.musicPlaying || currentState?.musicMode === "loop") return;
-  const next = nextMusicTrack();
-  if (!next) return;
-  if (currentState) currentState.selectedMusicTrack = next.id;
-  startMusicPlayback(next);
+  if (lastMusicTrackId !== track.id || lastMusicPlaybackEpoch !== epoch || audio.src !== sourceUrl) {
+    stopMusicProgressTimer();
+    if (!audio.paused) audio.pause();
+    lastMusicTrackId = track.id;
+    lastMusicPlaybackEpoch = epoch;
+    lastMusicItemForAudio = currentState.selectedMusicItem || "";
+    lastMusicModeForAudio = currentState.musicMode || "";
+    musicPlaybackBlockedTrackId = "";
+    musicPendingStartKey = sourceKey;
+    audio.src = track.url;
+    const resumeAt = Math.max(0, Number(currentState.musicPositionSeconds) || 0);
+    const onMetadata = () => {
+      audio.removeEventListener("loadedmetadata", onMetadata);
+      if (musicPendingStartKey !== sourceKey) return;
+      musicPendingStartKey = "";
+      if (!currentState?.musicPlaying || currentState.selectedMusicTrack !== track.id || Number(currentState.musicPlaybackEpoch || 0) !== epoch) return;
+      const latestDuration = Number(audio.duration);
+      const target = Number.isFinite(latestDuration) ? Math.min(resumeAt, Math.max(0, latestDuration - 0.25)) : resumeAt;
+      try { audio.currentTime = target; } catch (error) { console.warn("Music seek failed", error); }
+      playMusicAudio(audio, track.id);
+    };
+    audio.addEventListener("loadedmetadata", onMetadata);
+    audio.load();
+    return;
+  }
+  if (audio.ended) {
+    if (Date.now() >= musicAdvanceRetryAfter) handleMusicEnded();
+    return;
+  }
+  if (!audio.paused) {
+    startMusicProgressTimer();
+    return;
+  }
+  if (musicPlaybackBlockedTrackId === track.id) return;
+  playMusicAudio(audio, track.id);
+}
+
+async function handleMusicEnded() {
+  if (!document.querySelector("[data-scoreboard]") || !lastMusicTrackId || musicTrackEndInFlight) return;
+  const trackId = lastMusicTrackId;
+  const musicPlaybackEpoch = lastMusicPlaybackEpoch;
+  musicTrackEndInFlight = true;
+  stopMusicProgressTimer();
+  try {
+    await musicProgressTask.catch(() => {});
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (!currentState?.musicPlaying || currentState.selectedMusicTrack !== trackId || Number(currentState.musicPlaybackEpoch || 0) !== musicPlaybackEpoch) break;
+      try {
+        const result = await withTimeout(api.action({ action: "music_track_ended", trackId, musicPlaybackEpoch }), 6000, "音乐切歌超时");
+        if (result.state) applyState(result.state, { speakEvents: false });
+        if (Number(currentState?.musicPlaybackEpoch || 0) !== musicPlaybackEpoch || currentState?.selectedMusicTrack !== trackId || !currentState?.musicPlaying) break;
+      } catch (error) {
+        console.warn("Music track advance failed", error);
+      }
+      if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 1500 * (attempt + 1)));
+    }
+    if (currentState?.musicPlaying && currentState.selectedMusicTrack === trackId && Number(currentState.musicPlaybackEpoch || 0) === musicPlaybackEpoch) {
+      musicAdvanceRetryAfter = Date.now() + 15000;
+      window.setTimeout(refresh, 1500);
+      if (musicAdvanceRetryTimer) window.clearTimeout(musicAdvanceRetryTimer);
+      musicAdvanceRetryTimer = window.setTimeout(() => {
+        musicAdvanceRetryTimer = null;
+        if (currentState?.musicPlaying && lastMusicTrackId === trackId && lastMusicPlaybackEpoch === musicPlaybackEpoch && musicAudio?.ended) handleMusicEnded();
+      }, 15000);
+    } else {
+      musicAdvanceRetryAfter = 0;
+      if (musicAdvanceRetryTimer) window.clearTimeout(musicAdvanceRetryTimer);
+      musicAdvanceRetryTimer = null;
+    }
+  } finally {
+    musicTrackEndInFlight = false;
+    syncMusicPlayback();
+  }
+}
+
+function getMusicTestAudio() {
+  if (!musicTestAudio) {
+    musicTestAudio = new Audio();
+    musicTestAudio.preload = "auto";
+    const audio = musicTestAudio;
+    audio.addEventListener("ended", () => { if (musicTestAudio === audio) stopMusicTest(); });
+    audio.addEventListener("error", () => {
+      if (musicTestAudio !== audio) return;
+      stopMusicTest();
+      showMusicTestError(musicSettingsForm());
+    });
+  }
+  return musicTestAudio;
+}
+
+function stopMusicTest() {
+  musicTestGeneration += 1;
+  musicTestPlaying = false;
+  musicTestTrackId = "";
+  if (musicTestAudio) {
+    musicTestAudio.pause();
+    try { musicTestAudio.currentTime = 0; } catch (error) {}
+    musicTestAudio = null;
+  }
+  updateMusicOutput(musicSettingsForm());
+}
+
+function showMusicTestError(form) {
+  const output = form?.querySelector?.("[data-music-save-result]");
+  if (output) { output.textContent = "本机试听失败，请检查当前设备是否允许播放声音"; output.classList.add("error"); }
+}
+
+function startMusicTest(form) {
+  const track = musicTestTrackFromForm(form);
+  if (!track || !remoteSettingsDialogOpen || !settingsToken) return;
+  stopMusicTest();
+  const audio = getMusicTestAudio();
+  audio.src = track.url;
+  audio.loop = false;
+  audio.volume = normalizeMusicVolumePercent(form.musicVolumePercent?.value) / 100;
+  musicTestTrackId = track.id;
+  musicTestPlaying = true;
+  const generation = musicTestGeneration;
+  let playResult;
+  try {
+    playResult = audio.play();
+  } catch (error) {
+    console.warn("Music test failed", error);
+    stopMusicTest();
+    showMusicTestError(form);
+    return;
+  }
+  if (playResult?.then) {
+    playResult.then(() => { if (musicTestGeneration === generation) updateMusicOutput(form); }).catch((error) => {
+      if (musicTestGeneration !== generation || !remoteSettingsDialogOpen) return;
+      console.warn("Music test failed", error);
+      stopMusicTest();
+      showMusicTestError(form);
+    });
+  }
+  updateMusicOutput(form);
 }
 
 function syncMusicPlayback() {
-  if (!currentState || !musicTracksLoaded) return;
-  if (musicTestPlaying && document.querySelector("[data-settings-form]")) {
-    applyMusicVolume();
-    return;
-  }
-  if (!currentState.musicEnabled || !currentState.selectedMusicTrack) {
+  if (!document.querySelector("[data-scoreboard]")) {
     stopMusicPlayback();
-    lastSyncedSelectedMusicTrack = currentState?.selectedMusicTrack || "";
     return;
   }
-  if (!currentState.musicPlaying) {
-    stopMusicPlayback({ reset: false });
-    lastSyncedSelectedMusicTrack = currentState.selectedMusicTrack || "";
+  if (!currentState || !musicTracksLoaded) return;
+  if (!currentState.musicEnabled || !currentState.selectedMusicTrack || !currentState.musicPlaying) {
+    if (!currentState.musicPlaying) musicPlaybackBlockedTrackId = "";
+    stopMusicPlayback();
     return;
   }
-  if (currentState.selectedMusicTrack !== lastSyncedSelectedMusicTrack) {
-    lastSyncedSelectedMusicTrack = currentState.selectedMusicTrack;
-    lastMusicTrackId = "";
-  } else if (musicAudio && !musicAudio.paused && lastMusicTrackId) {
-    applyMusicVolume();
-    return;
-  }
+  if (musicTrackEndInFlight) return;
   startMusicPlayback();
 }
 
@@ -2496,17 +2717,26 @@ function receiverSettingsSavedForLearning() {
   return true;
 }
 
-function renderRfSettings() {
+function rememberVisibleRfReceiverDraft() {
+  const form = document.querySelector("[data-rf-settings-form]");
+  if (form) rfReceiverDraft = collectRfReceivers(form);
+}
+
+function renderRfSettings({ captureDrafts = true } = {}) {
   if (!currentState) return;
   const layout = document.querySelector("[data-rf-layout]");
   if (!layout) return;
-  rememberVisibleRfSlotDraft();
+  if (captureDrafts) {
+    rememberVisibleRfSlotDraft();
+    rememberVisibleRfReceiverDraft();
+  }
   if (!rfSlotTabs.some((tab) => tab.id === activeRfTab)) activeRfTab = "rf1";
   const serialDevices = Array.isArray(currentState.rfSerialDevices) ? currentState.rfSerialDevices : [];
+  const receivers = rfReceiverDraft || rfReceivers();
   layout.innerHTML = `
     <form class="settings-form rf-settings-form rf-receiver-form" data-rf-settings-form>
       <div class="rf-receiver-list">
-        ${rfReceivers().map((receiver) => `
+        ${receivers.map((receiver) => `
           <div class="rf-receiver-card" data-rf-receiver-card data-receiver-id="${escapeHtml(receiver.id)}">
             <label>名称<input name="receiverName" maxlength="40" value="${escapeHtml(receiver.name)}"></label>
             ${renderSwitchControl("receiverEnabled", Boolean(receiver.enabled), "启用")}
@@ -2533,7 +2763,7 @@ function renderRfSettings() {
     </div>
     <div class="rf-device-panel" data-rf-device-panel></div>
   `;
-  renderRfDevicePanel();
+  renderRfDevicePanel({ captureDrafts: false });
   consumePendingRfLearn();
 }
 
@@ -2716,6 +2946,7 @@ function rememberVisibleRfSlotDraft() {
   rfSlotDrafts[slotId] = {
     name: form.rfSlotName?.value || "",
     enabled: Boolean(form.rfSlotEnabled?.checked),
+    receiverIds: Array.from(form.querySelectorAll("input[name='receiverIds']:checked")).map((input) => input.value),
   };
 }
 
@@ -2729,13 +2960,13 @@ function rfBindingDataAttributes(binding) {
   ].join(" ");
 }
 
-function renderRfDevicePanel() {
+function renderRfDevicePanel({ captureDrafts = true } = {}) {
   const panel = document.querySelector("[data-rf-device-panel]");
   if (!panel || !currentState) return;
-  rememberVisibleRfSlotDraft();
+  if (captureDrafts) rememberVisibleRfSlotDraft();
   if (activeRfTab === "keyboard") {
     panel.innerHTML = `
-      <form class="settings-form keyboard-settings-form" data-keyboard-settings-form>
+      <div class="settings-form keyboard-settings-form">
         <div class="rf-slot-head keyboard-slot-head">
           <button class="secondary" type="button" data-action="clear-key-bindings">恢复默认映射</button>
         </div>
@@ -2746,9 +2977,9 @@ function renderRfDevicePanel() {
           </div>
           <div class="key-binding-list" data-key-binding-list></div>
         </div>
-        <button class="primary" type="submit">保存键盘设置</button>
+        <p>点击右侧按键后按下新键，映射会立即保存。</p>
         <strong data-keyboard-save-result></strong>
-      </form>
+      </div>
     `;
     renderKeyBindings();
     return;
@@ -2756,7 +2987,7 @@ function renderRfDevicePanel() {
   const savedSlot = rfSlotById(activeRfTab);
   const slotDraft = rfSlotDrafts[savedSlot.id];
   const slot = slotDraft
-    ? { ...savedSlot, name: slotDraft.name || savedSlot.name, enabled: slotDraft.enabled }
+    ? { ...savedSlot, name: slotDraft.name || savedSlot.name, enabled: slotDraft.enabled, receiverIds: slotDraft.receiverIds }
     : savedSlot;
   panel.innerHTML = `
     <form class="settings-form rf-slot-form" data-rf-slot-form data-slot-id="${escapeHtml(slot.id)}">
@@ -2770,7 +3001,7 @@ function renderRfDevicePanel() {
       </div>
       <fieldset class="rf-slot-receivers">
         <legend>接收来源</legend>
-        ${rfReceivers().map((receiver) => `
+        ${(rfReceiverDraft || rfReceivers()).map((receiver) => `
           <label class="rf-source-choice">
             <input type="checkbox" name="receiverIds" value="${escapeHtml(receiver.id)}" ${slot.receiverIds.includes(receiver.id) ? "checked" : ""}>
             <span>${escapeHtml(receiver.name)}</span>
@@ -2873,14 +3104,6 @@ function collectRfSlotPayload(form) {
   };
 }
 
-function collectKeyboardSettingsPayload(form) {
-  return {
-    action: "update_keyboard_settings",
-    keyboardInputEnabled: true,
-    _resultSelector: "[data-keyboard-save-result]",
-  };
-}
-
 function parseRfManualInput(value) {
   const text = String(value || "").trim();
   if (!text) return null;
@@ -2929,6 +3152,8 @@ function updateRfReceiverFields(form) {
 
 function previewScoreboardStyle(form) {
   if (!form) return;
+  appearancePreviewDirty = true;
+  appearancePreviewRevision += 1;
   applyTitleColor(form.titleColor?.value);
   applyTitleFontScale(form.titleFontScale?.value);
   const teamAutoSize = form.teamNameAutoSize?.checked !== false;
@@ -2937,7 +3162,7 @@ function previewScoreboardStyle(form) {
   const markerScale = normalizeTableMarkerScale(form.tableMarkerScale?.value);
   applyTableMarkerScale(autoSize, markerScale);
   updateTableMarkerControls(form);
-  sendAction({
+  const payload = {
     action: "preview_title_style",
     titleColor: normalizeHexColor(form.titleColor?.value),
     titleFontScale: normalizeTitleFontScale(form.titleFontScale?.value),
@@ -2945,7 +3170,13 @@ function previewScoreboardStyle(form) {
     teamNameScale: normalizeTeamNameScale(form.teamNameScale?.value),
     tableMarkerAutoSize: autoSize,
     tableMarkerScale: markerScale,
-  }, false).catch(() => {});
+  };
+  const token = settingsToken;
+  const revision = appearancePreviewRevision;
+  appearancePreviewTask = appearancePreviewTask.catch(() => {}).then(() => {
+    if (!remoteSettingsDialogOpen || !token || token !== settingsToken || revision !== appearancePreviewRevision) return;
+    return api.action(payload, token);
+  }).catch((error) => { console.warn("Appearance preview failed", error); });
 }
 
 function previewTitleStyle(form) {
@@ -3702,6 +3933,12 @@ function enterSettings(result) {
   remoteSettingsDialogOpen = true;
   keyCaptureAction = "";
   settingsHydrated = false;
+  musicSelectedItemDraft = null;
+  rfDraftBindings = {};
+  rfSlotDrafts = {};
+  rfReceiverDraft = null;
+  savedAppearanceStyle = appearanceStyleFromState(currentState);
+  appearancePreviewDirty = false;
   document.querySelector("[data-remote-settings-dialog]")?.classList.add("open");
   renderSettings();
   renderKeyBindings();
@@ -3711,13 +3948,48 @@ function openRemoteSettingsDialog() {
   return openSettingsDialog();
 }
 
+function appearanceStyleFromState(state) {
+  return {
+    titleColor: state?.titleColor,
+    titleFontScale: state?.titleFontScale,
+    teamNameAutoSize: state?.teamNameAutoSize,
+    teamNameScale: state?.teamNameScale,
+    tableMarkerAutoSize: state?.tableMarkerAutoSize,
+    tableMarkerScale: state?.tableMarkerScale,
+  };
+}
+
+function restoreSavedAppearance() {
+  if (!savedAppearanceStyle) return;
+  applyTitleColor(savedAppearanceStyle.titleColor);
+  applyTitleFontScale(savedAppearanceStyle.titleFontScale);
+  applyTeamNameScale(savedAppearanceStyle.teamNameScale, savedAppearanceStyle.teamNameAutoSize);
+  applyTableMarkerScale(savedAppearanceStyle.tableMarkerAutoSize, savedAppearanceStyle.tableMarkerScale);
+}
+
+function clearAppearancePreview(token) {
+  appearancePreviewTask = appearancePreviewTask.catch(() => {}).then(async () => {
+    const result = await api.action({ action: "clear_appearance_preview" }, token);
+    if (result.state) applyState(result.state, { speakEvents: false });
+  });
+  return appearancePreviewTask;
+}
+
 function expireSettingsSession() {
   remoteSettingsDialogOpen = false;
   keyCaptureAction = "";
+  stopMusicTest();
+  restoreSavedAppearance();
+  appearancePreviewDirty = false;
   clearRfLearnPolling();
   clearRfLearnTimeout();
   pendingRfLearn = null;
   settingsConfig = {};
+  rfReceiverDraft = null;
+  rfSlotDrafts = {};
+  rfDraftBindings = {};
+  musicSelectedItemDraft = null;
+  settingsHydrated = false;
   rememberSettingsToken("");
   document.querySelector("[data-remote-settings-dialog]")?.classList.remove("open");
   document.querySelectorAll("input[name='hotspotPassword'], input[name='settingsPassword'], input[name='finishPassword'], [data-wifi-password]").forEach((input) => { input.value = ""; });
@@ -3725,11 +3997,14 @@ function expireSettingsSession() {
   if (network) network.textContent = "";
 }
 
-function closeRemoteSettingsDialog() {
+async function closeRemoteSettingsDialog() {
   cancelPendingRfLearn("学习已取消");
   const token = settingsToken;
   expireSettingsSession();
-  if (token) api.settingsLogout(token).catch(() => {});
+  if (token) {
+    try { await withTimeout(clearAppearancePreview(token), 4000, "预览清理超时"); } catch (error) {}
+    try { await api.settingsLogout(token); } catch (error) {}
+  }
   if (settingsReturnTarget === "scoreboard") window.location.href = "/scoreboard";
 }
 
@@ -3754,7 +4029,7 @@ function collectSettingsPayload(form) {
   if (form.systemVolumePercent) payload.systemVolumePercent = normalizeSystemVolumePercent(form.systemVolumePercent.value);
   if (form.audioOutputMode) payload.audioOutputMode = form.audioOutputMode.value || "auto";
   if (form.musicEnabled) payload.musicEnabled = form.musicEnabled.checked;
-  if (form.selectedMusicTrack) payload.selectedMusicTrack = musicTrackIdFromForm(form);
+  if (form.selectedMusicTrack && musicTracksLoaded) payload.selectedMusicItem = musicTrackIdFromForm(form);
   if (form.musicMode) payload.musicMode = form.musicMode.value || "random";
   if (form.musicVolumePercent) payload.musicVolumePercent = normalizeMusicVolumePercent(form.musicVolumePercent.value);
   if (form.musicAutoPlayDuringMatch) payload.musicAutoPlayDuringMatch = form.musicAutoPlayDuringMatch.checked;
@@ -3797,12 +4072,18 @@ async function saveSettings(pendingPayload) {
   settingsSaveInFlight = true;
   const requestToken = settingsToken;
   const { _resultSelector, ...payload } = pendingPayload;
+  const savedPreviewRevision = appearancePreviewRevision;
   const selector = _resultSelector || "[data-save-result]";
   const output = document.querySelector(selector);
   if (output) { output.textContent = "正在保存…"; output.classList.remove("error"); }
+  rememberVisibleRfReceiverDraft();
+  rememberVisibleRfSlotDraft();
   try {
-    const result = await sendAction(payload, false);
+    if (Object.prototype.hasOwnProperty.call(payload, "titleColor")) await appearancePreviewTask.catch(() => {});
+    const result = await api.action(payload, requestToken);
     if (requestToken !== settingsToken || !remoteSettingsDialogOpen) return;
+    if (result.requiresSettingsLogin) { expireSettingsSession(); openSettingsDialog(); return; }
+    if (result.state) applyState(result.state, { speakEvents: false });
     if (!result.ok) {
       if (output) { output.textContent = result.message || "保存失败"; output.classList.add("error"); }
       return;
@@ -3812,18 +4093,30 @@ async function saveSettings(pendingPayload) {
       delete rfSlotDrafts[payload.slotId || activeRfTab];
       if (pendingRfLearn?.slotId === (payload.slotId || activeRfTab)) cancelPendingRfLearn("学习已取消");
     }
-    if (payload.action === "delete_music_item") { musicTracksLoaded = false; await loadMusicTracks(); }
+    if (payload.action === "update_rf_settings") rfReceiverDraft = null;
+    if (Object.prototype.hasOwnProperty.call(payload, "selectedMusicItem") || payload.action === "delete_music_item") musicSelectedItemDraft = null;
+    if (payload.action === "delete_music_item") {
+      if (musicTracksRequest) await musicTracksRequest;
+      await loadMusicTracks({ force: true });
+    }
     const session = await api.settingsSession();
     if (requestToken !== settingsToken || !remoteSettingsDialogOpen) return;
     if (!session.ok) { expireSettingsSession(); openSettingsDialog(); return; }
     settingsConfig = session.settings || {};
     if (session.state) currentState = session.state;
-    settingsHydrated = false;
     renderSettings();
-    renderKeyBindings();
-    if (payload.action === "update_rf_remote_slot" || payload.action === "clear_rf_remote_slot") {
-      delete rfSlotDrafts[payload.slotId || activeRfTab];
+    if (Object.prototype.hasOwnProperty.call(payload, "selectedMusicItem") || payload.action === "delete_music_item") {
+      renderMusicSettings({ hydrate: true });
     }
+    if (payload.action === "update_rf_settings" || payload.action === "update_rf_remote_slot" || payload.action === "clear_rf_remote_slot") {
+      renderRfSettings({ captureDrafts: false });
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "titleColor")) {
+      savedAppearanceStyle = appearanceStyleFromState(payload);
+      if (appearancePreviewRevision === savedPreviewRevision) appearancePreviewDirty = false;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "hotspotSsid")) loadNetworkStatus();
+    renderKeyBindings();
     document.querySelectorAll("input[name='settingsPassword'], input[name='finishPassword']").forEach((input) => { input.value = ""; });
     const resultOutput = document.querySelector(selector);
     if (resultOutput) { resultOutput.textContent = result.message; resultOutput.classList.remove("error"); }
@@ -3846,7 +4139,11 @@ async function saveKeyBindingFromEvent(event) {
     key: event.key || "",
     label: keyLabelFromEvent(event),
   }, false);
-  currentState = result.state;
+  const output = document.querySelector("[data-keyboard-save-result]");
+  if (output) {
+    output.textContent = result.message || (result.ok ? "按键映射已保存" : "按键映射失败");
+    output.classList.toggle("error", !result.ok);
+  }
   renderKeyBindings();
 }
 
@@ -4233,14 +4530,8 @@ document.addEventListener("click", (event) => {
   }
   if (action === "test-music") {
     const form = target.closest("[data-settings-form]");
-    previewMusicSettings(form);
-    if (musicAudio && !musicAudio.paused) {
-      stopMusicPlayback();
-    } else {
-      musicTestPlaying = true;
-      startMusicPlayback(musicTracks.find((track) => track.id === musicTrackIdFromForm(form)));
-    }
-    updateMusicOutput(form);
+    if (musicTestPlaying) stopMusicTest();
+    else startMusicTest(form);
     return;
   }
   if (action === "delete-music-item") {
@@ -4291,7 +4582,13 @@ document.addEventListener("input", (event) => {
   if (systemVolumeInput) previewSystemVolume(systemVolumeInput.form);
 
   const musicControl = event.target.closest("input[name='musicVolumePercent'], input[name='musicDuckPercent'], input[name='musicEnabled'], input[name='musicAutoPlayDuringMatch'], input[name='musicStopWhenMatchEnds'], input[name='musicDuckDuringSpeech'], input[name='musicMode'], select[name='selectedMusicTrack']");
-  if (musicControl) previewMusicSettings(musicControl.form);
+  if (musicControl) {
+    if (musicControl.name === "selectedMusicTrack") {
+      musicSelectedItemDraft = musicControl.value;
+      if (musicTestPlaying) stopMusicTest();
+    }
+    previewMusicSettings(musicControl.form);
+  }
 
   const titleColorInput = event.target.closest("input[name='titleColor']");
   if (titleColorInput) previewTitleStyle(titleColorInput.form);
@@ -4346,6 +4643,10 @@ document.addEventListener("input", (event) => {
 document.addEventListener("change", (event) => {
   const musicControl = event.target.closest("input[name='musicEnabled'], input[name='musicAutoPlayDuringMatch'], input[name='musicStopWhenMatchEnds'], input[name='musicDuckDuringSpeech'], input[name='musicMode'], select[name='selectedMusicTrack']");
   if (musicControl) {
+    if (musicControl.name === "selectedMusicTrack") {
+      musicSelectedItemDraft = musicControl.value;
+      if (musicTestPlaying) stopMusicTest();
+    }
     previewMusicSettings(musicControl.form);
     return;
   }
@@ -4412,13 +4713,6 @@ document.addEventListener("submit", async (event) => {
     return;
   }
 
-  const keyboardSettingsForm = event.target.closest("[data-keyboard-settings-form]");
-  if (keyboardSettingsForm) {
-    event.preventDefault();
-    saveSettings(collectKeyboardSettingsPayload(keyboardSettingsForm));
-    return;
-  }
-
   const form = event.target.closest("[data-settings-form]");
   if (!form) return;
   event.preventDefault();
@@ -4437,6 +4731,16 @@ window.addEventListener("resize", () => {
   if (currentState?.titleFontScale) applyTitleFontScale(currentState.titleFontScale);
   applyTeamNameScale(currentState?.teamNameScale, currentState?.teamNameAutoSize);
   syncTableMarkerAutoSize(currentState?.tableMarkerAutoSize, currentState?.tableMarkerScale);
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) sendMusicProgress();
+});
+
+window.addEventListener("pagehide", () => {
+  sendMusicProgress({ keepalive: true });
+  stopMusicTest();
+  if (remoteSettingsDialogOpen && settingsToken) api.settingsLogout(settingsToken).catch(() => {});
 });
 
 initScreenWakeLock();

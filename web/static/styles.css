@@ -2263,6 +2263,14 @@ body.scoreboard.finish-summary-active .celebration-canvas {
   font-size: 16px;
 }
 
+.settings-form label > small,
+.music-settings-panel > small {
+  color: #bdbdbd;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .settings-form input,
 .settings-form select {
   width: 100%;
